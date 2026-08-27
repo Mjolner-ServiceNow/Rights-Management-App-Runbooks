@@ -28,7 +28,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `docs/DEPLOYMENT.md` narrowed to updating an existing installation, so the two documents
   do not drift.
 
+### Changed
+- `infra/main.bicep` now targets the subscription and creates the resource group, then
+  deploys the workload into it. The previous resource-group-scoped template required the
+  group to exist first, which a template at that scope cannot create.
+- `infra/workload.bicep` holds the resources and is still deployable directly into an
+  existing resource group with `-WorkloadOnly`, for environments where Contributor on the
+  subscription is not granted.
+
 ### Fixed
+- `Deploy-RmaPlatform.ps1` did not check the exit code of `az deployment what-if`. A failed
+  what-if printed its error and the script deployed anyway, which defeated the purpose of
+  having the gate.
+- Added fail-fast checks for not being signed in, an inaccessible subscription, and a
+  missing resource group, so those produce one clear line instead of an Azure CLI traceback.
 - CI would have failed on the first pull request: the parameter-file check required
   production parameters to be filled in, which is correct for a private repository and
   wrong for a public one. Inverted, so it now fails if a committed template contains a real

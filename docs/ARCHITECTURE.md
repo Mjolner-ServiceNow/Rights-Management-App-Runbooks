@@ -184,6 +184,16 @@ queue intact and the next run continues.
 | Secret in a log | `Write-RmaLog` redacts; `RmaAvoidUnredactedObjectLogging` blocks the pattern |
 | Worker disk exhaustion | Pinned modules, no runtime install, analyzer rule, prune sweep |
 
+## Template layout
+
+`infra/main.bicep` targets the **subscription**, creates the resource group, and deploys
+`infra/workload.bicep` into it. The split exists because a resource-group-scoped template
+cannot create its own resource group.
+
+Deploying `workload.bicep` directly into an existing group produces exactly the same
+resources and needs only Contributor on that group, which matters in organisations that do
+not grant subscription Contributor for application deployments.
+
 ## Environments
 
 `dev`, `test`, `prod` are the same template with different parameters, deployed manually

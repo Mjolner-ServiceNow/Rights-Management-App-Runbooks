@@ -19,7 +19,8 @@ most common reason this takes days instead of hours.
 | Step | Role required | Where |
 |---|---|---|
 | 1 | ServiceNow administrator | ServiceNow |
-| 2, 3 | Contributor on the resource group | Azure |
+| 2 | Contributor on the **subscription** (the template creates the resource group) | Azure |
+| 3 | Contributor on the resource group | Azure |
 | 4 | Local administrator on the VM | Windows |
 | 5 | Cloud Application Administrator | Microsoft Entra |
 | 6 | Privileged Role Administrator or Global Administrator | Microsoft Entra |
@@ -31,7 +32,8 @@ role and should not be.
 
 ### What you need
 
-- An Azure subscription and an empty resource group.
+- An Azure subscription. The template creates the resource group, so you do not need to
+  make one first.
 - A **Windows Server VM in Azure** that will run the jobs. Two cores and 4 GB RAM minimum.
   It must reach your domain controllers and `service-now.com`.
 - A ServiceNow instance with the Rights Management App scoped application installed.
@@ -165,12 +167,39 @@ Key Vault firewall is enabled and only that subnet may reach it. The subnet need
 Preview, then deploy:
 
 ```powershell
-./scripts/Deploy-RmaPlatform.ps1 -ResourceGroup rg-rma-prod -Environment prod -WhatIfOnly
-./scripts/Deploy-RmaPlatform.ps1 -ResourceGroup rg-rma-prod -Environment prod
+./scripts/Deploy-RmaPlatform.ps1 -Environment prod -WhatIfOnly
+./scripts/Deploy-RmaPlatform.ps1 -Environment prod
 ```
 
-The script refuses to proceed if the plan would delete anything, checks afterwards that the
-Automation Account has no managed identity, and prints the outputs clearly labelled.
+`resourceGroupName` and `location` come from the parameter file, and **the resource group
+is created if it does not exist**. Re-running is safe: ARM converges an existing deployment
+rather than recreating anything, so neither the resource group nor the Automation Account is
+disturbed if it already matches.
+
+Or with the CLI directly, which is all the script does:
+
+```bash
+az deployment sub what-if --location westeurope \
+  --template-file infra/main.bicep --parameters infra/main.parameters.prod.local.json
+
+az deployment sub create --location westeurope \
+  --template-file infra/main.bicep --parameters infra/main.parameters.prod.local.json
+```
+
+The script adds four things worth having: it stops if the what-if itself fails rather than
+deploying blind, it refuses to proceed if the plan contains a `Delete`, it checks afterwards
+that the Automation Account has no managed identity, and it labels which output GUID is the
+**client** ID and which is the **principal** ID.
+
+> **If you cannot get Contributor on the subscription.** A resource-group-scoped template
+> cannot create its own resource group, which is why the default path deploys at
+> subscription scope. Where that is not granted for application deployments, create the
+> group yourself and deploy only the workload into it. Identical resources, narrower rights:
+>
+> ```powershell
+> az group create --name rg-rma-prod --location westeurope
+> ./scripts/Deploy-RmaPlatform.ps1 -Environment prod -WorkloadOnly
+> ```
 
 **Record the Key Vault name, the managed identity client ID, and the managed identity
 principal ID.**

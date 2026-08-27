@@ -1,23 +1,16 @@
 # Notice
 
-## Licence: not yet chosen
+## Licence
 
-This repository is public and has **no licence file**. Under copyright law that means
-all rights reserved: nobody, including the customer this was built for, has permission to
-use, copy, modify or distribute it. GitHub's own guidance is explicit that public does not
-mean open source.
+Released under the [MIT Licence](LICENSE), copyright Mjolner.
 
-That is almost certainly not the intent, since the Bicep template is meant to be deployed
-by the customer. Someone with authority to decide should pick one:
+MIT was chosen because the Bicep template, the provisioning scripts and the shared module
+are meant to be deployed and adapted by the customer in their own tenant. MIT grants that
+without conditions beyond preserving the copyright notice, and carries no warranty.
 
-| Option | When it fits |
-|---|---|
-| **MIT** | Simplest. Anyone may use it, no warranty, attribution required. |
-| **Apache 2.0** | Like MIT, plus an explicit patent grant. Common for infrastructure code. |
-| **Proprietary, with a written grant to the customer** | Keeps the code closed but permits the customer to deploy and modify it. Fits a three-year service agreement. |
-| **Make the repository private** | If public was not a deliberate decision, this is the cheapest fix. |
-
-Until then, the customer is technically not licensed to run the template.
+If a patent grant is wanted, Apache 2.0 is the usual alternative and is a drop-in
+replacement. Confirm the exact legal entity name in the copyright line before this matters
+commercially.
 
 ## What this repository does and does not contain
 

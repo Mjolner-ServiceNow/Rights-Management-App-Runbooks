@@ -109,6 +109,47 @@ doubles the duplicate-execution rate; with it, workers can be added freely.
 > `Request-RmaJobClaim` with a Scripted REST endpoint that does the compare-and-set server
 > side. No other code changes.
 
+## Module distribution
+
+**Azure Automation cannot deliver modules to a Hybrid Runbook Worker.** Modules imported
+into an Automation Account are made available to jobs running in an Azure sandbox. A worker
+resolves modules from its own `PSModulePath`, and nothing pushes them there.
+
+Everything the runbooks need is therefore installed on the worker by
+`scripts/Initialize-RmaWorker.ps1`: the Graph and Exchange modules at pinned versions, and
+`RMA.Runbooks` itself.
+
+```
+build/New-RmaModulePackage.ps1   →  RMA.Runbooks-1.0.0.zip
+                                          │
+                    GitHub release asset  │  (or a repo checkout, or a file share)
+                                          ▼
+              scripts/Initialize-RmaWorker.ps1  on each worker
+                                          │
+                                          ▼
+        C:\Program Files\PowerShell\Modules\RMA.Runbooks\1.0.0\
+                                          │
+                                          ▼
+                 #Requires -Modules @{ ...; RequiredVersion = '1.0.0' }
+```
+
+Two consequences worth understanding:
+
+**Version pinning is the coupling.** Each runbook pins an exact `RequiredVersion`. If the
+worker has a different one, the job fails at parse time with a precise message rather than
+part-way through a directory write. `Publish-RmaContent.ps1` refuses to publish runbooks
+whose pin disagrees with the module in the repository, so the mismatch is normally caught
+before it reaches Azure at all.
+
+**Upgrading is a two-sided change.** Bump `ModuleVersion`, update the `#Requires` in every
+affected runbook, and re-run `Initialize-RmaWorker.ps1` on every worker. All three in one
+pull request. Rolling a worker forward without the runbooks, or the reverse, produces a
+clean refusal rather than a subtle failure, which is the intended behaviour.
+
+The PowerShell 7 module path is used, not the Windows PowerShell one, because runbooks are
+published as `PowerShell72`. Hybrid Worker jobs run as local **SYSTEM**, so the module must
+be in an AllUsers location; a per-user install is invisible to them.
+
 ## Scaling
 
 Throughput is `workers × jobs-per-run ÷ schedule-interval`. Three levers:

@@ -10,7 +10,7 @@ Work top to bottom. Anything marked **BLOCKER** stops the release.
 - [ ] Branch protection on `main`: no direct pushes, one approving review, CI required
 - [ ] Release tagged, so a rollback target exists by name
 - [ ] Repository reviewed for anything customer-identifying before it is made public: instance names, tenant or subscription IDs, internal hostnames, record sys_ids **BLOCKER**
-- [ ] A licence file exists, or the decision not to have one is deliberate and recorded
+- [ ] `LICENSE` present and the copyright line names the correct legal entity
 
 ## 2. Identity
 
@@ -33,7 +33,8 @@ Work top to bottom. Anything marked **BLOCKER** stops the release.
 
 ## 4. Worker
 
-- [ ] `Initialize-RmaWorker.ps1` run; module list matches the pinned set exactly
+- [ ] `Initialize-RmaWorker.ps1` run on **each** worker; module list matches the pinned set exactly
+- [ ] If more than one worker: all of them provisioned identically. A worker missing the module fails every job routed to it, intermittently
 - [ ] `Get-Module -ListAvailable Microsoft.Graph* | Group-Object Name` shows **one version per module** **BLOCKER**
 - [ ] `Microsoft.Graph.Beta` meta-module absent; only `Microsoft.Graph.Beta.Users` present
 - [ ] `MSAL.PS` absent
@@ -61,7 +62,9 @@ Work top to bottom. Anything marked **BLOCKER** stops the release.
 
 ## 7. Verification
 
-- [ ] Module import reached `Succeeded`, not `Creating` — `Get-AzAutomationModule ... -Name RMA.Runbooks` **BLOCKER**
+- [ ] `RMA.Runbooks` installed on **every** worker in the group, at the version the runbooks pin — `Get-Module -ListAvailable RMA.Runbooks` **BLOCKER**
+- [ ] It resolves from an AllUsers PowerShell 7 path (`C:\Program Files\PowerShell\Modules`), not a per-user one. Hybrid Worker jobs run as local SYSTEM **BLOCKER**
+- [ ] Confirmed that `RMA.Runbooks` was **not** imported into the Automation Account, which would give a false impression that the dependency is met
 - [ ] Every runbook shows as Published, not Draft
 - [ ] `Test-RmaHealth` passes on the real worker, with `-IncludeActiveDirectory` **BLOCKER**
 - [ ] One real job end to end in each direction: an Entra create and an AD create

@@ -14,6 +14,7 @@ subscription. This repository holds no credentials and deploys nothing itself.
 | **Infrastructure** | [`infra`](infra) — Bicep, resource-group scope |
 | **Scripts** | [`scripts`](scripts) — deploy, provision a worker, publish content |
 | **CI** | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — validation only, no Azure access |
+| **Release** | [`.github/workflows/release.yml`](.github/workflows/release.yml) — packages the module for worker installation |
 | **Architecture** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | **Deployment** | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) |
 | **Go-live checklist** | [`docs/PRODUCTION-CHECKLIST.md`](docs/PRODUCTION-CHECKLIST.md) |
@@ -85,6 +86,5 @@ must carry a `Justification`.
 
 ## Licence
 
-**Not yet chosen.** A public repository with no licence file is all-rights-reserved by
-default, which means nobody, including the customer, has permission to use or modify this
-code. Pick one before relying on it being public. See [`NOTICE.md`](NOTICE.md).
+[MIT](LICENSE). The customer may deploy, adapt and redistribute this in their own tenant.
+See [`NOTICE.md`](NOTICE.md).

@@ -3,128 +3,91 @@
 
 <#
 .SYNOPSIS
-    Publishes the RMA.Runbooks module and the runbooks into an Automation Account.
+    Publishes the runbooks into an Automation Account.
 .DESCRIPTION
-    Manual equivalent of a deployment pipeline. Run it from a machine with the Az modules
-    and Contributor on the Automation Account.
+    Runbooks only. The RMA.Runbooks module is NOT published here, and deliberately so.
 
-    Safety properties worth knowing, because they are the reason this is not just a loop
-    over Import-AzAutomationRunbook:
+    Modules imported into an Automation Account are made available to jobs running in an
+    Azure sandbox. A Hybrid Runbook Worker loads modules from its own PSModulePath, and
+    Azure does not push Automation Account modules onto it. Importing RMA.Runbooks into the
+    Automation Account would therefore look like the dependency was satisfied while every
+    runbook still failed at #Requires.
 
-      - The module import is asynchronous. A runbook started against a half-imported module
-        fails in a way that looks like a code defect, so this waits for Succeeded.
-      - Runbooks are imported as Draft and then published. The currently published version
-        keeps serving until the new draft is published, so a failed import cannot take a
-        runbook offline.
-      - The module is staged in a storage account because New-AzAutomationModule imports
-        from a URI. If you would rather not create one, publish RMA.Runbooks to an internal
-        PowerShell repository and pass -ContentLinkUri yourself.
-.PARAMETER StorageAccountName
-    Existing storage account used to stage the module zip. A container named 'modules' is
-    created if absent. The blob is removed afterwards unless -KeepStagedPackage is set.
+    RMA.Runbooks is installed on the worker by scripts/Initialize-RmaWorker.ps1, alongside
+    the Graph and Exchange modules, and the version there must match the RequiredVersion in
+    each runbook's #Requires. That match is enforced at parse time: a mismatch fails the job
+    immediately with a precise message rather than part-way through.
+
+    Safety property worth keeping: each runbook is imported as a Draft and then published.
+    The currently published version keeps serving until the new draft is published, so a
+    failed import cannot take a runbook offline.
+.PARAMETER SkipVersionCheck
+    Skip the check that the runbooks' #Requires version matches the module in this repo.
 .EXAMPLE
-    ./scripts/Publish-RmaContent.ps1 -ResourceGroup rg-rma-prod `
-        -AutomationAccountName aa-rma-prod -StorageAccountName strmaprodstaging
-.EXAMPLE
-    ./scripts/Publish-RmaContent.ps1 -ResourceGroup rg-rma-prod `
-        -AutomationAccountName aa-rma-prod -RunbooksOnly
+    ./scripts/Publish-RmaContent.ps1 -ResourceGroup rg-rma-prod -AutomationAccountName aa-rma-prod
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()] [string] $ResourceGroup,
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()] [string] $AutomationAccountName,
 
-    [string] $StorageAccountName,
-    [switch] $RunbooksOnly,
-    [switch] $ModuleOnly,
-    [switch] $KeepStagedPackage,
-
     [ValidateSet('PowerShell72', 'PowerShell')]
-    [string] $RunbookType = 'PowerShell72'
+    [string] $RunbookType = 'PowerShell72',
+
+    [string[]] $Name,
+    [switch]   $SkipVersionCheck
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $repoRoot   = Split-Path $PSScriptRoot -Parent
-$modulePath = Join-Path $repoRoot 'src/RMA.Runbooks'
 $runbookDir = Join-Path $repoRoot 'src/runbooks'
-$version    = (Import-PowerShellDataFile (Join-Path $modulePath 'RMA.Runbooks.psd1')).ModuleVersion
+$moduleVersion = (Import-PowerShellDataFile (Join-Path $repoRoot 'src/RMA.Runbooks/RMA.Runbooks.psd1')).ModuleVersion
 
-Write-Host "RMA.Runbooks $version -> $AutomationAccountName" -ForegroundColor Cyan
+$files = @(Get-ChildItem $runbookDir -Filter '*.ps1' -File)
+if ($Name) { $files = @($files | Where-Object { $_.BaseName -in $Name }) }
+if ($files.Count -eq 0) { throw "No runbooks matched." }
 
-# ------------------------------------------------------------------ module
-if (-not $RunbooksOnly) {
-    if (-not $StorageAccountName) {
-        throw 'StorageAccountName is required to publish the module. Use -RunbooksOnly to skip the module.'
-    }
-
-    $zip = Join-Path ([IO.Path]::GetTempPath()) "RMA.Runbooks-$version.zip"
-    Compress-Archive -Path $modulePath -DestinationPath $zip -Force
-    Write-Host "  packaged $([math]::Round((Get-Item $zip).Length / 1KB)) KB"
-
-    $blobName = "RMA.Runbooks-$version.zip"
-    $ctx = (Get-AzStorageAccount -ResourceGroupName $ResourceGroup -Name $StorageAccountName).Context
-
-    if (-not (Get-AzStorageContainer -Name 'modules' -Context $ctx -ErrorAction SilentlyContinue)) {
-        $null = New-AzStorageContainer -Name 'modules' -Context $ctx -Permission Off
-    }
-
-    if ($PSCmdlet.ShouldProcess($blobName, 'Stage module package')) {
-        $null = Set-AzStorageBlobContent -File $zip -Container 'modules' -Blob $blobName -Context $ctx -Force
-        $sas = New-AzStorageBlobSASToken -Container 'modules' -Blob $blobName -Context $ctx `
-            -Permission r -ExpiryTime (Get-Date).AddHours(2) -FullUri
-        Write-Host '  staged'
-
-        $null = New-AzAutomationModule -ResourceGroupName $ResourceGroup `
-            -AutomationAccountName $AutomationAccountName -Name 'RMA.Runbooks' -ContentLinkUri $sas
-
-        # Asynchronous. Wait, or the runbook publish below races a partial module.
-        $deadline = (Get-Date).AddMinutes(15)
-        do {
-            Start-Sleep -Seconds 15
-            $module = Get-AzAutomationModule -ResourceGroupName $ResourceGroup `
-                -AutomationAccountName $AutomationAccountName -Name 'RMA.Runbooks'
-            Write-Host "  import state: $($module.ProvisioningState)"
-        } while ($module.ProvisioningState -notin 'Succeeded', 'Failed' -and (Get-Date) -lt $deadline)
-
-        if ($module.ProvisioningState -ne 'Succeeded') {
-            throw "Module import did not succeed (state: $($module.ProvisioningState)). Runbooks were not published."
-        }
-        Write-Host "  module $($module.Version) imported" -ForegroundColor Green
-
-        if (-not $KeepStagedPackage) {
-            Remove-AzStorageBlob -Container 'modules' -Blob $blobName -Context $ctx -Force
+# A runbook pinned to a version the repo no longer builds will fail on the worker at
+# #Requires. Catching it here is cheaper than catching it in production.
+if (-not $SkipVersionCheck) {
+    $mismatched = foreach ($file in $files) {
+        $content = Get-Content $file.FullName -Raw
+        if ($content -match "ModuleName\s*=\s*'RMA\.Runbooks'\s*;\s*RequiredVersion\s*=\s*'([^']+)'") {
+            if ($Matches[1] -ne $moduleVersion) { "$($file.BaseName) pins $($Matches[1])" }
         }
     }
-    Remove-Item $zip -Force -ErrorAction SilentlyContinue
+    if ($mismatched) {
+        throw "These runbooks pin an RMA.Runbooks version other than $moduleVersion, and will " +
+        "fail on the worker at #Requires:`n  $($mismatched -join "`n  ")"
+    }
 }
 
-# --------------------------------------------------------------- runbooks
-if (-not $ModuleOnly) {
-    $files  = @(Get-ChildItem $runbookDir -Filter '*.ps1' -File)
-    $failed = [System.Collections.Generic.List[string]]::new()
+Write-Host "Publishing $($files.Count) runbook(s) to $AutomationAccountName" -ForegroundColor Cyan
+Write-Host "  runbooks expect RMA.Runbooks $moduleVersion on the Hybrid Worker" -ForegroundColor DarkGray
 
-    Write-Host "Publishing $($files.Count) runbook(s)..."
-    foreach ($file in $files) {
-        if (-not $PSCmdlet.ShouldProcess($file.BaseName, 'Import and publish runbook')) { continue }
-        try {
-            # Draft first: the live version keeps serving until Publish is called.
-            $null = Import-AzAutomationRunbook -ResourceGroupName $ResourceGroup `
-                -AutomationAccountName $AutomationAccountName -Path $file.FullName `
-                -Name $file.BaseName -Type $RunbookType -Force
+$failed = [System.Collections.Generic.List[string]]::new()
+foreach ($file in $files) {
+    if (-not $PSCmdlet.ShouldProcess($file.BaseName, 'Import and publish runbook')) { continue }
+    try {
+        # Draft first: the live version keeps serving until Publish is called.
+        $null = Import-AzAutomationRunbook -ResourceGroupName $ResourceGroup `
+            -AutomationAccountName $AutomationAccountName -Path $file.FullName `
+            -Name $file.BaseName -Type $RunbookType -Force
 
-            $null = Publish-AzAutomationRunbook -ResourceGroupName $ResourceGroup `
-                -AutomationAccountName $AutomationAccountName -Name $file.BaseName
+        $null = Publish-AzAutomationRunbook -ResourceGroupName $ResourceGroup `
+            -AutomationAccountName $AutomationAccountName -Name $file.BaseName
 
-            Write-Host "  published $($file.BaseName)" -ForegroundColor Green
-        } catch {
-            Write-Host "  FAILED $($file.BaseName): $($_.Exception.Message)" -ForegroundColor Red
-            $failed.Add($file.BaseName)
-        }
+        Write-Host "  published $($file.BaseName)" -ForegroundColor Green
+    } catch {
+        Write-Host "  FAILED $($file.BaseName): $($_.Exception.Message)" -ForegroundColor Red
+        $failed.Add($file.BaseName)
     }
-    if ($failed.Count -gt 0) { throw "Failed to publish: $($failed -join ', ')" }
 }
+
+if ($failed.Count -gt 0) { throw "Failed to publish: $($failed -join ', ')" }
 
 Write-Host ''
-Write-Host 'Done. Run Test-RmaHealth on the Hybrid Worker before enabling any schedule.' -ForegroundColor Cyan
+Write-Host "Confirm RMA.Runbooks $moduleVersion is installed on every worker in the group," -ForegroundColor Yellow
+Write-Host 'then run Test-RmaHealth before enabling any schedule.' -ForegroundColor Yellow

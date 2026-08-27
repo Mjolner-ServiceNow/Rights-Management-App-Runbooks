@@ -60,13 +60,31 @@ saves without error and fails only at token exchange.
 2. Register the VM into the Hybrid Worker Group and install extension v2. The extension
    enables a **system-assigned** identity on the VM as well; that is expected, and is why
    every IMDS call in this codebase passes `client_id` explicitly.
-3. On the VM, elevated:
+3. On the VM, elevated. This installs the pinned Graph and Exchange modules **and
+   `RMA.Runbooks` itself**, which Azure cannot deliver to a Hybrid Worker:
 
 ```powershell
 ./scripts/Initialize-RmaWorker.ps1 -WhatIf     # review first
 ./scripts/Initialize-RmaWorker.ps1
 ./scripts/Initialize-RmaWorker.ps1 -PruneUnpinned   # reclaim disk from accumulated versions
 ```
+
+   If the repository is not checked out on the worker, install the module from a release
+   asset instead:
+
+```powershell
+./scripts/Initialize-RmaWorker.ps1 `
+    -ModuleSource 'https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/releases/download/v1.0.0/RMA.Runbooks-1.0.0.zip'
+```
+
+   Verify before moving on:
+
+```powershell
+Get-Module -ListAvailable RMA.Runbooks | Select-Object Name, Version, ModuleBase
+```
+
+   It must be under `C:\Program Files\PowerShell\Modules` (AllUsers, PowerShell 7). Hybrid
+   Worker jobs run as local SYSTEM, so a per-user install is invisible to them.
 
 ## 3. App registration
 
@@ -106,29 +124,27 @@ deployment tooling is deliberately kept out of that role.
 ## 5. Content
 
 ```powershell
-./scripts/Publish-RmaContent.ps1 `
-    -ResourceGroup rg-rma-prod `
-    -AutomationAccountName aa-rma-prod `
-    -StorageAccountName strmaprodstaging
+./scripts/Publish-RmaContent.ps1 -ResourceGroup rg-rma-prod -AutomationAccountName aa-rma-prod
 ```
 
-`New-AzAutomationModule` imports from a URI, so the module zip is staged in a storage
-account and removed afterwards. Any storage account will do; if you would rather publish
-`RMA.Runbooks` to an internal PowerShell repository instead, pass your own
-`-ContentLinkUri`.
+This publishes **runbooks only**. `RMA.Runbooks` is not imported into the Automation
+Account, and deliberately so: an Automation Account module is available to Azure sandbox
+jobs, not to a Hybrid Worker. Importing it would look like the dependency was satisfied
+while every runbook still failed at `#Requires`. The module belongs on the worker, from
+step 2.
 
 Two behaviours that matter:
 
-- **The module import is waited on.** It is asynchronous, and a runbook started against a
-  half-imported module fails in a way that looks like a code defect.
 - **Runbooks are imported as Draft, then published.** The live version keeps serving until
   the new draft is published, so a failed import cannot take a runbook offline.
+- **Version pins are checked first.** If a runbook pins an `RMA.Runbooks` version other than
+  the one in this repository, publishing is refused. That mismatch would otherwise surface
+  as a parse-time failure on the worker.
 
-Subsequent updates:
+To publish a subset:
 
 ```powershell
-./scripts/Publish-RmaContent.ps1 ... -RunbooksOnly   # code change, module unchanged
-./scripts/Publish-RmaContent.ps1 ... -ModuleOnly     # module change only
+./scripts/Publish-RmaContent.ps1 ... -Name Create-EntraUser, Test-RmaHealth
 ```
 
 ## 6. Verify before enabling anything
@@ -153,7 +169,7 @@ This is a queue consumer, not a request handler. There is no endpoint to take of
 |---|---|---|
 | Emergency stop | Disable the schedules. Jobs queue and are processed on re-enable. | seconds |
 | One runbook | Publish the previous draft from the Automation Account. | ~2 min |
-| Module | Re-run `Publish-RmaContent.ps1 -ModuleOnly` from the previous tag. Runbooks pin by version in `#Requires`, so they will not silently run against the wrong one. | ~5 min |
+| Module | Re-run `Initialize-RmaWorker.ps1` on each worker from the previous tag, then re-publish the runbooks that pin it. Both sides must move together; a half-rollback produces a clean parse-time refusal rather than a subtle failure. | ~10 min |
 | Infrastructure | Re-deploy from the previous tag. Bicep is declarative; state converges. | ~10 min |
 
 ### Draining before a planned change

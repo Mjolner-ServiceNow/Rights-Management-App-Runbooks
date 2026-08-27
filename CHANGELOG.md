@@ -21,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Modules are declared with `#Requires` and pinned versions instead of installed at run time.
 - Secrets move from Automation credential assets to Key Vault, read via managed identity.
 
+### Fixed
+- `RMA.Runbooks` is installed on the Hybrid Worker by `Initialize-RmaWorker.ps1`, not
+  imported into the Automation Account. An Automation Account module is available to Azure
+  sandbox jobs only; a Hybrid Worker resolves modules from its own `PSModulePath`, so the
+  earlier approach would have looked correct while every runbook failed at `#Requires`.
+- `Publish-RmaContent.ps1` now refuses to publish a runbook whose pinned `RMA.Runbooks`
+  version disagrees with the module in the repository.
+
 ### Removed
 - `MSAL.PS` dependency.
 - Runtime `Install-Module` calls.
+- Module import into the Automation Account, and the staging storage account that served it.

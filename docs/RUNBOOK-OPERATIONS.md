@@ -70,6 +70,11 @@ scheduled run picks it up. Do not edit `worker_id` or `claimed_at`.
 **Stop everything.** Disable the schedules. Jobs queue and are processed when re-enabled.
 Nothing is lost — the queue is durable.
 
+**Change how often a runbook runs.** Azure Automation schedules have a one hour minimum.
+For a finer cadence, add offset hourly schedules (`:00`, `:15`, `:30`, `:45`) rather than
+looking for a setting that does not exist. Overlapping runs are safe because jobs are
+claimed atomically.
+
 **Add a worker.** Attach the same user-assigned identity to the new VM, run
 `Initialize-RmaWorker.ps1`, register it into the Hybrid Worker Group. No code change. Safe
 because of the atomic claim.

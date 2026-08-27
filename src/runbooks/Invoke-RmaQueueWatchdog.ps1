@@ -13,8 +13,13 @@
     finally block handles the ordinary cases; this handles the ones where the process
     never reached it.
 
-    Schedule every 15 minutes. StaleAfterMinutes must exceed the longest expected job by a
-    comfortable margin, or a slow job will be requeued while it is still running.
+    Azure Automation schedules cannot run more often than hourly. For a 15 minute cadence
+    register this runbook against four hourly schedules offset by 15 minutes; see
+    docs/INSTALLATION.md. Running several instances concurrently is safe.
+
+    StaleAfterMinutes must exceed the longest expected job by a comfortable margin, or a
+    slow job will be requeued while it is still running. Keep it above Invoke-RmaQueueLoop's
+    MaxMinutes.
 .PARAMETER StaleAfterMinutes
     How long a claim may be held before it is presumed dead.
 .PARAMETER MaxRequeue

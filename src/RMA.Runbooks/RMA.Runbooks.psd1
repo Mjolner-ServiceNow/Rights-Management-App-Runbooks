@@ -1,10 +1,10 @@
-@{
+﻿@{
     RootModule        = 'RMA.Runbooks.psm1'
     ModuleVersion     = '1.0.0'
     GUID              = 'c2f6b1e4-9a3d-4f7b-8c15-2e6d4a9b7c30'
-    Author            = 'Mjolner ServiceNow'
-    CompanyName       = 'Mjolner'
-    Copyright         = '(c) Mjolner. All rights reserved.'
+    Author            = 'Cloud Operations Department'
+    CompanyName       = 'Mjølner Informatics A/S'
+    Copyright         = '(c) Mjølner Informatics A/S. All rights reserved.'
     Description       = 'Shared runtime for the Rights Management App runbooks: ServiceNow queue handling with atomic job claiming, managed-identity authentication, Key Vault secret retrieval and structured logging.'
 
     PowerShellVersion = '7.2'

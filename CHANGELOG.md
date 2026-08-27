@@ -21,7 +21,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Modules are declared with `#Requires` and pinned versions instead of installed at run time.
 - Secrets move from Automation credential assets to Key Vault, read via managed identity.
 
+### Documentation
+- `docs/INSTALLATION.md`: complete first-time setup guide for the customer, with the roles
+  required at each step, the values to carry between steps, and a troubleshooting section
+  organised by symptom.
+- `docs/DEPLOYMENT.md` narrowed to updating an existing installation, so the two documents
+  do not drift.
+
 ### Fixed
+- Corrected the scheduling guidance throughout. Azure Automation schedules cannot run more
+  often than hourly; a 15 minute cadence needs four offset hourly schedules. The previous
+  text asked for an interval the platform does not offer.
 - `RMA.Runbooks` is installed on the Hybrid Worker by `Initialize-RmaWorker.ps1`, not
   imported into the Automation Account. An Automation Account module is available to Azure
   sandbox jobs only; a Hybrid Worker resolves modules from its own `PSModulePath`, so the

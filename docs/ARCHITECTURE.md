@@ -95,7 +95,7 @@ Both are Bicep outputs, named explicitly.
    Completed (4)  or  Failed (3)
 
    Worker dies before finally ──▶ stuck at (2)
-                                    │  Invoke-RmaQueueWatchdog, every 15 min
+                                    │  Invoke-RmaQueueWatchdog (4 offset hourly)
                                     ▼
                                  Pending (1)
 ```

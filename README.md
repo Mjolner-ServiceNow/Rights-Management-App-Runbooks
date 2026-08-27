@@ -16,7 +16,8 @@ subscription. This repository holds no credentials and deploys nothing itself.
 | **CI** | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — validation only, no Azure access |
 | **Release** | [`.github/workflows/release.yml`](.github/workflows/release.yml) — packages the module for worker installation |
 | **Architecture** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
-| **Deployment** | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) |
+| **Installation** | [`docs/INSTALLATION.md`](docs/INSTALLATION.md) — start here |
+| **Updating** | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) |
 | **Go-live checklist** | [`docs/PRODUCTION-CHECKLIST.md`](docs/PRODUCTION-CHECKLIST.md) |
 | **Operations** | [`docs/RUNBOOK-OPERATIONS.md`](docs/RUNBOOK-OPERATIONS.md) |
 

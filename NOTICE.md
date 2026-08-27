@@ -2,15 +2,14 @@
 
 ## Licence
 
-Released under the [MIT Licence](LICENSE), copyright Mjolner.
+Released under the [MIT Licence](LICENSE), copyright Mjølner Informatics A/S.
 
 MIT was chosen because the Bicep template, the provisioning scripts and the shared module
 are meant to be deployed and adapted by the customer in their own tenant. MIT grants that
 without conditions beyond preserving the copyright notice, and carries no warranty.
 
 If a patent grant is wanted, Apache 2.0 is the usual alternative and is a drop-in
-replacement. Confirm the exact legal entity name in the copyright line before this matters
-commercially.
+replacement.
 
 ## What this repository does and does not contain
 

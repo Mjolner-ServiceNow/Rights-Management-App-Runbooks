@@ -10,7 +10,7 @@ Work top to bottom. Anything marked **BLOCKER** stops the release.
 - [ ] Branch protection on `main`: no direct pushes, one approving review, CI required
 - [ ] Release tagged, so a rollback target exists by name
 - [ ] Repository reviewed for anything customer-identifying before it is made public: instance names, tenant or subscription IDs, internal hostnames, record sys_ids **BLOCKER**
-- [ ] `LICENSE` present and the copyright line names the correct legal entity
+- [x] `LICENSE` present (MIT) and the copyright line names the correct legal entity
 
 ## 2. Identity
 
@@ -76,8 +76,9 @@ Work top to bottom. Anything marked **BLOCKER** stops the release.
 
 ## 8. Operational readiness
 
-- [ ] Schedules created, with frequency justified by measured queue depth
-- [ ] Watchdog scheduled every 15 minutes, `StaleAfterMinutes` comfortably above the longest observed job
+- [ ] Schedules created, with frequency justified by measured queue depth. Remember the one hour platform minimum
+- [ ] Watchdog scheduled. Azure Automation's minimum is hourly, so use four offset hourly schedules for a 15 minute cadence **BLOCKER**
+- [ ] `StaleAfterMinutes` comfortably above the longest observed job, and above `MaxMinutes`
 - [ ] On-call knows where the alerts land and what the first response is
 - [ ] `docs/RUNBOOK-OPERATIONS.md` reviewed by whoever will be woken up
 - [ ] Rollback rehearsed at least once in `test`, not just documented

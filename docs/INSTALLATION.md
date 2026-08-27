@@ -491,6 +491,28 @@ will requeue work that is still running. With `MaxMinutes` at its default of 45,
 
 Symptoms in the order you are likely to meet them.
 
+### The deployment fails with "Could not find the account"
+
+```
+BadRequest: {"Message":"Could not find the account. SubscriptionId: ... AccountName: aa-rma-..."}
+```
+
+The Automation resource provider returns this when it rejects something in the request
+body, not when an account is genuinely missing. It is what you get from an explicit
+`identity: { type: 'None' }`, which is why the template omits the identity property
+instead. If you see it after editing `modules/automation.bicep`, that edit is the cause.
+
+### The deployment fails on the alert rules
+
+```
+'where' operator: Failed to resolve table or column expression named 'AutomationJobLogs'
+```
+
+The alert queries reference tables that only exist once Automation has sent data to the
+workspace, and scheduled query rules validate their KQL at creation time. The template sets
+`skipQueryValidation: true` for exactly this. The rules evaluate to an error until the first
+job runs, then start working.
+
 ### The health check fails on "Managed identity token"
 
 Almost always the Automation Account identity:

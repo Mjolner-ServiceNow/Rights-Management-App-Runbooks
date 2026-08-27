@@ -22,6 +22,10 @@ Both paths produce exactly the same resources; this one just also owns the resou
 
 Re-running is safe. ARM converges an existing deployment rather than recreating it, so
 neither the resource group nor the Automation Account is touched if it already matches.
+
+The Automation Account deliberately has no managed identity, expressed by omitting the
+identity property. The resource provider rejects an explicit `identity: { type: 'None' }`.
+See the comment in modules/automation.bicep.
 '''
 
 // ---------------------------------------------------------------------------

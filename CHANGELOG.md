@@ -37,6 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   subscription is not granted.
 
 ### Fixed
+- The Automation Account could not be created. `identity: { type: 'None' }` is rejected by
+  the Automation resource provider, which fails the deployment with the misleading
+  `BadRequest: Could not find the account`. No identity is now expressed by omitting the
+  property. Isolated by bisecting the request body: every other property is accepted.
+- Scheduled query alerts could not be created against a new Log Analytics workspace.
+  `AutomationJobLogs` and `AutomationJobStreams` do not exist until Automation sends data,
+  and the rules validate their KQL at creation time. Added `skipQueryValidation: true`.
 - The what-if delete gate produced a false positive on every plan. It matched a regex
   against the human-readable output, which begins with a legend containing the literal line
   `  - Delete`. It now reads `changeType` from `--no-pretty-print` JSON, and prints a

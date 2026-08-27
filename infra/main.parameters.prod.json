@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "workload":                  { "value": "rma" },
+    "environment":               { "value": "prod" },
+    "hybridWorkerVmResourceId":  { "value": "REPLACE_WITH_VM_RESOURCE_ID" },
+    "secretsOfficerPrincipalIds":{ "value": [] },
+    "alertEmailAddresses":       { "value": [] },
+    "allowedSubnetResourceId":   { "value": "REPLACE_WITH_WORKER_SUBNET_ID" },
+    "logRetentionDays":          { "value": 90 },
+    "tags":                      { "value": { "costCentre": "platform", "criticality": "high" } }
+  }
+}

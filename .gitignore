@@ -1,0 +1,21 @@
+# Build output
+/out/
+/artifacts/
+*.nupkg
+
+# Test output
+/tests/**/TestResults*.xml
+coverage.xml
+
+# Local settings
+*.local.json
+.env
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Build diagnostics
+build/*.log

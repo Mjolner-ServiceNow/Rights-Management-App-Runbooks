@@ -1,0 +1,160 @@
+name: CI
+
+# Runs on every pull request and every push to a non-main branch.
+# Nothing here touches Azure, so it needs no credentials and no approval.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches-ignore: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyse:
+    name: Static analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache PowerShell modules
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/powershell/Modules
+          key: psmodules-${{ runner.os }}-analyzer-1.25.0
+
+      - name: Install PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          if (-not (Get-Module -ListAvailable PSScriptAnalyzer | Where-Object Version -ge '1.25.0')) {
+            Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Force -Scope CurrentUser -Repository PSGallery
+          }
+
+      - name: Check formatting
+        shell: pwsh
+        run: ./build/Invoke-Format.ps1 -Check
+
+      - name: Run PSScriptAnalyzer
+        shell: pwsh
+        run: ./build/Invoke-Analysis.ps1 -FailOn Error, Warning -OutputSarif ./analysis.sarif
+
+      - name: Upload SARIF to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ./analysis.sarif
+          category: psscriptanalyzer
+        continue-on-error: true
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache PowerShell modules
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/powershell/Modules
+          key: psmodules-${{ runner.os }}-pester-5.8.0
+
+      - name: Install Pester
+        shell: pwsh
+        run: |
+          if (-not (Get-Module -ListAvailable Pester | Where-Object Version -ge '5.8.0')) {
+            Install-Module Pester -RequiredVersion 5.8.0 -Force -Scope CurrentUser -Repository PSGallery -SkipPublisherCheck
+          }
+
+      - name: Run Pester
+        shell: pwsh
+        run: ./build/Invoke-Tests.ps1 -CI
+
+      - name: Publish test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            tests/TestResults.xml
+            tests/Coverage.xml
+
+      - name: Enforce coverage floor
+        shell: pwsh
+        run: ./build/Assert-Coverage.ps1 -Path ./tests/Coverage.xml -MinimumPercent 70
+
+  infra:
+    name: Bicep build and lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Bicep
+        run: az bicep install
+
+      - name: Build (fails on any lint warning)
+        run: |
+          set -euo pipefail
+          # --stdout to /dev/null: we only care about diagnostics on stderr.
+          if az bicep build --file infra/main.bicep --stdout 2> bicep-diagnostics.txt > /dev/null; then
+            if [ -s bicep-diagnostics.txt ]; then
+              echo "::error::Bicep produced diagnostics; treat warnings as errors."
+              cat bicep-diagnostics.txt
+              exit 1
+            fi
+            echo "Bicep compiled with no diagnostics."
+          else
+            cat bicep-diagnostics.txt
+            exit 1
+          fi
+
+      - name: Validate parameter files
+        shell: pwsh
+        run: |
+          $failed = $false
+          foreach ($file in Get-ChildItem infra/*.parameters.*.json) {
+            $content = Get-Content $file -Raw | ConvertFrom-Json
+            $placeholders = $content.parameters.PSObject.Properties |
+              Where-Object { "$($_.Value.value)" -like 'REPLACE_WITH_*' }
+            if ($placeholders -and $file.Name -like '*prod*') {
+              Write-Host "::error file=$($file.Name)::Production parameters still contain placeholders: $($placeholders.Name -join ', ')"
+              $failed = $true
+            }
+          }
+          if ($failed) { exit 1 }
+
+  manifest:
+    name: Module manifest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate manifest and exports
+        shell: pwsh
+        run: ./build/Test-ModuleManifestIntegrity.ps1
+
+      - name: Assert version was bumped
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        run: |
+          git fetch origin ${{ github.base_ref }} --depth=1
+          $base = git show origin/${{ github.base_ref }}:src/RMA.Runbooks/RMA.Runbooks.psd1 2>$null
+          if (-not $base) { Write-Host 'No baseline manifest; skipping.'; exit 0 }
+
+          $changed = git diff --name-only origin/${{ github.base_ref }}...HEAD -- src/RMA.Runbooks/
+          if (-not $changed) { Write-Host 'Module unchanged; no bump required.'; exit 0 }
+
+          $baseVersion = [version](($base | Out-String | Invoke-Expression).ModuleVersion)
+          $newVersion  = [version]((Import-PowerShellDataFile ./src/RMA.Runbooks/RMA.Runbooks.psd1).ModuleVersion)
+          if ($newVersion -le $baseVersion) {
+            Write-Host "::error::Module changed but ModuleVersion was not bumped ($baseVersion -> $newVersion). Deployment pins by version, so an unbumped change cannot be rolled out or rolled back."
+            exit 1
+          }
+          Write-Host "Version bumped: $baseVersion -> $newVersion"

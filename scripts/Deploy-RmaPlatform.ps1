@@ -127,28 +127,68 @@ $scopeArgs = if ($WorkloadOnly) {
 Write-Host ''
 Write-Host '=== What-if ===' -ForegroundColor Cyan
 
-$plan = az deployment $scopeArgs[0] what-if $scopeArgs[1] $scopeArgs[2] `
-    --template-file $template --parameters $parameters 2>&1 | Out-String
+# --no-pretty-print returns JSON. The gate has to read changeType, not the rendered text:
+# Azure prints a legend at the top of the human-readable output that literally contains the
+# line "  - Delete", so any regex over it fires on every plan. Parsing display output for a
+# safety decision was the wrong shape.
+$planJson = az deployment $scopeArgs[0] what-if $scopeArgs[1] $scopeArgs[2] `
+    --template-file $template --parameters $parameters --no-pretty-print 2>&1 | Out-String
 $whatIfExit = $LASTEXITCODE
 
-Write-Host $plan
-
-# A gate that only holds when nothing goes wrong is not a gate. Without this check a
-# what-if that failed for any reason would print its error and the script would deploy
-# anyway. Looking before you leap has to mean not leaping when you could not look.
+# A gate that only holds when nothing goes wrong is not a gate. Without this a what-if that
+# failed for any reason would print its error and the script would deploy anyway.
 if ($whatIfExit -ne 0) {
-    $hint = switch -Regex ($plan) {
+    Write-Host $planJson
+    $hint = switch -Regex ($planJson) {
         'ResourceGroupNotFound' { "The resource group does not exist. Drop -WorkloadOnly to have the template create it, or run: az group create --name $ResourceGroup --location $location" }
         'AuthorizationFailed'   { 'Insufficient rights. Subscription-scope deployment needs Contributor on the subscription; -WorkloadOnly needs it only on the resource group.' }
         'InvalidTemplate|BCP'   { 'The template failed validation. Run: az bicep build --file infra/main.bicep' }
-        'already consumed'      { 'The Azure CLI could not render the real error - that is a CLI bug, not a template problem. The cause is the last "Code:" or "Message:" line above.' }
+        'already consumed'      { 'The Azure CLI could not render the real error - a CLI bug, not a template problem. The cause is the last "Code:" or "Message:" line above.' }
         default                 { 'The cause is usually the last "Code:" or "Message:" line above.' }
     }
     throw "What-if failed (exit $whatIfExit). Nothing was deployed.`n  $hint"
 }
 
-if ($plan -match '(?m)^\s*[-~]?\s*Delete') {
-    throw 'The plan contains a Delete. Review it before proceeding; this platform holds a Key Vault and an Automation Account.'
+try   { $plan = $planJson | ConvertFrom-Json }
+catch { Write-Host $planJson; throw "Could not parse the what-if result as JSON: $($_.Exception.Message)" }
+
+$changes = @($plan.changes)
+$byType  = $changes | Group-Object changeType | Sort-Object Name
+
+foreach ($group in $byType) {
+    $colour = switch ($group.Name) {
+        'Delete'      { 'Red' }
+        'Create'      { 'Green' }
+        'Modify'      { 'Yellow' }
+        'Unsupported' { 'DarkYellow' }
+        default       { 'DarkGray' }
+    }
+    Write-Host ""
+    Write-Host "$($group.Name) ($($group.Count))" -ForegroundColor $colour
+
+    # NoChange and Ignore are noise in a review; the count is enough.
+    if ($group.Name -in 'NoChange', 'Ignore') { continue }
+
+    foreach ($change in $group.Group) {
+        $short = ($change.resourceId -split '/providers/')[-1]
+        Write-Host "  $short" -ForegroundColor $colour
+        if ($change.changeType -eq 'Modify' -and $change.delta) {
+            foreach ($d in $change.delta) { Write-Host "      ~ $($d.path)" -ForegroundColor DarkGray }
+        }
+        if ($change.changeType -eq 'Unsupported') {
+            Write-Host "      $($change.unsupportedReason)" -ForegroundColor DarkGray
+        }
+    }
+}
+
+Write-Host ""
+Write-Host ("Total: " + (($byType | ForEach-Object { "$($_.Count) $($_.Name.ToLower())" }) -join ', '))
+Write-Host "Full property-level diff: az deployment $($scopeArgs[0]) what-if $($scopeArgs[1]) $($scopeArgs[2]) --template-file $(Split-Path $template -Leaf) --parameters $(Split-Path $parameters -Leaf)" -ForegroundColor DarkGray
+
+$deletions = @($changes | Where-Object changeType -eq 'Delete')
+if ($deletions.Count -gt 0) {
+    $names = ($deletions | ForEach-Object { ($_.resourceId -split '/providers/')[-1] }) -join "`n    "
+    throw "The plan deletes $($deletions.Count) resource(s). Review before proceeding; this platform holds a Key Vault and an Automation Account.`n    $names"
 }
 
 if ($WhatIfOnly) {

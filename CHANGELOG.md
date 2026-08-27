@@ -37,6 +37,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   subscription is not granted.
 
 ### Fixed
+- The what-if delete gate produced a false positive on every plan. It matched a regex
+  against the human-readable output, which begins with a legend containing the literal line
+  `  - Delete`. It now reads `changeType` from `--no-pretty-print` JSON, and prints a
+  grouped per-resource summary instead of the raw text.
 - `Deploy-RmaPlatform.ps1` did not check the exit code of `az deployment what-if`. A failed
   what-if printed its error and the script deployed anyway, which defeated the purpose of
   having the gate.

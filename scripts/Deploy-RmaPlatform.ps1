@@ -46,7 +46,13 @@ Set-StrictMode -Version Latest
 
 $repoRoot  = Split-Path $PSScriptRoot -Parent
 $template  = Join-Path $repoRoot 'infra/main.bicep'
-$parameters = Join-Path $repoRoot "infra/main.parameters.$Environment.json"
+# Prefer a local override if one exists. The committed file is a template with
+# placeholders, because this repository is public; real subscription and resource ids
+# belong in main.parameters.<env>.local.json, which is gitignored.
+$parameters = Join-Path $repoRoot "infra/main.parameters.$Environment.local.json"
+if (-not (Test-Path $parameters)) {
+    $parameters = Join-Path $repoRoot "infra/main.parameters.$Environment.json"
+}
 
 foreach ($path in $template, $parameters) {
     if (-not (Test-Path $path)) { throw "Not found: $path" }

@@ -134,10 +134,19 @@ step 7.
 
 **Who:** Contributor on the resource group.
 
-Clone the repository and edit the parameter file for your environment:
+Clone the repository. **Do not edit the committed parameter file.** This repository is
+public, and a filled-in file publishes your subscription id, resource group, VM name and
+subnet. Copy it first:
+
+```bash
+cp infra/main.parameters.prod.json infra/main.parameters.prod.local.json
+```
+
+`*.local.json` is gitignored, CI rejects real values in the committed templates, and
+`Deploy-RmaPlatform.ps1` uses the local copy automatically when it exists.
 
 ```jsonc
-// infra/main.parameters.prod.json
+// infra/main.parameters.prod.local.json
 {
   "workload":                   { "value": "rma" },
   "environment":                { "value": "prod" },

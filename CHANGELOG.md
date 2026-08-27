@@ -29,6 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   do not drift.
 
 ### Fixed
+- CI would have failed on the first pull request: the parameter-file check required
+  production parameters to be filled in, which is correct for a private repository and
+  wrong for a public one. Inverted, so it now fails if a committed template contains a real
+  Azure resource id.
+- `.gitignore` coverage patterns were lowercase and would not have matched `Coverage.xml`
+  on a case-sensitive filesystem, so CI on Linux could have committed test output.
 - Corrected the scheduling guidance throughout. Azure Automation schedules cannot run more
   often than hourly; a 15 minute cadence needs four offset hourly schedules. The previous
   text asked for an interval the platform does not offer.

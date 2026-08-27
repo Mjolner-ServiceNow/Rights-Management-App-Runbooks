@@ -35,6 +35,10 @@ Do not commit anything that identifies a customer: ServiceNow instance names, te
 subscription IDs, internal hostnames or IP ranges, or real record sys_ids. Test fixtures use
 `contoso` and obviously-synthetic GUIDs; keep it that way.
 
+The files under `infra/` ending in `.parameters.<env>.json` are **templates** and must keep
+their `REPLACE_WITH_` placeholders. Real values go in `.parameters.<env>.local.json`, which
+is gitignored. CI fails the build if a committed template contains an Azure resource id.
+
 ## Adding a runbook
 
 1. Copy `src/runbooks/Create-EntraUser.ps1`.

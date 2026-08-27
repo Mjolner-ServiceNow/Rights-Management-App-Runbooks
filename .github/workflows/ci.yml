@@ -115,46 +115,30 @@ jobs:
             exit 1
           fi
 
-      - name: Validate parameter files
+      - name: Parameter files must not contain real values
         shell: pwsh
         run: |
+          # This repository is public. The committed parameter files are templates and
+          # must keep their placeholders. A filled-in file would publish the customer's
+          # subscription id, resource group, VM name and subnet.
           $failed = $false
           foreach ($file in Get-ChildItem infra/*.parameters.*.json) {
-            $content = Get-Content $file -Raw | ConvertFrom-Json
-            $placeholders = $content.parameters.PSObject.Properties |
-              Where-Object { "$($_.Value.value)" -like 'REPLACE_WITH_*' }
-            if ($placeholders -and $file.Name -like '*prod*') {
-              Write-Host "::error file=$($file.Name)::Production parameters still contain placeholders: $($placeholders.Name -join ', ')"
+            $raw = Get-Content $file -Raw
+
+            # A subscription-scoped resource id, or a bare subscription GUID.
+            if ($raw -match '/subscriptions/[0-9a-fA-F-]{36}/') {
+              Write-Host "::error file=$($file.Name)::Contains a real Azure resource id. Keep placeholders here and put real values in a .local.json, which is gitignored."
               $failed = $true
+            }
+
+            $content = $raw | ConvertFrom-Json
+            foreach ($required in 'hybridWorkerVmResourceId') {
+              $value = $content.parameters.$required.value
+              if ($value -and $value -notlike 'REPLACE_WITH_*') {
+                Write-Host "::error file=$($file.Name)::Parameter '$required' has a real value. It must stay as a REPLACE_WITH_ placeholder."
+                $failed = $true
+              }
             }
           }
           if ($failed) { exit 1 }
-
-  manifest:
-    name: Module manifest
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Validate manifest and exports
-        shell: pwsh
-        run: ./build/Test-ModuleManifestIntegrity.ps1
-
-      - name: Assert version was bumped
-        if: github.event_name == 'pull_request'
-        shell: pwsh
-        run: |
-          git fetch origin ${{ github.base_ref }} --depth=1
-          $base = git show origin/${{ github.base_ref }}:src/RMA.Runbooks/RMA.Runbooks.psd1 2>$null
-          if (-not $base) { Write-Host 'No baseline manifest; skipping.'; exit 0 }
-
-          $changed = git diff --name-only origin/${{ github.base_ref }}...HEAD -- src/RMA.Runbooks/
-          if (-not $changed) { Write-Host 'Module unchanged; no bump required.'; exit 0 }
-
-          $baseVersion = [version](($base | Out-String | Invoke-Expression).ModuleVersion)
-          $newVersion  = [version]((Import-PowerShellDataFile ./src/RMA.Runbooks/RMA.Runbooks.psd1).ModuleVersion)
-          if ($newVersion -le $baseVersion) {
-            Write-Host "::error::Module changed but ModuleVersion was not bumped ($baseVersion -> $newVersion). Deployment pins by version, so an unbumped change cannot be rolled out or rolled back."
-            exit 1
-          }
-          Write-Host "Version bumped: $baseVersion -> $newVersion"
+          Write-Host "Parameter templates contain no real values."

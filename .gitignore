@@ -1,21 +1,53 @@
+# ---------------------------------------------------------------------------
 # Build output
+# ---------------------------------------------------------------------------
 /out/
 /artifacts/
 *.nupkg
+*.zip
 
-# Test output
-/tests/**/TestResults*.xml
+# Compiled ARM from `az bicep build` without --stdout. The Bicep is the source
+# of truth; a committed .json copy silently goes stale.
+/infra/main.json
+/infra/modules/*.json
+
+# ---------------------------------------------------------------------------
+# Test and analysis output
+# Patterns are case-exact: git matches case-sensitively on Linux, so a
+# lowercase pattern would not catch Coverage.xml in CI.
+# ---------------------------------------------------------------------------
+TestResults*.xml
+Coverage.xml
 coverage.xml
+*.sarif
 
-# Local settings
+# ---------------------------------------------------------------------------
+# Local configuration
+#
+# THIS REPOSITORY IS PUBLIC.
+# infra/main.parameters.<env>.json is a template and must keep its
+# REPLACE_WITH_ placeholders. To deploy, copy it to
+# infra/main.parameters.<env>.local.json, fill in your real subscription id,
+# VM resource id and subnet id there, and deploy from that. The .local.json
+# is ignored here, and Deploy-RmaPlatform.ps1 prefers it automatically.
+# ---------------------------------------------------------------------------
 *.local.json
 .env
+.azure/
 
-# Editor / OS
+# ---------------------------------------------------------------------------
+# Editor and OS
+# ---------------------------------------------------------------------------
 .vscode/
 .idea/
+.vs/
+*.user
 .DS_Store
 Thumbs.db
 
-# Build diagnostics
+# ---------------------------------------------------------------------------
+# Diagnostics and merge artefacts
+# ---------------------------------------------------------------------------
 build/*.log
+*.orig
+*.rej

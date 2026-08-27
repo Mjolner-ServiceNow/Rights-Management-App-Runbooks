@@ -1,0 +1,21 @@
+# Normalise to LF in the repository. The customer works on Windows and CI runs on
+# Linux; without this the formatting check flags line-ending churn rather than real
+# differences, and every clone produces a noisy diff.
+* text=auto eol=lf
+
+*.ps1   text eol=lf
+*.psm1  text eol=lf
+*.psd1  text eol=lf
+*.bicep text eol=lf
+*.json  text eol=lf
+*.yml   text eol=lf
+*.md    text eol=lf
+
+# Windows-only helpers, if any are ever added, must keep CRLF.
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+
+*.zip   binary
+*.png   binary
+*.pfx   binary
+*.cer   binary

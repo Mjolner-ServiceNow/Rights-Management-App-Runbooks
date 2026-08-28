@@ -68,13 +68,30 @@ $pinned = @(
 $forbidden = @('MSAL.PS', 'Microsoft.Graph', 'Microsoft.Graph.Beta', 'AzureAD', 'MSOnline')
 
 Write-Host '=== Windows features ==='
-$rsat = Get-WindowsFeature -Name 'RSAT-AD-PowerShell' -ErrorAction SilentlyContinue
-if ($rsat -and -not $rsat.Installed) {
-    if ($PSCmdlet.ShouldProcess('RSAT-AD-PowerShell', 'Install Windows feature')) {
-        Install-WindowsFeature -Name 'RSAT-AD-PowerShell' | Out-Null
-        Write-Host '  installed RSAT-AD-PowerShell'
+
+# Tested by looking for the ActiveDirectory module, not by asking Get-WindowsFeature.
+#
+# ServerManager has no PowerShell 7 build, so PowerShell 7 reaches it through the Windows
+# PowerShell compatibility shim. That shim stages a proxy module into TEMP with Copy-Item,
+# and under -WhatIf those copies are only simulated, so the module never materialises and
+# the call fails with "the module could not be loaded". Worse, with -ErrorAction
+# SilentlyContinue it returned $null and this block reported the feature already present
+# while installing nothing, on exactly the fresh worker that needed it.
+#
+# The module is also the honest test: it is what the runbooks require, and what
+# RSAT-AD-PowerShell exists to deliver. Install-WindowsFeature stays inside ShouldProcess,
+# so it is never reached under -WhatIf and the shim is never provoked.
+if (Get-Module -ListAvailable -Name 'ActiveDirectory') {
+    Write-Host '  ActiveDirectory module already present'
+} elseif ($PSCmdlet.ShouldProcess('RSAT-AD-PowerShell', 'Install Windows feature')) {
+    Install-WindowsFeature -Name 'RSAT-AD-PowerShell' | Out-Null
+    Write-Host '  installed RSAT-AD-PowerShell'
+
+    if (-not (Get-Module -ListAvailable -Name 'ActiveDirectory')) {
+        throw ('RSAT-AD-PowerShell installed but the ActiveDirectory module is still not ' +
+            'discoverable. The runbooks will fail at #Requires. A restart may be pending.')
     }
-} else { Write-Host '  RSAT-AD-PowerShell already present' }
+}
 
 Write-Host ''
 Write-Host '=== Forbidden modules ==='

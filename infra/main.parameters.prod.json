@@ -2,6 +2,8 @@
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
   "contentVersion": "1.0.0.0",
   "parameters": {
+    "resourceGroupName":         { "value": "rg-rma-prod" },
+    "location":                  { "value": "westeurope" },
     "workload":                  { "value": "rma" },
     "environment":               { "value": "prod" },
     "hybridWorkerVmResourceId":  { "value": "REPLACE_WITH_VM_RESOURCE_ID" },

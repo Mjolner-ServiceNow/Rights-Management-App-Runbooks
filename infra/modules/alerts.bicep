@@ -120,6 +120,21 @@ resource alertRules 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' 
     evaluationFrequency: rule.frequency
     windowSize:          rule.windowSize
     autoMitigate:        true
+
+    // Required on a fresh deployment. Scheduled query rules validate their KQL against the
+    // workspace at creation time, but AutomationJobLogs and AutomationJobStreams do not
+    // exist until Automation has actually sent data there. On a new workspace the rules
+    // fail with:
+    //
+    //     'where' operator: Failed to resolve table or column expression named
+    //     'AutomationJobLogs'. A semantic error occurred.
+    //
+    // Skipping validation lets the rules deploy alongside the workspace. They evaluate to
+    // an error until the first job runs and the tables appear, then start working. The
+    // alternative - deploying alerts in a second pass after data flows - means a window
+    // where the platform runs unmonitored, which is worse.
+    skipQueryValidation: true
+
     criteria: {
       allOf: [
         {

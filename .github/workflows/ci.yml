@@ -103,7 +103,11 @@ jobs:
         run: |
           set -euo pipefail
           # --stdout to /dev/null: we only care about diagnostics on stderr.
-          if az bicep build --file infra/main.bicep --stdout 2> bicep-diagnostics.txt > /dev/null; then
+          # Both are supported entry points; workload.bicep is deployed directly when
+          # subscription Contributor is unavailable.
+          : > bicep-diagnostics.txt
+          if az bicep build --file infra/main.bicep     --stdout 2>> bicep-diagnostics.txt > /dev/null &&
+             az bicep build --file infra/workload.bicep --stdout 2>> bicep-diagnostics.txt > /dev/null; then
             if [ -s bicep-diagnostics.txt ]; then
               echo "::error::Bicep produced diagnostics; treat warnings as errors."
               cat bicep-diagnostics.txt

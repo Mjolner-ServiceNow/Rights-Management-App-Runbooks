@@ -40,13 +40,22 @@ the repository, so a forgotten step 2 is caught before it reaches Azure.
 ## Updating infrastructure
 
 ```powershell
-./scripts/Deploy-RmaPlatform.ps1 -ResourceGroup rg-rma-prod -Environment prod -WhatIfOnly
-./scripts/Deploy-RmaPlatform.ps1 -ResourceGroup rg-rma-prod -Environment prod
+./scripts/Deploy-RmaPlatform.ps1 -Environment prod -WhatIfOnly
+./scripts/Deploy-RmaPlatform.ps1 -Environment prod
 ```
 
-Bicep is declarative, so redeploying converges rather than duplicating. The script refuses
-to proceed if the plan contains a `Delete`, which on this platform could mean the Key Vault
-or the Automation Account.
+Bicep is declarative, so redeploying converges rather than duplicating. The script stops if
+the what-if fails, and refuses to proceed if the plan contains a `Delete` - which on this
+platform could mean the Key Vault or the Automation Account.
+
+Two entry points, producing identical resources:
+
+| Template | Scope | Creates the resource group | Rights needed |
+|---|---|---|---|
+| `infra/main.bicep` | subscription | yes | Contributor on the subscription |
+| `infra/workload.bicep` | resource group | no | Contributor on that group |
+
+Use the second with `-WorkloadOnly` where subscription Contributor is not available.
 
 ## Downtime and rollback
 

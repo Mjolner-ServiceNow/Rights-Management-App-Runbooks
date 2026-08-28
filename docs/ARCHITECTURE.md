@@ -146,9 +146,10 @@ affected runbook, and re-run `Initialize-RmaWorker.ps1` on every worker. All thr
 pull request. Rolling a worker forward without the runbooks, or the reverse, produces a
 clean refusal rather than a subtle failure, which is the intended behaviour.
 
-The PowerShell 7 module path is used, not the Windows PowerShell one, because runbooks are
-published as `PowerShell72`. Hybrid Worker jobs run as local **SYSTEM**, so the module must
-be in an AllUsers location; a per-user install is invisible to them.
+The PowerShell 7 module path is used, not the Windows PowerShell one, because runbooks run
+on PowerShell 7.6. Hybrid Worker jobs run as local **SYSTEM**, so the module must be in an
+AllUsers location; a per-user install is invisible to them. All 7.x versions share
+`C:\Program Files\PowerShell\Modules`, so this path does not change with the runtime version.
 
 ## Scaling
 
@@ -183,6 +184,16 @@ queue intact and the next run continues.
 | Mass stranding | Watchdog refuses to act above `MaxRequeue` and raises |
 | Secret in a log | `Write-RmaLog` redacts; `RmaAvoidUnredactedObjectLogging` blocks the pattern |
 | Worker disk exhaustion | Pinned modules, no runtime install, analyzer rule, prune sweep |
+
+## Template layout
+
+`infra/main.bicep` targets the **subscription**, creates the resource group, and deploys
+`infra/workload.bicep` into it. The split exists because a resource-group-scoped template
+cannot create its own resource group.
+
+Deploying `workload.bicep` directly into an existing group produces exactly the same
+resources and needs only Contributor on that group, which matters in organisations that do
+not grant subscription Contributor for application deployments.
 
 ## Environments
 

@@ -36,7 +36,7 @@ Work top to bottom. Anything marked **BLOCKER** stops the release.
 - [ ] `Initialize-RmaWorker.ps1` run on **each** worker; module list matches the pinned set exactly
 - [ ] If more than one worker: all of them provisioned identically. A worker missing the module fails every job routed to it, intermittently
 - [ ] `Get-Module -ListAvailable Microsoft.Graph* | Group-Object Name` shows **one version per module** **BLOCKER**
-- [ ] `Microsoft.Graph.Beta` meta-module absent; only `Microsoft.Graph.Beta.Users` present
+- [ ] No `Microsoft.Graph.Beta*` module present; none is required
 - [ ] `MSAL.PS` absent
 - [ ] Free disk above 20 GB, with an alert at 10 GB
 - [ ] `RSAT-AD-PowerShell` installed and `Get-ADRootDSE` succeeds against the domain controller

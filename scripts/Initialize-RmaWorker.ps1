@@ -44,17 +44,23 @@ Set-StrictMode -Version Latest
 # The single source of truth for what belongs on a worker.
 # Changing a version here is a reviewed, released change.
 $pinned = @(
-    @{ Name = 'Microsoft.Graph.Authentication'; Version = '2.25.0' }
-    @{ Name = 'Microsoft.Graph.Users'; Version = '2.25.0' }
-    @{ Name = 'Microsoft.Graph.Users.Actions'; Version = '2.25.0' }
-    @{ Name = 'Microsoft.Graph.Groups'; Version = '2.25.0' }
-    @{ Name = 'Microsoft.Graph.Identity.DirectoryManagement'; Version = '2.25.0' }
-    @{ Name = 'Microsoft.Graph.Identity.SignIns'; Version = '2.25.0' }
-    # Submodule only. NEVER install the Microsoft.Graph.Beta meta-module: it pulls 40+
-    # submodules and over a gigabyte to satisfy two calls to Get-MgBetaUser.
-    @{ Name = 'Microsoft.Graph.Beta.Users'; Version = '2.25.0' }
-    @{ Name = 'ExchangeOnlineManagement'; Version = '3.7.2' }
+    @{ Name = 'Microsoft.Graph.Authentication'; Version = '2.39.0' }
+    @{ Name = 'Microsoft.Graph.Users'; Version = '2.39.0' }
+    @{ Name = 'Microsoft.Graph.Users.Actions'; Version = '2.39.0' }
+    @{ Name = 'Microsoft.Graph.Groups'; Version = '2.39.0' }
+    @{ Name = 'Microsoft.Graph.Identity.DirectoryManagement'; Version = '2.39.0' }
+    @{ Name = 'Microsoft.Graph.Identity.SignIns'; Version = '2.39.0' }
+    @{ Name = 'ExchangeOnlineManagement'; Version = '3.10.1' }
 )
+
+# Graph submodule versions must match each other. They share Microsoft.Graph.Core and the
+# Authentication module's assemblies, and mixing versions in one session produces assembly
+# load failures that read as missing cmdlets. The #Requires in every runbook pins the same
+# version, which is what makes a mismatch fail at parse time instead.
+
+# No Microsoft.Graph.Beta.* submodule is pinned because nothing calls a Get-MgBeta* cmdlet
+# any more. If that changes, add the single submodule needed and never the
+# Microsoft.Graph.Beta meta-module, which pulls 40+ submodules and over a gigabyte.
 
 # MSAL.PS is deliberately absent. It is archived by Microsoft and its bundled
 # Microsoft.Identity.Client conflicts with the Graph SDK's. The managed identity design
@@ -122,8 +128,9 @@ if (-not $SkipSharedModule) {
     Write-Host ''
     Write-Host '=== RMA.Runbooks (shared module) ==='
 
-    # PowerShell 7 keeps AllUsers modules separately from Windows PowerShell. Runbooks are
-    # published as PowerShell72, so this is the path that matters.
+    # PowerShell 7 keeps AllUsers modules separately from Windows PowerShell. Runbooks run on
+    # PowerShell 7.6, so this is the path that matters. All 7.x versions share it, so it does
+    # not change with the runtime version.
     $modulesRoot = if ($IsWindows -or $null -eq $IsWindows) {
         Join-Path $env:ProgramFiles 'PowerShell\Modules'
     } else {
@@ -139,6 +146,10 @@ if (-not $SkipSharedModule) {
 
     try {
         # Resolve the source down to a directory containing RMA.Runbooks.psd1.
+        # Initialised because StrictMode makes reading an unassigned variable an error, and
+        # a ModuleSource that does not exist leaves every branch below unentered.
+        $sourceDir = $null
+
         if ($ModuleSource -match '^https?://') {
             Write-Host "  downloading $ModuleSource"
             $download = Join-Path $staging 'package.zip'
@@ -148,12 +159,15 @@ if (-not $SkipSharedModule) {
         } elseif ($ModuleSource -like '*.zip') {
             Expand-Archive -Path $ModuleSource -DestinationPath $staging -Force
             $sourceDir = (Get-ChildItem $staging -Recurse -Filter 'RMA.Runbooks.psd1' | Select-Object -First 1).Directory
-        } else {
-            $sourceDir = Get-Item $ModuleSource
+        } elseif (Test-Path -LiteralPath $ModuleSource) {
+            $sourceDir = Get-Item -LiteralPath $ModuleSource
         }
 
         if (-not $sourceDir -or -not (Test-Path (Join-Path $sourceDir 'RMA.Runbooks.psd1'))) {
-            throw "RMA.Runbooks.psd1 not found under '$ModuleSource'."
+            throw ("RMA.Runbooks.psd1 not found under '$ModuleSource'. This machine has no " +
+                'repository checkout, so pass -ModuleSource with the path to a package built by ' +
+                'build/New-RmaModulePackage.ps1, or the URL of the release asset. Pass ' +
+                '-SkipSharedModule to provision the third-party dependencies only.')
         }
 
         $version = (Import-PowerShellDataFile (Join-Path $sourceDir 'RMA.Runbooks.psd1')).ModuleVersion

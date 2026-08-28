@@ -21,7 +21,7 @@ most common reason this takes days instead of hours.
 | 1 | ServiceNow administrator | ServiceNow |
 | 2 | Contributor on the **subscription** (the template creates the resource group) | Azure |
 | 3 | Contributor on the resource group | Azure |
-| 4 | Local administrator on the VM | Windows |
+| 4 | Contributor on the VM (for Run Command), or local administrator on it | Azure or Windows |
 | 5 | Cloud Application Administrator | Microsoft Entra |
 | 6 | Privileged Role Administrator or Global Administrator | Microsoft Entra |
 | 7 | Key Vault Secrets Officer, plus the actual passwords | Azure |
@@ -42,7 +42,7 @@ role and should not be.
 - A **ServiceNow integration account** with read access to the domain table and read/write
   on the command queue table.
 - Tooling on your workstation: [Azure CLI](https://aka.ms/azure-cli),
-  [PowerShell 7.2+](https://aka.ms/powershell), and the `Az.Automation` module.
+  [PowerShell 7.4+](https://aka.ms/powershell), and the `Az.Automation` module.
 
 ### How long
 
@@ -233,14 +233,78 @@ Wait for the worker to report healthy before continuing.
 
 ## Step 4 — Provision the worker
 
-**Who:** Local administrator on the VM.
+**Who:** Contributor on the VM, or local administrator on it.
+
+Provisioning is two scripts, in order. The first makes the machine capable of running
+PowerShell 7 runbooks at all; the second installs the modules. They are separate because
+`Initialize-RmaWorker.ps1` declares `#Requires -Version 7.2`, so it cannot be the thing that
+installs PowerShell 7.
+
+### How to run them without a console on the VM
+
+The worker usually has no public IP. Azure Run Command reads the script from your
+workstation and executes it on the VM through the Azure control plane, so you need no
+inbound network access, no repository checkout on the VM, and no credentials on it:
+
+```bash
+az vm run-command invoke \
+  --resource-group rg-rma-prod --name vm-rma-01 \
+  --command-id RunPowerShellScript \
+  --scripts @scripts/Initialize-RmaWorkerHost.ps1
+```
+
+`--parameters name=value` maps to the script's named parameters, and the output comes back
+to your terminal.
+
+Run Command also executes as local **SYSTEM**, which is the account Hybrid Worker jobs run
+under. That matters: it makes it structurally impossible to install into the wrong profile,
+which is the mistake the `AllUsers` note below exists to prevent.
+
+If you would rather work on the VM directly, both scripts run the same way from an elevated
+prompt over Bastion or RDP.
+
+### 4a. Make the machine a PowerShell 7 host
+
+```powershell
+./scripts/Initialize-RmaWorkerHost.ps1 -WhatIf
+./scripts/Initialize-RmaWorkerHost.ps1
+```
+
+It runs under the Windows PowerShell 5.1 that ships with the operating system, and it:
+
+- installs PowerShell 7.6 (the current LTS, supported to 14 November 2028), verified
+  against the release's published SHA-256;
+- sets the machine environment variable that tells the Hybrid Worker extension where
+  `pwsh.exe` is;
+- bootstraps the NuGet package provider inside PowerShell 7, so 4b does not stop to fetch
+  it from a host your firewall may not allow;
+- restarts `HybridWorkerService`, which is when the environment variable takes effect.
+
+> **The environment variable is the part that is easy to miss and hard to diagnose.** An
+> extension-based Windows worker locates the interpreter through a machine variable named
+> after the runbook's runtime version: `powershell_7_6_path`, `powershell_7_4_path`,
+> `powershell_7_2_path`. Not `PATH`. If it is absent the worker still registers and still
+> reports healthy, and every PowerShell 7 job fails to start with nothing in the job output
+> that points at the cause.
+>
+> The script also registers the same interpreter under the older names by default, so a
+> runbook not yet moved to a 7.6 Runtime environment keeps working. Pass `-SkipLegacyPaths`
+> once every runbook is on 7.6, so that one left behind fails loudly instead of quietly
+> running on an interpreter it did not declare.
+>
+> Microsoft documents the 7.4 and 7.2 variable names. The 7.6 name follows the same pattern,
+> but the Hybrid Worker article has not been updated for 7.6 at the time of writing, so
+> confirm it on a new worker: run any runbook linked to a 7.6 Runtime environment on the
+> hybrid group. A job that sits in **Queued** and produces nothing means the name is wrong.
+
+PowerShell 7.x runbooks also need Hybrid Worker extension **1.3.63 or above**. The script
+prints the installed version and warns if it is older.
+
+### 4b. Install the modules
 
 Every module the runbooks need must be installed **on this machine**. Modules imported into
 an Azure Automation Account are only available to jobs running in Azure's own sandbox; a
 Hybrid Worker loads modules from its own `PSModulePath`.
-
-Install PowerShell 7.2+ on the VM if it is not already present, then, from an elevated
-`pwsh` prompt:
 
 ```powershell
 # Review what will change first.
@@ -257,24 +321,28 @@ If the repository is not checked out on the VM, install from a release asset ins
     -ModuleSource 'https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/releases/download/v1.0.0/RMA.Runbooks-1.0.0.zip'
 ```
 
-Verify:
+### Verify
 
 ```powershell
 Get-Module -ListAvailable RMA.Runbooks, Microsoft.Graph.Authentication, ExchangeOnlineManagement |
     Select-Object Name, Version, ModuleBase
+
+[Environment]::GetEnvironmentVariable('powershell_7_6_path', 'Machine')
 ```
 
-Two things to confirm:
+Three things to confirm:
 
+- `powershell_7_6_path` returns a path to a `pwsh.exe` that exists, and `pwsh -v` reports
+  7.6.x.
 - `RMA.Runbooks` resolves from `C:\Program Files\PowerShell\Modules`. Hybrid Worker jobs run
   as local **SYSTEM**, so a per-user install is invisible to them.
 - **One version per module.** More than one means an older installation is still present.
   Run `./scripts/Initialize-RmaWorker.ps1 -PruneUnpinned` to remove superseded versions and
   reclaim the disk.
 
-**If you have more than one worker in the group, repeat this step on every one of them.** A
-worker missing the module fails every job routed to it, which presents as intermittent
-failures rather than an obvious outage.
+**If you have more than one worker in the group, run both scripts on every one of them.** A
+worker missing a module or the environment variable fails every job routed to it, which
+presents as intermittent failures rather than an obvious outage.
 
 ---
 
@@ -350,6 +418,18 @@ add your own IP.
 
 **Who:** Contributor on the Automation Account.
 
+**Prerequisite:** a PowerShell **7.6** Runtime environment in the Automation account. The
+publish script does not create infrastructure; it verifies the Runtime environment exists
+and is the expected version, and refuses to publish otherwise. Create it under Automation
+account > **Runtime Environments** (Language PowerShell, Runtime version 7.4 or 7.6), or
+with the API:
+
+```bash
+az rest --method put \
+  --url "https://management.azure.com/subscriptions/<subId>/resourceGroups/rg-rma-prod/providers/Microsoft.Automation/automationAccounts/aa-rma-prod/runtimeEnvironments/Powershell_7-6?api-version=2024-10-23" \
+  --body '{"properties":{"runtime":{"language":"PowerShell","version":"7.6"}}}'
+```
+
 ```powershell
 Connect-AzAccount
 ./scripts/Publish-RmaContent.ps1 `
@@ -357,11 +437,25 @@ Connect-AzAccount
     -AutomationAccountName aa-rma-prod
 ```
 
+Pass `-RuntimeEnvironmentName` if yours is not called `Powershell_7-6`.
+
 Each runbook is imported as a Draft and then published, so a failed import cannot take a
 working runbook offline. The script also refuses to publish a runbook that pins a different
 `RMA.Runbooks` version than the one you installed in step 4.
 
 The shared module is **not** published to the Automation Account. It lives on the worker.
+
+> **Why the runtime version is a Runtime environment and not a runbook type.** PowerShell
+> 7.4 and 7.6 exist only in the Runtime environment experience. `Import-AzAutomationRunbook`
+> stops at `PowerShell72`, and the API rejects a `runtimeEnvironment` on a `PowerShell72`
+> runbook. So runbooks are imported as type `PowerShell` and linked to a Runtime
+> environment, and that link decides the interpreter.
+>
+> Runbook type is immutable through the API's PUT, so importing over a runbook that an
+> earlier version of this script published as `PowerShell72` fails with "Runbook Type cannot
+> be modified". A PATCH *can* change the type and set the Runtime environment in one call,
+> and the script does that automatically for any runbook whose type is not `PowerShell`.
+> Migration needs no manual step and no deletion.
 
 ---
 
@@ -544,6 +638,35 @@ In order:
 3. Is the audience `api://AzureADTokenExchange`?
 4. Has admin consent been granted?
 
+### A PowerShell 7 runbook never starts, and the job output is empty
+
+The worker cannot find the interpreter. On the worker:
+
+```powershell
+[Environment]::GetEnvironmentVariable('powershell_7_6_path', 'Machine')
+[Environment]::GetEnvironmentVariable('powershell_7_4_path', 'Machine')
+[Environment]::GetEnvironmentVariable('powershell_7_2_path', 'Machine')
+```
+
+The one matching the runbook's runtime version must return a path to an existing `pwsh.exe`.
+`PATH` is not consulted for 7.2, 7.4 or 7.6. Check which Runtime environment the runbook is
+actually linked to, since that is what decides which variable is read:
+
+```bash
+az rest --method get --url "https://management.azure.com/subscriptions/<subId>/resourceGroups/rg-rma-prod/providers/Microsoft.Automation/automationAccounts/aa-rma-prod/runbooks/Create-EntraUser?api-version=2024-10-23" \
+  --query "properties.runtimeEnvironment"
+``` If it is empty, re-run
+`./scripts/Initialize-RmaWorkerHost.ps1`, which sets it and restarts the service. The
+variable is read only when the service starts, so setting it by hand and not restarting
+changes nothing.
+
+Then check the extension version, because PowerShell 7.4 runbooks need 1.3.63 or above:
+
+```bash
+az vm extension show -g rg-rma-prod --vm-name vm-rma-01 \
+  --name HybridWorkerExtension --query typeHandlerVersion
+```
+
 ### A runbook fails immediately with "module not found" or a #Requires error
 
 `RMA.Runbooks` is missing from that worker, or is a different version than the runbook pins.
@@ -580,9 +703,9 @@ Historic module versions. Run:
 ./scripts/Initialize-RmaWorker.ps1 -PruneUnpinned
 ```
 
-Check specifically that the `Microsoft.Graph.Beta` **meta-module** is not installed. Only
-`Microsoft.Graph.Beta.Users` is needed; the meta-module pulls forty submodules and over a
-gigabyte.
+Check specifically that no `Microsoft.Graph.Beta*` module is installed. None is needed: the
+runbooks call no `Get-MgBeta*` cmdlet. The `Microsoft.Graph.Beta` meta-module in particular
+pulls forty submodules and over a gigabyte, and `Initialize-RmaWorker.ps1` removes it.
 
 ### Everything works, then stops after some weeks
 

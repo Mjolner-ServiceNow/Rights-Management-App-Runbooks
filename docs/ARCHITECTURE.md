@@ -146,9 +146,10 @@ affected runbook, and re-run `Initialize-RmaWorker.ps1` on every worker. All thr
 pull request. Rolling a worker forward without the runbooks, or the reverse, produces a
 clean refusal rather than a subtle failure, which is the intended behaviour.
 
-The PowerShell 7 module path is used, not the Windows PowerShell one, because runbooks are
-published as `PowerShell72`. Hybrid Worker jobs run as local **SYSTEM**, so the module must
-be in an AllUsers location; a per-user install is invisible to them.
+The PowerShell 7 module path is used, not the Windows PowerShell one, because runbooks run
+on PowerShell 7.6. Hybrid Worker jobs run as local **SYSTEM**, so the module must be in an
+AllUsers location; a per-user install is invisible to them. All 7.x versions share
+`C:\Program Files\PowerShell\Modules`, so this path does not change with the runtime version.
 
 ## Scaling
 

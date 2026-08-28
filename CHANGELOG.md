@@ -70,6 +70,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   subscription is not granted.
 
 ### Fixed
+- `Initialize-RmaWorker.ps1` could not run with `-WhatIf`, and silently skipped
+  RSAT-AD-PowerShell without it. `ServerManager` has no PowerShell 7 build, so PowerShell 7
+  loads it through the Windows PowerShell compatibility shim, which stages a proxy module
+  with `Copy-Item`; under `-WhatIf` those copies are simulated, the module never loads, and
+  `Get-WindowsFeature` fails. With `-ErrorAction SilentlyContinue` it returned `$null` and
+  the script reported the feature already present while installing nothing. It now tests for
+  the `ActiveDirectory` module, which is what the runbooks actually require, and verifies the
+  module is discoverable after installing the feature.
 - The Automation Account could not be created. `identity: { type: 'None' }` is rejected by
   the Automation resource provider, which fails the deployment with the misleading
   `BadRequest: Could not find the account`. No identity is now expressed by omitting the

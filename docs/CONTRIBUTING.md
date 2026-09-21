@@ -35,9 +35,9 @@ Do not commit anything that identifies a customer: ServiceNow instance names, te
 subscription IDs, internal hostnames or IP ranges, or real record sys_ids. Test fixtures use
 `contoso` and obviously-synthetic GUIDs; keep it that way.
 
-The files under `infra/` ending in `.parameters.<env>.json` are **templates** and must keep
-their `REPLACE_WITH_` placeholders. Real values go in `.parameters.<env>.local.json`, which
-is gitignored. CI fails the build if a committed template contains an Azure resource id.
+Keep real subscription ids, resource ids and instance names in a `*.local.json`, which is
+gitignored. Nothing in CI checks this now that the infrastructure templates are gone, so it
+is a review responsibility.
 
 ## Adding a runbook
 

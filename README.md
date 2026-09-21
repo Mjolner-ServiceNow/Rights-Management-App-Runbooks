@@ -1,18 +1,17 @@
 # Rights Management App — Runbooks
 
 Automation runbooks that connect ServiceNow to Active Directory and Microsoft Entra ID,
-the shared PowerShell module they run on, and a Bicep template for the Azure resources
-they need.
+and the shared PowerShell module they run on.
 
-The Bicep is a **deployment artefact**: it is deployed manually, by whoever owns the target
-subscription. This repository holds no credentials and deploys nothing itself.
+This repository holds no credentials and deploys nothing itself. The Azure resources the
+runbooks need are provisioned by hand for now — there is no infrastructure-as-code here.
+See [`docs/INSTALLATION.md`](docs/INSTALLATION.md) for what to create.
 
 | | |
 |---|---|
 | **Shared module** | [`src/RMA.Runbooks`](src/RMA.Runbooks) — queue handling, identity, logging |
 | **Runbooks** | [`src/runbooks`](src/runbooks) |
-| **Infrastructure** | [`infra`](infra) — Bicep, resource-group scope |
-| **Scripts** | [`scripts`](scripts) — deploy, provision a worker, publish content |
+| **Scripts** | [`scripts`](scripts) — provision a worker, publish content, create the app registration |
 | **CI** | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — validation only, no Azure access |
 | **Release** | [`.github/workflows/release.yml`](.github/workflows/release.yml) — packages the module for worker installation |
 | **Architecture** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
@@ -45,11 +44,10 @@ Requires PowerShell 7.2+, and Pester 5.5+ / PSScriptAnalyzer 1.25+ for the build
 ./build/Invoke-Analysis.ps1 -FailOn Error,Warning # the gate CI runs
 ./build/Invoke-Tests.ps1                          # Pester with coverage
 ./build/Test-ModuleManifestIntegrity.ps1          # manifest vs reality
-az bicep build --file infra/main.bicep            # infrastructure compiles
 ```
 
-CI runs all five on every pull request. None of them touch Azure, so the workflow needs no
-secrets and runs safely on forks.
+CI runs the first three on every pull request; run the manifest check yourself. None of
+them touch Azure, so the workflow needs no secrets and runs safely on forks.
 
 ## Writing a runbook
 

@@ -4,7 +4,7 @@ Work top to bottom. Anything marked **BLOCKER** stops the release.
 
 ## 1. Code and pipeline
 
-- [ ] CI green on the release commit: analyzer (0 findings at Error and Warning), 43+ Pester tests passing, coverage above the floor, Bicep compiles with no diagnostics, manifest integrity passes
+- [ ] CI green on the release commit: analyzer (0 findings at Error and Warning), 43+ Pester tests passing, coverage above the floor, manifest integrity passes (run it locally; it is not in CI)
 - [ ] `ModuleVersion` in `RMA.Runbooks.psd1` bumped, and `CHANGELOG.md` updated **BLOCKER**
 - [ ] Every analyzer suppression in the diff carries a `Justification` that a reviewer accepted
 - [ ] Branch protection on `main`: no direct pushes, one approving review, CI required
@@ -14,7 +14,7 @@ Work top to bottom. Anything marked **BLOCKER** stops the release.
 
 ## 2. Identity
 
-- [ ] Automation Account identity is **None** — `az automation account show --query identity.type`. `Deploy-RmaPlatform.ps1` asserts this, but confirm by hand if the template was deployed another way **BLOCKER**
+- [ ] Automation Account identity is **None** — `az automation account show --query identity.type`. Nothing automated asserts this; confirm by hand on every environment **BLOCKER**
 - [ ] User-assigned managed identity attached to the Hybrid Worker VM
 - [ ] Federated credential subject equals the identity's **principal** ID, not its client ID **BLOCKER**
 - [ ] Federated credential issuer is `https://login.microsoftonline.com/{tenant}/v2.0`, audience `api://AzureADTokenExchange`

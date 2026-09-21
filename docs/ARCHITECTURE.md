@@ -52,11 +52,12 @@ trail.
 
 The Automation Account **must have no managed identity of its own**. Enabling one overrides
 the Hybrid Worker VM's identity, and an Automation Account user-assigned identity cannot be
-used from a Hybrid Worker at all. This is enforced in three places:
+used from a Hybrid Worker at all.
 
-- `infra/modules/automation.bicep` sets `identity: { type: 'None' }`, with the reason in a comment
-- `scripts/Deploy-RmaPlatform.ps1` asserts it after deploying and fails if it changed
-- `Test-RmaPrerequisite` produces a diagnostic naming this cause when the token call fails
+Nothing enforces it automatically. The Automation Account is created by hand, so the
+identity must be left at **None** at creation and never enabled afterwards.
+`Test-RmaPrerequisite` produces a diagnostic naming this cause when the token call fails,
+which is detection, not prevention.
 
 It is also the first item on the production checklist, and the first step in the
 authentication troubleshooting order, because it is the most likely explanation for
@@ -73,7 +74,9 @@ Two GUIDs are involved and they are not interchangeable:
 | Managed identity **client** ID | IMDS token requests (`?client_id=`) |
 | Managed identity **principal** ID | Federated credential subject, RBAC assignments |
 
-Both are Bicep outputs, named explicitly.
+Record both when the identity is created, labelled, and keep them apart. Swapping them
+produces a federated credential that saves without error and fails later, at token
+exchange.
 
 ## Job lifecycle
 
@@ -185,20 +188,17 @@ queue intact and the next run continues.
 | Secret in a log | `Write-RmaLog` redacts; `RmaAvoidUnredactedObjectLogging` blocks the pattern |
 | Worker disk exhaustion | Pinned modules, no runtime install, analyzer rule, prune sweep |
 
-## Template layout
+## Infrastructure
 
-`infra/main.bicep` targets the **subscription**, creates the resource group, and deploys
-`infra/workload.bicep` into it. The split exists because a resource-group-scoped template
-cannot create its own resource group.
-
-Deploying `workload.bicep` directly into an existing group produces exactly the same
-resources and needs only Contributor on that group, which matters in organisations that do
-not grant subscription Contributor for application deployments.
+There is none in this repository. The Bicep that used to define the Automation Account,
+Key Vault, managed identity and monitoring was removed because it did not meet the bar,
+and infrastructure-as-code is deferred until the wider framework is settled. Until then
+the resources are created by hand per environment; `docs/INSTALLATION.md` lists what they
+are and how they must be configured.
 
 ## Environments
 
-`dev`, `test`, `prod` are the same template with different parameters, deployed manually
-per environment. Production
-additionally gets: Key Vault public access disabled with a subnet rule, purge protection,
-90-day soft delete, 90-day log retention, and alert action groups wired up. Lower
-environments record alerts but do not notify.
+`dev`, `test`, `prod` are the same resources, provisioned separately per environment.
+Production additionally gets: Key Vault public access disabled with a subnet rule, purge
+protection, 90-day soft delete, 90-day log retention, and alert action groups wired up.
+Lower environments record alerts but do not notify.

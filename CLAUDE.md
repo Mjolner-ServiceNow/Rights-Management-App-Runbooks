@@ -2,9 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-ServiceNow-driven automation runbooks for Active Directory and Entra ID, the shared
-PowerShell module they run on, and the Bicep for the Azure resources they need. PowerShell
-7.2 is the floor. The repository is public and holds no credentials.
+ServiceNow-driven automation runbooks for Active Directory and Entra ID, and the shared
+PowerShell module they run on. PowerShell 7.2 is the floor. The repository is public and
+holds no credentials. There is no infrastructure-as-code here: the Azure resources are
+provisioned by hand for now, and the Bicep that used to live in `infra/` was removed
+because it did not meet the bar. Do not re-add it without being asked.
 
 Read [README.md](README.md) for the component map, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 for the identity and job-lifecycle design, and [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
@@ -34,11 +36,10 @@ pwsh -NoProfile -Command "& ./build/Invoke-Analysis.ps1 -FailOn Error,Warning"
 Inside a `pwsh` session, and in `.github/workflows/ci.yml`, `-FailOn Error, Warning` is
 parsed correctly. Do not "fix" the workflow to match this file.
 
-Two more, not run by CI (see *Where enforcement actually lives*):
+One more, not run by CI (see *Where enforcement actually lives*):
 
 ```powershell
 ./build/Test-ModuleManifestIntegrity.ps1   # Public/*.ps1 vs FunctionsToExport, and help
-az bicep build --file infra/main.bicep
 ```
 
 ### A single test
@@ -89,10 +90,10 @@ A single user-assigned managed identity on the Hybrid Worker VM reads Key Vault 
 the app registration through a federated credential. There are no client secrets.
 
 **The Automation Account must have no managed identity of its own.** Enabling one overrides
-the Hybrid Worker VM's identity and breaks authentication everywhere. It is asserted in
-`infra/modules/automation.bicep`, re-checked by `scripts/Deploy-RmaPlatform.ps1` after
-deployment, and named in `Test-RmaPrerequisite`'s diagnostic. If authentication worked
-yesterday and does not today, check this first.
+the Hybrid Worker VM's identity and breaks authentication everywhere. Nothing enforces this
+now that the templates are gone — it is set by hand at provisioning time and named in
+`Test-RmaPrerequisite`'s diagnostic. If authentication worked yesterday and does not today,
+check this first.
 
 The VM also has a system-assigned identity that the Hybrid Worker extension creates
 automatically, so IMDS requests must always pass `client_id` or they return the wrong
@@ -126,8 +127,8 @@ Suppressions are allowed but need a real `Justification`.
 The docs overstate CI in two places. What CI actually runs is in
 [.github/workflows/ci.yml](.github/workflows/ci.yml):
 
-- **`Test-ModuleManifestIntegrity.ps1` is not in CI.** README says CI runs all five local
-  commands; it runs four. An export missing from the manifest reaches `main`.
+- **`Test-ModuleManifestIntegrity.ps1` is not in CI.** CI runs three of the four local
+  commands. An export missing from the manifest reaches `main`.
 - **No `ModuleVersion` bump is enforced on a pull request.** CONTRIBUTING says CI enforces
   it. The only check is in `release.yml`, comparing the `v*` tag against the manifest at
   release time — so an unbumped module change passes PR CI and fails later, at tagging.
@@ -140,10 +141,9 @@ Nothing may identify a customer: ServiceNow instance names, tenant or subscripti
 internal hostnames or IP ranges, real `sys_id` values. Fixtures use `contoso` and synthetic
 GUIDs.
 
-`infra/*.parameters.<env>.json` are templates and must keep their `REPLACE_WITH_`
-placeholders; real values belong in `*.local.json`, which is gitignored. CI fails the build
-if a committed template contains an Azure resource id or a filled-in
-`hybridWorkerVmResourceId`.
+Real values belong in a `*.local.json`, which is gitignored. The CI check that rejected
+Azure resource ids in committed parameter files went with the Bicep — until infrastructure
+returns, nothing automated guards this, so check it by hand in review.
 
 ## Writing PowerShell here
 

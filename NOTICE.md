@@ -4,24 +4,24 @@
 
 Released under the [MIT Licence](LICENSE), copyright Mjølner Informatics A/S.
 
-MIT was chosen because the Bicep template, the provisioning scripts and the shared module
-are meant to be deployed and adapted by the customer in their own tenant. MIT grants that
-without conditions beyond preserving the copyright notice, and carries no warranty.
+MIT was chosen because the provisioning scripts and the shared module are meant to be
+deployed and adapted by the customer in their own tenant. MIT grants that without
+conditions beyond preserving the copyright notice, and carries no warranty.
 
 If a patent grant is wanted, Apache 2.0 is the usual alternative and is a drop-in
 replacement.
 
 ## What this repository does and does not contain
 
-**Contains:** PowerShell source, a Bicep template, a CI workflow, tests and documentation.
-The CI workflow has no Azure credentials and no repository secrets, and it deploys nothing.
+**Contains:** PowerShell source, a CI workflow, tests and documentation. The CI workflow
+has no Azure credentials and no repository secrets, and it deploys nothing.
 
 **Does not contain:** credentials, connection strings, certificates, tenant or subscription
 identifiers, ServiceNow instance names, or any customer data. Test fixtures use `contoso`
 and synthetic GUIDs.
 
-The three GUIDs that do appear in the source are Microsoft's own well-known identifiers,
-documented publicly and identical in every tenant:
+The three GUIDs that do appear in the source and the installation guide are Microsoft's own
+well-known identifiers, documented publicly and identical in every tenant:
 
 | GUID | What |
 |---|---|

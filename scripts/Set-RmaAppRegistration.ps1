@@ -5,14 +5,14 @@
 .SYNOPSIS
     Configures the app registration and its federated identity credential.
 .DESCRIPTION
-    This part of the platform cannot be expressed in Bicep, because app registrations,
-    API permissions and federated credentials live in Microsoft Graph rather than ARM.
+    This part of the platform cannot be expressed in ARM or Bicep, because app
+    registrations, API permissions and federated credentials live in Microsoft Graph.
 
     Idempotent: safe to re-run. Existing objects are matched by name and updated rather
     than duplicated.
 
-    Run once per environment, by a Cloud Application Administrator, after the Bicep
-    deployment has produced the managed identity principal id.
+    Run once per environment, by a Cloud Application Administrator, once the user-assigned
+    managed identity exists and its principal id is known.
 
     Three things it deliberately does NOT do:
       - Grant admin consent. That is a conscious human decision and is left to the portal
@@ -22,7 +22,7 @@
       - Create any secret or certificate. That is the entire point of the design.
 .EXAMPLE
     ./Set-RmaAppRegistration.ps1 -DisplayName 'RMA Runbooks (prod)' `
-        -ManagedIdentityPrincipalId (az deployment group show -g rg-rma-prod -n main --query properties.outputs.managedIdentityPrincipalId.value -o tsv) `
+        -ManagedIdentityPrincipalId (az identity show -g rg-rma-prod -n id-rma-prod --query principalId -o tsv) `
         -TenantId $env:AZURE_TENANT_ID
 #>
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingPlainTextForPassword', 'FederatedCredentialName',

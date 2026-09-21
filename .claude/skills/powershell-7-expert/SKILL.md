@@ -58,7 +58,7 @@ pwsh -File build/Invoke-Format.ps1 -Check
 ```
 
 ```bash
-pwsh -File build/Invoke-Analysis.ps1 -FailOn Error, Warning
+pwsh -NoProfile -Command "& ./build/Invoke-Analysis.ps1 -FailOn Error,Warning"
 ```
 
 ```bash
@@ -74,5 +74,7 @@ pwsh -NoProfile -Command "Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error
 ```bash
 pwsh -NoProfile -Command "Invoke-Pester"
 ```
+
+(Use `-Command` form for any command that passes multi-value arguments like comma-separated severities — `pwsh -File` cannot parse them into arrays.)
 
 A generic formatting-check fallback is omitted here because it only makes sense against a settings file the target repository owns; use that repository's own format-check command if it has one.

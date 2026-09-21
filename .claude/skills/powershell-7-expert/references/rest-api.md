@@ -1,6 +1,6 @@
 # REST APIs
 
-`Invoke-RestMethod` and `Invoke-WebRequest` are PowerShell's built-in HTTP clients; nothing here needs an external module. Get authentication, body encoding and pagination right, and most integration bugs disappear before they start.
+`Invoke-RestMethod` and `Invoke-WebRequest` are PowerShell's built-in HTTP clients — no external module needed to make the call itself. Get authentication, body encoding and pagination right, and most integration bugs disappear before they start.
 
 ## Invoke-RestMethod vs. Invoke-WebRequest
 
@@ -19,7 +19,7 @@ $data = Invoke-RestMethod -Uri $Uri -Authentication Bearer -Token $Token
 
 ## -Authentication Bearer -Token instead of a hand-built header
 
-Pass a `SecureString` to `-Token` with `-Authentication Bearer` instead of writing `Authorization: Bearer ...` into a `-Headers` hashtable by hand. `-Token` requires a `SecureString`: binding a plain string fails before any network call is made. Confirmed in this environment (pwsh 7.5.4): `Invoke-RestMethod -Uri $Uri -Authentication Bearer -Token 'plain-string-token'` raises `Cannot bind parameter 'Token'. Cannot convert the value of type "System.String" to type "System.Security.SecureString".` — a parameter-binding error, so it never reaches the wire; the same call with a real `SecureString` gets past binding and fails only on DNS resolution.
+Pass a `SecureString` to `-Token` with `-Authentication Bearer` instead of writing `Authorization: Bearer ...` into a `-Headers` hashtable by hand. `-Token` requires a `SecureString`: binding a plain string fails before any network call is made. Confirmed in this environment (pwsh 7.5.4): `Invoke-RestMethod -Uri $Uri -Authentication Bearer -Token 'plain-string-token'` raises `Cannot bind parameter 'Token'. Cannot convert the value of type "System.String" to type "System.Security.SecureString".` — a parameter-binding error, so it never reaches the wire; the same call with a real `SecureString` gets past binding and fails only on DNS resolution. The examples below get that `SecureString` from `Get-Secret`, a cmdlet of the `Microsoft.PowerShell.SecretManagement` module (not built into `pwsh`) that returns a secret already as a `SecureString`; it needs the module installed and a vault registered — never build the `SecureString` by converting a plaintext token, which is its own PSScriptAnalyzer finding (`PSAvoidUsingConvertToSecureStringWithPlainText`).
 
 ```powershell
 # WRONG
@@ -63,7 +63,7 @@ Invoke-RestMethod -Uri $Uri -Method Post -Body $body -ContentType 'application/j
 
 ## Handling 4xx without an exception: -SkipHttpErrorCheck and -StatusCodeVariable
 
-By default, a non-2xx response makes `Invoke-RestMethod` throw a terminating error, so reading the body of a 404 means unwrapping it from the caught exception's `ErrorDetails`. `-SkipHttpErrorCheck` turns that throw off: the call returns normally regardless of status, parsing the body exactly as it would for a 200. Pair it with `-StatusCodeVariable <name>` (a bare variable name, no `$`) to capture the numeric status in a variable of your choosing, since the response no longer carries it via a caught exception. Both parameters are present on `Invoke-RestMethod` in this environment (pwsh 7.5.4 and 7.6.0 — confirmed via `(Get-Command Invoke-RestMethod).Parameters.Keys`); no pre-7.4 `pwsh` was available locally to pin the exact version that introduced them, so check `(Get-Command Invoke-RestMethod).Parameters.Keys` on your target runtime before depending on them below the 7.2 floor this skill targets.
+By default, a non-2xx response makes `Invoke-RestMethod` throw a terminating error, so reading the body of a 404 means unwrapping it from the caught exception's `ErrorDetails`. `-SkipHttpErrorCheck` turns that throw off: the call returns normally regardless of status, parsing the body exactly as it would for a 200. Pair it with `-StatusCodeVariable <name>` (a bare variable name, no `$`) to capture the numeric status in a variable of your choosing, since the response no longer carries it via a caught exception. Both parameters are present on `Invoke-RestMethod` in this environment (pwsh 7.5.4 and 7.6.0 — confirmed via `(Get-Command Invoke-RestMethod).Parameters.Keys`) and are commonly documented as landing in PowerShell 7.4, but that version number is not verified here: no pre-7.4 `pwsh` was available locally to test against. Treat them as probably needing 7.4+ and confirm with `(Get-Command Invoke-RestMethod).Parameters.Keys` on your actual target runtime before relying on them.
 
 ```powershell
 # WRONG
@@ -104,7 +104,7 @@ Invoke-WithRetry -MaxAttempts 5 -ScriptBlock {
 
 ## -TimeoutSec
 
-Set a timeout on every outbound call. `Invoke-WithRetry` only reacts once a call returns or throws — it does nothing for a call that hangs forever, so the timeout is what turns a stuck connection into a retryable failure in the first place.
+Set a timeout on every outbound call. `Invoke-WithRetry` only reacts once a call returns or throws, so an unbounded call never reaches its `catch` and never gets retried — it just hangs. `-TimeoutSec` bounds only the time to establish the connection; a server that accepts the connection and then stalls mid-response is not covered by it. Add `-OperationTimeoutSeconds` alongside it when the whole call, not just the connect phase, needs a ceiling.
 
 ```powershell
 # WRONG
@@ -113,10 +113,10 @@ Invoke-RestMethod -Uri $Uri -Authentication Bearer -Token $Token
 
 ```powershell
 # RIGHT
-Invoke-RestMethod -Uri $Uri -Authentication Bearer -Token $Token -TimeoutSec 30
+Invoke-RestMethod -Uri $Uri -Authentication Bearer -Token $Token -TimeoutSec 10 -OperationTimeoutSeconds 30
 ```
 
-Confirmed in this environment: `-TimeoutSec` still binds and works — it is now an alias for `-OperationTimeoutSeconds` (`(Get-Command Invoke-RestMethod).Parameters['OperationTimeoutSeconds'].Aliases` returns `TimeoutSec`). Newer code targeting 7.4+ can use `-ConnectionTimeoutSeconds` and `-OperationTimeoutSeconds` directly for separate control over the connect phase versus the whole call; `-TimeoutSec` is the portable spelling at the 7.2 floor this skill targets.
+Confirmed in this environment: `(Get-Command Invoke-RestMethod).Parameters['OperationTimeoutSeconds'].Aliases` returns nothing — `-OperationTimeoutSeconds` has no alias. Enumerating which parameter actually carries the `TimeoutSec` alias instead — `(Get-Command Invoke-RestMethod).Parameters.GetEnumerator() | Where-Object { $_.Value.Aliases -contains 'TimeoutSec' } | ForEach-Object { $_.Key }` — returns `ConnectionTimeoutSeconds`. So `-TimeoutSec` is the portable, 7.2-floor spelling for the connect-phase bound only; `-ConnectionTimeoutSeconds` is its full 7.4+ name, and `-OperationTimeoutSeconds` (probably also 7.4+, unverified here — see the `-SkipHttpErrorCheck` section above) is the separate, newer parameter for the whole-call bound.
 
 ## Pagination: @odata.nextLink
 

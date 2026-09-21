@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `tests/Unit/Identity.Tests.ps1`. `Get-RmaImdsToken`, `Test-RmaPrerequisite`,
+  `Connect-RmaGraph` and `Connect-RmaExchange` were all at 0% line coverage — the identity
+  path, which is the constraint the whole design turns on, was the one part with no tests,
+  and the coverage floor was met on the back of the queue logic. Covers the `client_id`
+  that stops IMDS returning the VM's system-assigned identity, the Automation sandbox
+  branch, token cache isolation between tenants, the context contract between
+  `Test-RmaPrerequisite` and the two Connect functions, and that Graph is handed a
+  `SecureString` rather than a raw token. Line coverage is 92.9%, from 73.2%.
+- `-ExpectedSha256` on `scripts/Initialize-RmaWorker.ps1`.
+- `-MaxConsecutiveSkips` on `Invoke-RmaQueueLoop`.
 - `tests/Unit/RmaRules.Tests.ps1`. The five custom analyzer rules are the gate's teeth and
   had no tests of their own; a rule that quietly matches nothing lets the build go green
   while the defect it exists to stop walks through. The CI test job now installs
@@ -64,6 +74,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   profile. Added a troubleshooting entry for a PowerShell 7 job that never starts.
 
 ### Fixed
+- `Get-RmaAccessToken` could hand one tenant a token minted for another. The cache key was
+  parameter set, resource and managed identity client id; `ApplicationId` and `TenantId`
+  were missing, so two federated calls for the same scope through the same managed
+  identity but a different app registration shared one entry. Multi-domain is the normal
+  case here, which is what made this reachable.
+- `Set-RmaAppRegistration.ps1` could not run with `-WhatIf` on a tenant where the
+  application did not exist yet. The create was skipped, `$app` stayed `$null`, and the
+  next line threw under `Set-StrictMode -Version Latest` — so the switch was unusable on a
+  first run, which is exactly when you want to see what it would do. The reads that need a
+  real object id are now skipped under `-WhatIf` and every planned operation is printed.
+- OData string literals are escaped. `Set-RmaAppRegistration.ps1` interpolated
+  `-DisplayName` and `Create-EntraUser.ps1` the payload's `username` straight into a
+  `$filter`; a single quote — legitimate in a name like O'Brien — changed what the filter
+  matched, which silently turned the idempotency check into no check. `username` is also
+  validated against the local part Entra accepts, so a value carrying spaces or brackets
+  is refused before it reaches Graph.
+- `Initialize-RmaWorker.ps1` installs an unverified package no longer. `-ExpectedSha256`
+  is checked before the archive is expanded; without it the script warns instead of going
+  quiet. This is the one point where code from off the machine is written into
+  `Program Files` as administrator, and the release already published a SHA256 that
+  nothing compared. The release notes now show the verified form.
+- `Get-RmaWorkerId` lived in `Public/Request-RmaJobClaim.ps1` and was never listed in
+  `FunctionsToExport`, so it looked exported and was unreachable from a runbook. It is in
+  `Private/` now. `Test-ModuleManifestIntegrity.ps1` could not see it because it compared
+  file names; it now reads functions from the AST and checks `.SYNOPSIS` and
+  `[CmdletBinding()]` per function rather than once per file.
+- `build/Invoke-Tests.ps1` caps Pester with `-MaximumVersion 5.99.99` and prints the
+  version it loaded. `#Requires -Modules @{ ModuleVersion = '5.5.0' }` is a floor, not a
+  pin, so a machine with Pester 6 installed ran the suite on a different major version
+  than CI's 5.8.0. The house rules said the version was pinned; it was not.
 - `Invoke-RmaQueueLoop` polled without bound when it could not claim a job. A lost claim
   leaves the row Pending, so the next poll returns the same job; nothing incremented, so
   `MaxJobs` never applied, the empty-poll exit never triggered, and there was no sleep on

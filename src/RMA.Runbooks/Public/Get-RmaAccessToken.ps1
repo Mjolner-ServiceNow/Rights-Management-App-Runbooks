@@ -45,7 +45,12 @@ function Get-RmaAccessToken {
         [switch] $Force
     )
 
-    $cacheKey = '{0}|{1}|{2}' -f $PSCmdlet.ParameterSetName, $Resource, $ManagedIdentityClientId
+    # Every input that changes which token comes back is part of the key. ApplicationId and
+    # TenantId were missing, so two federated calls for the same scope through the same
+    # managed identity but a different app or tenant shared one entry and the second caller
+    # was handed the first caller's token. Multi-domain is the normal case here.
+    $cacheKey = '{0}|{1}|{2}|{3}|{4}' -f
+    $PSCmdlet.ParameterSetName, $Resource, $ManagedIdentityClientId, $ApplicationId, $TenantId
     $now = (Get-Date).ToUniversalTime()
 
     if (-not $Force -and $script:RmaTokenCache.ContainsKey($cacheKey)) {

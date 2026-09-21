@@ -69,11 +69,25 @@ Write-Host "Connecting to Microsoft Graph in tenant $TenantId..."
 Connect-MgGraph -TenantId $TenantId -Scopes 'Application.ReadWrite.All', 'AppRoleAssignment.ReadWrite.All' -NoWelcome
 
 # --- application ---------------------------------------------------------
-$app = Get-MgApplication -Filter "displayName eq '$DisplayName'" -ErrorAction SilentlyContinue | Select-Object -First 1
+# An OData string literal escapes a single quote by doubling it. A display name with an
+# apostrophe in it would otherwise break the filter or change what it matches.
+$displayNameFilter = $DisplayName -replace "'", "''"
+
+# $appIsReal is false only under -WhatIf on a tenant where the application does not exist
+# yet. Everything after this point needs the application's id: the writes are already
+# behind ShouldProcess and never run, but the reads would be sent to Graph with a
+# placeholder id and fail. -WhatIf previously left $app null and the next line threw under
+# Set-StrictMode, so the switch this script advertises could not be used at all on a first
+# run - which is exactly when you want to see what it would do.
+$appIsReal = $true
+$app = Get-MgApplication -Filter "displayName eq '$displayNameFilter'" -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $app) {
     if ($PSCmdlet.ShouldProcess($DisplayName, 'Create app registration')) {
         $app = New-MgApplication -DisplayName $DisplayName -SignInAudience 'AzureADMyOrg'
         Write-Host "  created application $($app.AppId)"
+    } else {
+        $app = [pscustomobject]@{ Id = '<not yet created>'; AppId = '<not yet created>' }
+        $appIsReal = $false
     }
 } else {
     Write-Host "  application already exists: $($app.AppId)"
@@ -101,8 +115,10 @@ if ($PSCmdlet.ShouldProcess($DisplayName, 'Set required API permissions')) {
 
 # --- federated identity credential ---------------------------------------
 $issuer = "https://login.microsoftonline.com/$TenantId/v2.0"
-$existing = Get-MgApplicationFederatedIdentityCredential -ApplicationId $app.Id -ErrorAction SilentlyContinue |
-Where-Object { $_.Name -eq $FederatedCredentialName }
+$existing = if ($appIsReal) {
+    Get-MgApplicationFederatedIdentityCredential -ApplicationId $app.Id -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -eq $FederatedCredentialName }
+}
 
 $ficParams = @{
     Name      = $FederatedCredentialName
@@ -126,7 +142,9 @@ if ($existing) {
 }
 
 # --- service principal ---------------------------------------------------
-$sp = Get-MgServicePrincipal -Filter "appId eq '$($app.AppId)'" -ErrorAction SilentlyContinue | Select-Object -First 1
+$sp = if ($appIsReal) {
+    Get-MgServicePrincipal -Filter "appId eq '$($app.AppId)'" -ErrorAction SilentlyContinue | Select-Object -First 1
+}
 if (-not $sp -and $PSCmdlet.ShouldProcess($app.AppId, 'Create service principal')) {
     $sp = New-MgServicePrincipal -AppId $app.AppId
     Write-Host "  created service principal $($sp.Id)"

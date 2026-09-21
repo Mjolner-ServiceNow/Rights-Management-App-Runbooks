@@ -51,10 +51,12 @@ jobs:
 
             ```powershell
             ./scripts/Initialize-RmaWorker.ps1 `
-                -ModuleSource 'https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/RMA.Runbooks-${{ steps.package.outputs.version }}.zip'
+                -ModuleSource 'https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/RMA.Runbooks-${{ steps.package.outputs.version }}.zip' `
+                -ExpectedSha256 '${{ steps.package.outputs.sha256 }}'
             ```
 
-            SHA256: `${{ steps.package.outputs.sha256 }}`
+            `-ExpectedSha256` is checked before the package is expanded. Omit it and the
+            script installs the download unverified, with a warning.
 
             The version installed must match the `RequiredVersion` in each runbook's
             `#Requires`. A mismatch fails the job at parse time, which is intended.

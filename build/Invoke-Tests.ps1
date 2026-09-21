@@ -10,7 +10,13 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-Import-Module Pester -MinimumVersion 5.5.0 -ErrorAction Stop
+
+# MinimumVersion alone loads the newest Pester present, which on a machine that also has
+# Pester 6 means the suite runs on a different major version than CI's 5.8.0. The cap
+# keeps both on the same band; 5.5.0 stays the floor because that is what the #Requires in
+# every test file asks for.
+Import-Module Pester -MinimumVersion 5.5.0 -MaximumVersion 5.99.99 -ErrorAction Stop
+Write-Host "Pester $((Get-Module Pester).Version)"
 
 $root = Split-Path $PSScriptRoot -Parent
 

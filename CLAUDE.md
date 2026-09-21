@@ -52,8 +52,11 @@ Invoke-Pester -Path ./tests/Unit/Logging.Tests.ps1
 Invoke-Pester -Path ./tests/Unit/Logging.Tests.ps1 -FullNameFilter '*redact*'
 ```
 
-CI installs Pester 5.8.0. A machine with Pester 6 also installed will load 6 by default;
-pin with `Import-Module Pester -MaximumVersion 5.99.99` if a test behaves oddly.
+CI installs Pester 5.8.0. `Invoke-Tests.ps1` caps itself with
+`-MaximumVersion 5.99.99` and prints the version it loaded, so a machine that also has
+Pester 6 still runs the suite on 5.x. Calling `Invoke-Pester` directly, as above, does not
+get that cap — add `Import-Module Pester -MaximumVersion 5.99.99` first if a test behaves
+oddly.
 
 ## Architecture
 
@@ -82,7 +85,8 @@ module-scoped and deliberately unexported.
 
 Every function in `Public/` must appear in `FunctionsToExport` in
 [RMA.Runbooks.psd1](src/RMA.Runbooks/RMA.Runbooks.psd1) and must carry comment-based help.
-`Test-ModuleManifestIntegrity.ps1` checks both — run it yourself; CI does not.
+`Test-ModuleManifestIntegrity.ps1` checks both from the AST, per function rather than per
+file — run it yourself; CI does not. A helper only the module calls goes in `Private/`.
 
 ### One identity, and the constraint that governs everything
 

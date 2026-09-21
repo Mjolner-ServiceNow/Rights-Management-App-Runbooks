@@ -31,8 +31,11 @@ working installation.
 4. **Publish the draft** when you are about to provision the workers. Nothing is public
    and no tag exists until you do. This is the one deliberate step, and it is deliberate
    because of 5 and 6.
-5. Run `Initialize-RmaWorker.ps1` on **every** worker in the group, passing
-   `-ExpectedSha256` from the release notes.
+5. On **every** worker in the group, elevated, paste the command block from the release
+   notes. It downloads `Initialize-RmaWorker.ps1` from that release, checks its SHA256,
+   and runs it against the verified module package — no checkout, and both hashes
+   generated into the notes by the release workflow. Add `-WhatIf` to the last line to
+   preview it first; the download and hash check still happen, nothing is installed.
 6. Run `Publish-RmaContent.ps1`, then `Test-RmaHealth`.
 
 Steps 5 and 6 in that order. A worker carrying the new module while the runbooks still pin

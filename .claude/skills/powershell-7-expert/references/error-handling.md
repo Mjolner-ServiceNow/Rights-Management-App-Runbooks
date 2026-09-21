@@ -33,9 +33,7 @@ try {
 try {
     Get-Item -Path $Source -ErrorAction Stop
     Copy-Item -Path $Source -Destination $Target
-} catch {
-    throw
-}
+} catch { throw }
 ```
 
 ```powershell
@@ -44,9 +42,7 @@ $ErrorActionPreference = 'Stop'
 try {
     Get-Item -Path $Source
     Copy-Item -Path $Source -Destination $Target
-} catch {
-    throw
-}
+} catch { throw }
 ```
 
 ## try/catch/finally cleanup
@@ -59,10 +55,7 @@ $connection = Open-DbConnection
 try {
     Invoke-DbQuery -Connection $connection
     $connection.Close()
-} catch {
-    $connection.Close()
-    throw
-}
+} catch { $connection.Close(); throw }
 ```
 
 ```powershell
@@ -70,9 +63,7 @@ try {
 $connection = Open-DbConnection
 try {
     Invoke-DbQuery -Connection $connection
-} finally {
-    $connection.Close()
-}
+} finally { $connection.Close() }
 ```
 
 ## Catch a specific exception type before the general one
@@ -92,11 +83,8 @@ try {
 # RIGHT
 try {
     [System.IO.File]::ReadAllText($Path)
-} catch [System.IO.FileNotFoundException] {
-    throw "File $Path does not exist. Check the path and retry."
-} catch {
-    throw "Could not read $Path : $($_.Exception.Message)"
-}
+} catch [System.IO.FileNotFoundException] { throw "File not found: $Path" }
+catch { throw "Read failed: $($_.Exception.Message)" }
 ```
 
 ## throw vs. Write-Error
@@ -105,22 +93,16 @@ try {
 
 ```powershell
 # WRONG
-function Get-Config {
-    param([string] $Path)
-    if (-not (Test-Path -Path $Path)) {
-        Write-Error "Config file not found: $Path"
-    }
+function Get-Config([string] $Path) {
+    if (-not (Test-Path -Path $Path)) { Write-Error "Missing: $Path" }
     Get-Content -Path $Path -Raw | ConvertFrom-Json
 }
 ```
 
 ```powershell
 # RIGHT
-function Get-Config {
-    param([string] $Path)
-    if (-not (Test-Path -Path $Path)) {
-        throw "Config file not found: $Path"
-    }
+function Get-Config([string] $Path) {
+    if (-not (Test-Path -Path $Path)) { throw "Missing: $Path" }
     Get-Content -Path $Path -Raw | ConvertFrom-Json
 }
 ```

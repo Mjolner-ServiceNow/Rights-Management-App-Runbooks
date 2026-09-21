@@ -42,7 +42,8 @@ function Get-RmaImdsToken {
     }
 
     try {
-        $response = Invoke-RestMethod -Uri $uri -Headers $headers -Method GET -TimeoutSec $TimeoutSeconds
+        $response = Invoke-RestMethod -Uri $uri -Headers $headers -Method GET `
+            -TimeoutSec $TimeoutSeconds -ErrorAction Stop
     } catch {
         throw ("Unable to acquire a managed identity token for '{0}' from the {1} endpoint. " -f
             $Resource, $(if ($useSandbox) { 'cloud sandbox' } else { 'IMDS' })) +
@@ -50,15 +51,22 @@ function Get-RmaImdsToken {
         "account has no managed identity of its own. Underlying error: $($_.Exception.Message)"
     }
 
+    $accessToken = Get-RmaProperty -InputObject $response -Name 'access_token'
+    if ([string]::IsNullOrEmpty($accessToken)) {
+        throw ("The identity endpoint answered for '$Resource' but returned no access_token. " +
+            'Check that the managed identity is attached and has been granted access to the resource.')
+    }
+
     # expires_on is a Unix timestamp on IMDS and may be a string.
-    $expiresOn = if ($response.PSObject.Properties.Name -contains 'expires_on') {
-        [DateTimeOffset]::FromUnixTimeSeconds([int64] $response.expires_on).UtcDateTime
+    $expiresRaw = Get-RmaProperty -InputObject $response -Name 'expires_on'
+    $expiresOn = if ($null -ne $expiresRaw) {
+        [DateTimeOffset]::FromUnixTimeSeconds([int64] $expiresRaw).UtcDateTime
     } else {
         (Get-Date).ToUniversalTime().AddMinutes(55)
     }
 
     [pscustomobject]@{
-        AccessToken = $response.access_token
+        AccessToken = $accessToken
         ExpiresOn   = $expiresOn
         Resource    = $Resource
     }

@@ -54,7 +54,12 @@ $context.BaseUri, [uri]::EscapeDataString($query), ($MaxRequeue + 1)
 
 function Invoke-RmaRequeue {
     [CmdletBinding(SupportsShouldProcess)]
-    param($Context, $StaleJobs, [int]$StaleAfterMinutes)
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)] [PSTypeName('Rma.ServiceNowContext')] $Context,
+        [Parameter(Mandatory)][AllowEmptyCollection()] [object[]] $StaleJobs,
+        [Parameter(Mandatory)][ValidateRange(5, 1440)] [int] $StaleAfterMinutes
+    )
 
     $requeued = 0
     foreach ($job in $StaleJobs) {

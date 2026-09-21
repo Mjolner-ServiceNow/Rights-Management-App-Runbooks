@@ -2,20 +2,29 @@
     Severity = @('Error', 'Warning')
 
     # Custom rules encode the defects found in the previous library. Each one exists
-    # because that exact mistake reached production.
-    CustomRulePath      = @('./build/rules')
+    # because that exact mistake reached production. They are loaded by
+    # build/Invoke-Analysis.ps1, which passes -CustomRulePath explicitly.
+    #
+    # A CustomRulePath here would not work and used to be set anyway. A relative path in
+    # a settings file resolves against the current directory, not the settings file, so
+    # from anywhere but the repository root the run failed outright with "Cannot find
+    # path .../build/rules"; and from the repository root the rules did not load at all.
+    # Keep the one mechanism that is verified to work: the explicit parameter.
     IncludeDefaultRules = $true
 
-    # Test files are analysed, but two rules only make sense for production code:
-    # Pester helper factories are not state-changing cmdlets, and mock scriptblock
-    # parameters are bound by Pester rather than read by the body.
-    # Applied repository-wide because PSScriptAnalyzer settings are not path-scoped;
-    # production violations of these two are caught in review.
+    # Applied repository-wide, because PSScriptAnalyzer settings are not path-scoped.
+    # Production violations of either are caught in review.
     ExcludeRules = @(
+        # Pester helper factories and the queue functions are not state-changing cmdlets
+        # in the sense this rule means. Set-RmaJobState declares SupportsShouldProcess on
+        # its own merits, not because the analyzer asked.
         'PSUseShouldProcessForStateChangingFunctions'
-        # Runbooks legitimately write to the Automation output stream for operator
-        # visibility; Write-RmaLog handles structure. Write-Host is still discouraged
-        # and is caught by the custom rule below.
+
+        # Runbooks and build scripts legitimately write to the host for operator
+        # visibility. Write-RmaLog, not the analyzer, is the enforcement point for
+        # anything that belongs in the job log: it adds a level, a correlation id and
+        # redaction, and RmaAvoidUnredactedObjectLogging covers the leak this rule does
+        # not.
         'PSAvoidUsingWriteHost'
     )
 

@@ -53,7 +53,14 @@ function Test-RmaPrerequisite {
 
     Write-RmaLog -Level Information -Message 'Prerequisite check passed'
 
-    [pscustomobject]@{
+    # Two context shapes flow through this module under the same parameter name, and
+    # passing the wrong one used to surface as a property-not-found somewhere far away.
+    # They are named now. This one is the full context: it carries the managed identity
+    # and the domain record, which is what Connect-RmaGraph and Connect-RmaExchange read.
+    # It also answers to Rma.ServiceNowContext, because it carries BaseUri and Headers and
+    # the queue functions legitimately take it.
+    $result = [pscustomobject]@{
+        PSTypeName              = 'Rma.Context'
         Instance                = $Instance
         BaseUri                 = $context.BaseUri
         Headers                 = $context.Headers
@@ -62,4 +69,6 @@ function Test-RmaPrerequisite {
         ManagedIdentityClientId = $ManagedIdentityClientId
         Domain                  = $config
     }
+    $result.PSObject.TypeNames.Insert(1, 'Rma.ServiceNowContext')
+    $result
 }

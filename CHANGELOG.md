@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `build/Assert-ModuleVersionBump.ps1`, run by CI on every pull request. If anything under
+  `src/RMA.Runbooks` changed against the merge base, `ModuleVersion` must be greater.
+  CONTRIBUTING.md claimed CI enforced this; the only check was in `release.yml` at tagging
+  time, so an unbumped change passed pull-request CI and failed later in front of whoever
+  was cutting the release. `Test-ModuleManifestIntegrity.ps1` is in the same new CI job,
+  having also been documented as enforced while running only by hand.
 - `tests/Unit/Identity.Tests.ps1`. `Get-RmaImdsToken`, `Test-RmaPrerequisite`,
   `Connect-RmaGraph` and `Connect-RmaExchange` were all at 0% line coverage — the identity
   path, which is the constraint the whole design turns on, was the one part with no tests,
@@ -74,6 +80,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   profile. Added a troubleshooting entry for a PowerShell 7 job that never starts.
 
 ### Fixed
+- Responses are read through `Get-RmaProperty` everywhere, not almost everywhere. The
+  helper exists because ServiceNow, IMDS and Graph are all shape-variable and an unguarded
+  read throws under `Set-StrictMode -Version Latest`, but nine call sites still read
+  directly. The worst was `$job.sys_id` in `Invoke-RmaQueueLoop`, outside the try/finally:
+  one malformed row threw out of the loop and abandoned every remaining job. A row without
+  a `sys_id` is now skipped and logged, and a row without an `input` payload fails that one
+  job with a message naming the field.
+- Two context shapes travelled through the module under one parameter name and one type,
+  so passing the wrong one surfaced as a property-not-found far from the call.
+  `Connect-RmaServiceNow` now returns an `Rma.ServiceNowContext` and `Test-RmaPrerequisite`
+  an `Rma.Context` that also answers to the former, and each function declares which it
+  takes with `[PSTypeName(...)]`. Handing `Connect-RmaGraph` a ServiceNow context now fails
+  at parameter binding.
+- `CustomRulePath` in `build/PSScriptAnalyzerSettings.psd1` never loaded the custom rules.
+  A relative path in a settings file resolves against the current directory, so from
+  anywhere but the repository root the run failed outright with "Cannot find path
+  .../build/rules", and from the repository root the rules did not load at all — verified
+  both ways. Removed; `build/Invoke-Analysis.ps1` passes `-CustomRulePath` explicitly,
+  which is the mechanism that works. The `ExcludeRules` comment also described two rules
+  other than the two excluded.
+- `$env:COMPUTERNAME` is `[Environment]::MachineName`. The former is null off Windows, so
+  the worker id in the log and in the claim read-back was `/local` on a Linux runner.
+- `Join-Path $modulesRoot "RMA.Runbooks\$version"` had a literal backslash three lines
+  below an explicit non-Windows branch. PowerShell normalises it, so this was style rather
+  than a break, but the house rule says no literal separators and the file argued both
+  ways at once.
+- `[CmdletBinding()]` and validated parameters on `Add-Check`, `Invoke-AutomationApi` and
+  `Invoke-RmaRequeue`, and `-ErrorAction Stop` on the `Invoke-RestMethod` inside
+  `Get-RmaImdsToken`'s try.
 - `Get-RmaAccessToken` could hand one tenant a token minted for another. The cache key was
   parameter set, resource and managed identity client id; `ApplicationId` and `TenantId`
   were missing, so two federated calls for the same scope through the same managed

@@ -3,9 +3,10 @@
 BeforeAll {
     Import-Module "$PSScriptRoot/../../src/RMA.Runbooks/RMA.Runbooks.psd1" -Force
     $script:Context = [pscustomobject]@{
-        Instance = 'contoso'
-        BaseUri  = 'https://contoso.service-now.com'
-        Headers  = @{ Authorization = 'Basic redacted' }
+        PSTypeName = 'Rma.ServiceNowContext'
+        Instance   = 'contoso'
+        BaseUri    = 'https://contoso.service-now.com'
+        Headers    = @{ Authorization = 'Basic redacted' }
     }
     $script:SysId = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6'
 }

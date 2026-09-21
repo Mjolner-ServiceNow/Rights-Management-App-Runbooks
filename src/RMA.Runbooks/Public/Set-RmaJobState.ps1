@@ -14,7 +14,7 @@ function Set-RmaJobState {
     [CmdletBinding(SupportsShouldProcess)]
     [OutputType([void])]
     param(
-        [Parameter(Mandatory)] [pscustomobject] $Context,
+        [Parameter(Mandatory)] [PSTypeName('Rma.ServiceNowContext')] $Context,
 
         [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{32}$')]
         [string] $SysId,
@@ -56,5 +56,5 @@ function Set-RmaJobState {
     }
 
     Write-RmaLog -Level Information -Message 'Job state updated' -Data @{ sysId = $SysId; state = $State }
-    if ($PassThru) { $response.result }
+    if ($PassThru) { Get-RmaProperty -InputObject $response -Name 'result' }
 }

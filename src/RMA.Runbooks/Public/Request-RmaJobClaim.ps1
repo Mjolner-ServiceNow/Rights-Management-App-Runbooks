@@ -27,7 +27,7 @@ function Request-RmaJobClaim {
     [CmdletBinding()]
     [OutputType([bool])]
     param(
-        [Parameter(Mandatory)] [pscustomobject] $Context,
+        [Parameter(Mandatory)] [PSTypeName('Rma.ServiceNowContext')] $Context,
 
         [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{32}$')]
         [string] $SysId,

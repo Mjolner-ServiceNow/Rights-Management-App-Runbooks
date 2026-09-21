@@ -137,6 +137,18 @@ toward the floor below and can fail the build through `build/Assert-Coverage.ps1
 file under `Public/`, so a second function defined inside a file named after another one is
 caught, and `.SYNOPSIS` and `[CmdletBinding()]` are checked per function rather than per
 file. A helper that only the module calls belongs in `Private/`, where none of this applies.
+It runs in CI, in the `module` job, alongside `build/Assert-ModuleVersionBump.ps1`.
+
+## Say which context a function takes
+
+Two context shapes travel through this module. `Connect-RmaServiceNow` returns an
+`Rma.ServiceNowContext`, carrying `Instance`, `BaseUri` and `Headers`; `Test-RmaPrerequisite`
+returns an `Rma.Context`, which adds `ManagedIdentityClientId` and `Domain` and also answers
+to `Rma.ServiceNowContext` so the queue functions accept it. Declare the one you need with
+`[PSTypeName('Rma.Context')]` or `[PSTypeName('Rma.ServiceNowContext')]` rather than
+`[pscustomobject]`, so handing `Connect-RmaGraph` the wrong one fails at binding instead of
+as a property-not-found further in. A test fixture builds one by putting
+`PSTypeName = 'Rma.ServiceNowContext'` in the hashtable literal.
 
 ## Coverage floor is 70% of lines
 

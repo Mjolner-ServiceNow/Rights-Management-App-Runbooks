@@ -23,5 +23,7 @@ function Get-RmaWorkerId {
             $jobId = "$($meta.JobId)"
         }
     }
-    '{0}/{1}' -f $env:COMPUTERNAME, $jobId
+    # Not $env:COMPUTERNAME: that is null off Windows, and a worker id of '/local' makes
+    # the claim read-back meaningless when the suite runs on a Linux CI runner.
+    '{0}/{1}' -f [Environment]::MachineName, $jobId
 }

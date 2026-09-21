@@ -79,10 +79,21 @@ function Get-RmaAccessToken {
         client_assertion      = $assertion
     }
 
+    $accessToken = Get-RmaProperty -InputObject $response -Name 'access_token'
+    if ([string]::IsNullOrEmpty($accessToken)) {
+        throw ("The token exchange for '$Resource' succeeded but returned no access_token. " +
+            "Verify the federated identity credential on application '$ApplicationId' names this " +
+            'managed identity PRINCIPAL id as its subject.')
+    }
+
+    # expires_in is documented as seconds but has been absent on error-shaped 200s.
+    $expiresIn = Get-RmaProperty -InputObject $response -Name 'expires_in'
+    $expiresOn = if ($null -ne $expiresIn) { $now.AddSeconds([int] $expiresIn) } else { $now.AddMinutes(55) }
+
     $script:RmaTokenCache[$cacheKey] = [pscustomobject]@{
-        AccessToken = $response.access_token
-        ExpiresOn   = $now.AddSeconds([int] $response.expires_in)
+        AccessToken = $accessToken
+        ExpiresOn   = $expiresOn
         Resource    = $Resource
     }
-    return $response.access_token
+    return $accessToken
 }

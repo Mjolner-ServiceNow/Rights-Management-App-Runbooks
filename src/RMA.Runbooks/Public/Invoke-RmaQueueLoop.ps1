@@ -48,7 +48,7 @@ function Invoke-RmaQueueLoop {
     [CmdletBinding()]
     [OutputType([pscustomobject])]
     param(
-        [Parameter(Mandatory)] [pscustomobject] $Context,
+        [Parameter(Mandatory)] [PSTypeName('Rma.ServiceNowContext')] $Context,
 
         [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{32}$')]
         [string] $DomainId,
@@ -103,7 +103,18 @@ function Invoke-RmaQueueLoop {
         $emptyPolls = 0
         $job = $jobs[0]
 
-        if (-not (Request-RmaJobClaim -Context $Context -SysId $job.sys_id -WorkerId $workerId)) {
+        # Read before anything else and outside the try below. A row without sys_id cannot
+        # be claimed, executed or reported on, and reading it unguarded threw out of the
+        # whole loop under StrictMode - one malformed row abandoning the rest of the queue.
+        $sysId = Get-RmaProperty -InputObject $job -Name 'sys_id'
+        if ([string]::IsNullOrWhiteSpace($sysId)) {
+            $skipped++
+            Write-RmaLog -Level Error -Message 'Queue row has no sys_id; skipping it' -Data @{ command = $Command }
+            Start-Sleep -Seconds 2
+            continue
+        }
+
+        if (-not (Request-RmaJobClaim -Context $Context -SysId $sysId -WorkerId $workerId)) {
             $skipped++
             $consecutiveSkips++
             if ($consecutiveSkips -ge $MaxConsecutiveSkips) { $stopReason = 'claim-contention'; break }
@@ -116,22 +127,30 @@ function Invoke-RmaQueueLoop {
         $consecutiveSkips = 0
 
         $processed++
-        $script:RmaCorrelationId = $job.sys_id
+        $script:RmaCorrelationId = $sysId
 
         # Pre-set to Failed so an abrupt termination still reports a terminal state.
         $state = 'Failed'
         $err   = 'Runbook terminated before the job completed. Requeue or investigate the worker.'
 
         try {
-            $json = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($job.input))
+            # Guarded so a malformed row fails the job with a message an operator can act
+            # on, rather than with a StrictMode property-not-found from deep inside here.
+            $encoded = Get-RmaProperty -InputObject $job -Name 'input'
+            if ([string]::IsNullOrWhiteSpace($encoded)) {
+                throw "Queue row has no 'input' payload. Check the ServiceNow business rule that populates it."
+            }
+
+            $json = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encoded))
             $parameters = $json | ConvertFrom-Json
 
-            if ($parameters.action -ne $Command) {
-                throw "Action mismatch: the queue returned '$($parameters.action)' for a '$Command' runbook. " +
+            $action = Get-RmaProperty -InputObject $parameters -Name 'action'
+            if ($action -ne $Command) {
+                throw "Action mismatch: the queue returned '$action' for a '$Command' runbook. " +
                 'Check the ServiceNow command mapping.'
             }
 
-            Write-RmaLog -Level Information -Message 'Processing job' -Data @{ sysId = $job.sys_id; action = $parameters.action }
+            Write-RmaLog -Level Information -Message 'Processing job' -Data @{ sysId = $sysId; action = $action }
 
             $null = & $Body $job $parameters
 
@@ -140,15 +159,15 @@ function Invoke-RmaQueueLoop {
         } catch {
             $err = '{0} (at line {1})' -f $_.Exception.Message, $_.InvocationInfo.ScriptLineNumber
             $failed++
-            Write-RmaLog -Level Error -Message 'Job failed' -Data @{ sysId = $job.sys_id; error = $err }
+            Write-RmaLog -Level Error -Message 'Job failed' -Data @{ sysId = $sysId; error = $err }
         } finally {
             try {
-                Set-RmaJobState -Context $Context -SysId $job.sys_id -State $state -ExceptionMessage $err
+                Set-RmaJobState -Context $Context -SysId $sysId -State $state -ExceptionMessage $err
             } catch {
                 # The job is now stranded in Work in Progress. The watchdog runbook will
                 # requeue it. Log loudly, but do not abandon the rest of the queue.
                 Write-RmaLog -Level Error -Message 'Could not write terminal state; job will be requeued by the watchdog' `
-                    -Data @{ sysId = $job.sys_id; intendedState = $state; error = $_.Exception.Message }
+                    -Data @{ sysId = $sysId; intendedState = $state; error = $_.Exception.Message }
             }
             $script:RmaCorrelationId = $null
         }

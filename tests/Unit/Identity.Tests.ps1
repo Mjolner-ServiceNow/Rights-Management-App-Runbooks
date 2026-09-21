@@ -146,9 +146,10 @@ Describe 'Test-RmaPrerequisite' -Tag 'Unit' {
         Mock -ModuleName RMA.Runbooks Get-RmaAccessToken { 'token' }
         Mock -ModuleName RMA.Runbooks Connect-RmaServiceNow {
             [pscustomobject]@{
-                Instance = 'contoso'
-                BaseUri  = 'https://contoso.service-now.com'
-                Headers  = @{ Authorization = 'Basic x' }
+                PSTypeName = 'Rma.ServiceNowContext'
+                Instance   = 'contoso'
+                BaseUri    = 'https://contoso.service-now.com'
+                Headers    = @{ Authorization = 'Basic x' }
             }
         }
         Mock -ModuleName RMA.Runbooks Get-RmaDomainConfig {
@@ -202,10 +203,66 @@ Describe 'Test-RmaPrerequisite' -Tag 'Unit' {
     }
 }
 
+Describe 'Context typing' -Tag 'Unit' {
+
+    # Two shapes used to flow through this module under one parameter name and one type.
+    # Passing the wrong one surfaced as a property-not-found somewhere far from the call.
+    BeforeAll {
+        $script:ServiceNowOnly = [pscustomobject]@{
+            PSTypeName = 'Rma.ServiceNowContext'
+            Instance   = 'contoso'
+            BaseUri    = 'https://contoso.service-now.com'
+            Headers    = @{}
+        }
+        $script:Full = [pscustomobject]@{
+            PSTypeName              = 'Rma.Context'
+            Instance                = 'contoso'
+            BaseUri                 = 'https://contoso.service-now.com'
+            Headers                 = @{}
+            ManagedIdentityClientId = $script:MiClientId
+            Domain                  = [pscustomobject]@{ TenantId = $script:TenantId }
+        }
+        $script:Full.PSObject.TypeNames.Insert(1, 'Rma.ServiceNowContext')
+    }
+
+    It 'refuses the ServiceNow context where the full context is required' {
+        { Connect-RmaGraph -Context $script:ServiceNowOnly -ApplicationId $script:AppId } |
+        Should -Throw '*Rma.Context*'
+    }
+
+    It 'accepts the full context where only the ServiceNow one is required' {
+        # Test-RmaPrerequisite returns the full context and the runbooks hand it straight
+        # to the queue functions, so this has to keep working.
+        Mock -ModuleName RMA.Runbooks Invoke-RmaRestMethod { [pscustomobject]@{ result = @() } }
+
+        { Get-RmaPendingJob -Context $script:Full -DomainId $script:DomainId -Command 'Create-EntraUser' } |
+        Should -Not -Throw
+    }
+
+    It 'gives Test-RmaPrerequisite output both names' {
+        Mock -ModuleName RMA.Runbooks Write-RmaLog {}
+        Mock -ModuleName RMA.Runbooks Get-RmaAccessToken { 'token' }
+        Mock -ModuleName RMA.Runbooks Connect-RmaServiceNow {
+            [pscustomobject]@{ PSTypeName = 'Rma.ServiceNowContext'; Instance = 'contoso'
+                BaseUri = 'https://contoso.service-now.com'; Headers = @{}
+            }
+        }
+        Mock -ModuleName RMA.Runbooks Get-RmaDomainConfig { [pscustomobject]@{ TenantId = 'x' } }
+
+        $context = Test-RmaPrerequisite -Instance 'contoso' -DomainId $script:DomainId `
+            -VaultName 'kv-rma-test' -ManagedIdentityClientId $script:MiClientId `
+            -ServiceNowUserName 'svc-rma'
+
+        $context.PSObject.TypeNames | Should -Contain 'Rma.Context'
+        $context.PSObject.TypeNames | Should -Contain 'Rma.ServiceNowContext'
+    }
+}
+
 Describe 'Connect-RmaGraph' -Tag 'Unit', 'Security' {
 
     BeforeAll {
         $script:GraphContext = [pscustomobject]@{
+            PSTypeName              = 'Rma.Context'
             ManagedIdentityClientId = $script:MiClientId
             Domain                  = [pscustomobject]@{ TenantId = $script:TenantId }
         }
@@ -260,6 +317,7 @@ Describe 'Connect-RmaExchange' -Tag 'Unit', 'Security' {
 
     BeforeAll {
         $script:ExoContext = [pscustomobject]@{
+            PSTypeName              = 'Rma.Context'
             ManagedIdentityClientId = $script:MiClientId
             Domain                  = [pscustomobject]@{ TenantId = $script:TenantId }
         }

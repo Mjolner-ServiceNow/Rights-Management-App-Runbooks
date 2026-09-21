@@ -36,7 +36,12 @@ Set-StrictMode -Version Latest
 $checks = [System.Collections.Generic.List[object]]::new()
 
 function Add-Check {
-    param([string]$Name, [scriptblock]$Test)
+    [CmdletBinding()]
+    [OutputType([void])]
+    param(
+        [Parameter(Mandatory)][ValidateNotNullOrEmpty()] [string] $Name,
+        [Parameter(Mandatory)] [scriptblock] $Test
+    )
     $sw = [Diagnostics.Stopwatch]::StartNew()
     try {
         $detail = & $Test

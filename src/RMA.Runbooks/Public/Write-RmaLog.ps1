@@ -41,7 +41,7 @@ function Write-RmaLog {
         message       = $Message
         runbook       = $Runbook
         correlationId = $CorrelationId
-        worker        = $env:COMPUTERNAME
+        worker        = [Environment]::MachineName
     }
 
     if ($PSBoundParameters.ContainsKey('Data') -and $Data.Count -gt 0) {

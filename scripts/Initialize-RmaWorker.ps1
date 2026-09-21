@@ -215,7 +215,7 @@ if (-not $SkipSharedModule) {
         }
 
         $version = (Import-PowerShellDataFile (Join-Path $sourceDir 'RMA.Runbooks.psd1')).ModuleVersion
-        $target  = Join-Path $modulesRoot "RMA.Runbooks\$version"
+        $target  = Join-Path $modulesRoot 'RMA.Runbooks' $version
 
         if (Test-Path (Join-Path $target 'RMA.Runbooks.psd1')) {
             Write-Host ('  {0,-52} {1}  present' -f 'RMA.Runbooks', $version)

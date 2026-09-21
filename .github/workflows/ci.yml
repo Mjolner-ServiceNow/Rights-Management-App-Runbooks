@@ -54,6 +54,27 @@ jobs:
           category: psscriptanalyzer
         continue-on-error: true
 
+  module:
+    name: Module contract
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth 0 so the merge base with the target branch is reachable.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Both of these were documented as CI checks and were not run by CI. An export
+      # missing from the manifest reached main, and an unbumped module change passed here
+      # and failed later at tagging.
+      - name: Manifest integrity
+        shell: pwsh
+        run: ./build/Test-ModuleManifestIntegrity.ps1
+
+      - name: Require a ModuleVersion bump when the module changes
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        run: ./build/Assert-ModuleVersionBump.ps1 -BaseRef 'origin/${{ github.base_ref }}'
+
   test:
     name: Unit tests
     runs-on: ubuntu-latest

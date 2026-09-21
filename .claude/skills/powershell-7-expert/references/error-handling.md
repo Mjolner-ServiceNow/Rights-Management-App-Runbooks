@@ -109,7 +109,7 @@ function Get-Config([string] $Path) {
 
 ## $PSCmdlet.ThrowTerminatingError() in a function
 
-Inside an advanced function, prefer `$PSCmdlet.ThrowTerminatingError()` over a bare `throw` when rethrowing a caught error. `throw` wraps the message in a new exception and adds this function's line to the stack trace; `ThrowTerminatingError()` passes the original `ErrorRecord` through unchanged, so the caller sees the real exception type and origin.
+Inside an advanced function, prefer `$PSCmdlet.ThrowTerminatingError()` over a bare `throw $_` when rethrowing a caught error. Confirmed against a real two-frame `System.IO.FileNotFoundException` (thrown inside a helper, caught and rethrown by the advanced function, caught again by its caller): both forms preserve the original exception type (`$_.Exception.GetType().FullName` is `System.IO.FileNotFoundException` either way), and a typed `catch [System.IO.FileNotFoundException]` upstream matches either way too — `throw $_` does not wrap the message in a new exception, and the `ScriptStackTrace` comes out the same depth for both. The real difference is `InvocationInfo`: `throw $_` leaves it pointing at the original inner call site inside the helper, so the caller's error output shows the function's own internals; `ThrowTerminatingError()` rewrites `InvocationInfo` to the advanced function's own call site, so the failure reports as coming from your cmdlet instead of exposing where inside it the error actually originated.
 
 ```powershell
 # WRONG
@@ -163,7 +163,7 @@ catch {
 ```
 
 ```powershell
-# RIGHT
+# skip-validate
 catch {
     Write-Warning "Upload failed: $($_.Exception.Message)"
 }

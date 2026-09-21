@@ -5,6 +5,20 @@ that names this repository's own functions, scripts and numbers, and the one fil
 replace when the skill is reused elsewhere. The floor is PowerShell 7.2 (`PowerShellVersion`
 in `src/RMA.Runbooks/RMA.Runbooks.psd1`).
 
+## The mandatory gate's five repository-specific analyzer rules
+
+`build/Invoke-Analysis.ps1` enforces five repository-specific rules — `Measure-RmaEmptyCatchBlock`, `Measure-RmaRuntimeModuleInstall`, `Measure-RmaUnpinnedModuleInstall`, `Measure-RmaScriptScopeReturn`, `Measure-RmaUnredactedObjectLogging` — defined in `build/rules/RmaRules.psm1`. Each is explained in its own section below.
+
+## Validating this skill's own examples
+
+Every PowerShell code block in this skill (outside `tools/fixtures/`) must parse and pass
+PSScriptAnalyzer, unless its first line marks it `# WRONG` or `# skip-validate`. Check that
+before committing an edit to any reference file:
+
+```bash
+pwsh -File .claude/skills/powershell-7-expert/tools/Test-SkillExample.ps1 -Path .claude/skills/powershell-7-expert
+```
+
 ## Log through Write-RmaLog, not Write-Output or Write-Host
 
 Call `Write-RmaLog -Level <Debug|Information|Warning|Error> -Message <string> -Data <hashtable>`.
@@ -50,7 +64,9 @@ Invoke-RmaRestMethod -Uri $Uri -Method GET
 
 `references/error-handling.md` teaches never to leave a `catch {}` empty; in this repository
 that is not just style. `Measure-RmaEmptyCatchBlock` fails the analyzer on any `catch` with zero
-statements in its body — `Create-ADGroup.ps1` once wrapped a job-claim call in `catch {}`, so a
+statements in its body — `Create-ADGroup.ps1`, a script from the previous library this one
+replaced (not present in this repository; see `build/PSScriptAnalyzerSettings.psd1`'s own
+comment on where the custom rules come from), once wrapped a job-claim call in `catch {}`, so a
 failed claim still ran the job while the queue believed it was still pending, and the next poll
 picked up and re-ran the same job. Handle the error, set a failure flag, or re-throw; an empty
 block is never acceptable, not even with a comment inside it.
@@ -58,7 +74,8 @@ block is never acceptable, not even with a comment inside it.
 ## No bare return at script scope
 
 A bare `return` outside any function exits the entire runbook, not just the enclosing `if`.
-`Update-EntraUser.ps1` used one to skip a single step and instead abandoned the whole queue:
+`Update-EntraUser.ps1`, another script from that same previous library and likewise not present
+here, used one to skip a single step and instead abandoned the whole queue:
 no write-back to ServiceNow, the job stranded in Work in Progress. `Measure-RmaScriptScopeReturn`
 enforces this; the one exception it recognizes is the `ShouldProcess` guard documented in
 `references/function-design.md` (`if (-not $PSCmdlet.ShouldProcess(...)) { return }`), because
@@ -97,6 +114,12 @@ duration of that job; `Write-RmaLog`'s `-CorrelationId` parameter defaults to it
 generate your own id or thread one through as an extra parameter — read the ambient one so
 every log line for a job can be queried by the same `sys_id` end to end.
 
+## Pester version is pinned to 5.5.0
+
+Every file under `tests/Unit/` starts with
+`#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '5.5.0' }` — see
+`references/testing-and-security.md` for why a test file should pin a version at all.
+
 ## Every exported function is registered and tested
 
 A new public function lives in `src/RMA.Runbooks/Public/`, is listed under
@@ -116,8 +139,10 @@ it only produces `tests/Coverage.xml`. The floor itself is enforced separately b
 ## Formatting comes from build/Invoke-Format.ps1
 
 `build/PSScriptAnalyzerSettings.psd1` sets 4-space indentation, an opening brace on the same
-line, and turns `PSAlignAssignmentStatement` off so assignments and `switch` arms can be
-aligned into columns by hand. `PSUseShouldProcessForStateChangingFunctions` and
+line, and turns three checks off so assignments and `switch` arms can be aligned into columns
+by hand: `PSAlignAssignmentStatement`, and `PSUseConsistentWhitespace`'s `CheckOperator` and
+`CheckOpenBrace` (the rest of `PSUseConsistentWhitespace` — inner-brace, pipe and separator
+spacing — stays on). `PSUseShouldProcessForStateChangingFunctions` and
 `PSAvoidUsingWriteHost` are excluded repository-wide — the former because Pester helper
 factories are not state-changing cmdlets, the latter because `Write-RmaLog` is the real
 enforcement point for logging, not the analyzer. Run `build/Invoke-Format.ps1` before

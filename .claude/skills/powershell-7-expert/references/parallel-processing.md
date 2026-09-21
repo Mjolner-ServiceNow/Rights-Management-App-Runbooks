@@ -74,8 +74,9 @@ Wrap each iteration's work in its own `try`/`catch`. An uncaught terminating err
 ```powershell
 # RIGHT
 1..5 | ForEach-Object -Parallel {
+    $item = $_
     try { Get-Content -Path $using:path -ErrorAction Stop }
-    catch { Write-Warning "Iteration $_ failed: $($_.Exception.Message)" }
+    catch { Write-Warning "Iteration $item failed: $($_.Exception.Message)" }
 }
 ```
 

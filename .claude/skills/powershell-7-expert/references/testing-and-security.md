@@ -1,6 +1,6 @@
 # Testing and security
 
-Code that hides its cmdlet calls behind private wrappers or `.NET` objects cannot be mocked, so its bugs surface in production instead of in a test run. Code that mishandles secrets or untrusted input creates its own incidents. The examples below target the Pester 5 API (`Describe`/`Context`/`It`, `Should -Invoke`); pin `#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '5.5.0' }` the way this repository's own tests do. A newer Pester major version can be installed alongside 5.x — `Invoke-Pester` with no version pinned resolves to whichever is highest, which may not be the one a test file was written against. Check `Get-Module Pester` (or `Get-Module -ListAvailable Pester`) before assuming which API is loaded.
+Code that hides its cmdlet calls behind private wrappers or `.NET` objects cannot be mocked, so its bugs surface in production instead of in a test run. Code that mishandles secrets or untrusted input creates its own incidents. The examples below target the Pester 5 API (`Describe`/`Context`/`It`, `Should -Invoke`); pin `#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '<version>' }` to whichever Pester 5.x version your repository pins — see `references/house-rules.md` for the version this one pins. A newer Pester major version can be installed alongside 5.x — `Invoke-Pester` with no version pinned resolves to whichever is highest, which may not be the one a test file was written against. Check `Get-Module Pester` (or `Get-Module -ListAvailable Pester`) before assuming which API is loaded.
 
 ## Design for mockability
 
@@ -213,8 +213,8 @@ Invoke-RestMethod -Uri $Uri -Headers @{ Authorization = "Bearer $apiKey" }
 
 ```powershell
 # RIGHT
-$apiKey = Get-Secret -Name 'ApiKey' -AsPlainText
-Invoke-RestMethod -Uri $Uri -Headers @{ Authorization = "Bearer $apiKey" }
+$secureApiKey = Get-Secret -Name 'ApiKey'
+Invoke-RestMethod -Uri $Uri -Authentication Bearer -Token $secureApiKey
 ```
 
 ## Redact before logging

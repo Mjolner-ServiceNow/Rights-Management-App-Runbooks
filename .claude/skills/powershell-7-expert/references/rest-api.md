@@ -113,6 +113,7 @@ Invoke-RestMethod -Uri $Uri -Authentication Bearer -Token $Token
 
 ```powershell
 # RIGHT
+# -OperationTimeoutSeconds needs 7.4+ (this file's floor is 7.2); drop it on 7.2/7.3
 Invoke-RestMethod -Uri $Uri -Authentication Bearer -Token $Token -TimeoutSec 10 -OperationTimeoutSeconds 30
 ```
 

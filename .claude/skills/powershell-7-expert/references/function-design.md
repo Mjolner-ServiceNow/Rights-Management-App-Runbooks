@@ -103,12 +103,10 @@ function Disable-StaleAccount {
 ```powershell
 # RIGHT
 function Disable-StaleAccount {
-    [CmdletBinding()]
-    param([Parameter(Mandatory, ValueFromPipeline, ValueFromPipelineByPropertyName)][string] $Identity)
+    [CmdletBinding(SupportsShouldProcess)] param([Parameter(Mandatory, ValueFromPipeline, ValueFromPipelineByPropertyName)][string] $Identity)
     begin { $count = 0 }
-    process { Disable-LocalUser -Name $Identity; $count++ }
-    end { Write-Verbose "Disabled $count account(s)." }
-}
+    process { if ($PSCmdlet.ShouldProcess($Identity, 'Disable account')) { Disable-LocalUser -Name $Identity; $count++ } }
+    end { Write-Verbose "Disabled $count account(s)." } }
 ```
 
 Piped through `[PSCustomObject]@{ Identity = 'alice' }, [PSCustomObject]@{ Identity = 'bob' }`, `ValueFromPipelineByPropertyName` binds `$Identity` from each object's `Identity` property in turn — confirmed against pwsh 7.5.4.

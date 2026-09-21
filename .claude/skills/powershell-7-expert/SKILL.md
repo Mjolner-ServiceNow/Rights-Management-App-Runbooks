@@ -19,6 +19,8 @@ description: Use when writing, reviewing, modernizing or debugging PowerShell 7+
 10. Never use `Invoke-Expression`.
 11. Write to the right stream: `Write-Output` for data, `Write-Verbose`/`Write-Warning`/`Write-Error` for everything else. Not `Write-Host`.
 
+Examples in the reference files below are trimmed to the lesson at hand and may omit one or more of these; all eleven still apply to real code.
+
 ## Where to look
 
 | If the task involves | Read |
@@ -49,19 +51,21 @@ description: Use when writing, reviewing, modernizing or debugging PowerShell 7+
 
 ## Before you call it done
 
-After changing any `.ps1`, `.psm1` or `.psd1` file, run both commands and show the output. Do not claim the code is finished, correct, or ready to commit without them. If analysis fails, fix the code — not the analyzer settings.
+After changing any `.ps1`, `.psm1` or `.psd1` file, run all three commands and show the output. Do not claim the code is finished, correct, or ready to commit without them. This matches what CI (`.github/workflows/ci.yml`) actually runs — a gate weaker than CI can go green here and still fail there. If analysis fails, fix the code — not the analyzer settings.
 
 ```bash
-pwsh -File build/Invoke-Analysis.ps1
+pwsh -File build/Invoke-Format.ps1 -Check
+```
+
+```bash
+pwsh -File build/Invoke-Analysis.ps1 -FailOn Error, Warning
 ```
 
 ```bash
 pwsh -File build/Invoke-Tests.ps1
 ```
 
-`build/Invoke-Analysis.ps1` enforces five repository-specific rules — `Measure-RmaEmptyCatchBlock`, `Measure-RmaRuntimeModuleInstall`, `Measure-RmaUnpinnedModuleInstall`, `Measure-RmaScriptScopeReturn`, `Measure-RmaUnredactedObjectLogging` — defined in `build/rules/RmaRules.psm1`.
-
-Outside this repository, where `build/` does not exist:
+In another repository, where `build/` does not exist, these three commands are replaced by that repository's own equivalents — see `references/house-rules.md`. As a generic fallback with no repository-specific settings to load:
 
 ```bash
 pwsh -NoProfile -Command "Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error,Warning"
@@ -70,3 +74,5 @@ pwsh -NoProfile -Command "Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error
 ```bash
 pwsh -NoProfile -Command "Invoke-Pester"
 ```
+
+A generic formatting-check fallback is omitted here because it only makes sense against a settings file the target repository owns; use that repository's own format-check command if it has one.

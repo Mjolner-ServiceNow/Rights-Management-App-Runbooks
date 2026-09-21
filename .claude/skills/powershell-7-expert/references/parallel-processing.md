@@ -48,7 +48,7 @@ $prefix = 'run'
 
 ## Thread-safe accumulation
 
-`+=` inside a parallel block does not race on the outer array — it discards every item, every time, because the assignment rebinds a local copy inside that runspace that is never written back to the caller's scope. Confirmed: accumulating 1 through 10 this way leaves the outer variable at count 0, not merely short some items. Use `[System.Collections.Concurrent.ConcurrentBag[object]]` and `.Add()` through `$using:` instead; confirmed to keep all 2000 items added concurrently at `-ThrottleLimit 16`, with no loss across repeated runs.
+`+=` inside a parallel block does not race on the outer array — it discards every item, every time. `$results` is invisible here too (the same rule as `$using:` above), so it reads as `$null`; `+=` on `$null` creates a brand-new, disconnected array each iteration that vanishes when the iteration ends — nothing was ever linked to the caller's variable. Confirmed: pre-seeding `$results` with three items and reading it inside the block still shows `count=0 isnull=True`, and the outer variable is unchanged afterward. Use `[System.Collections.Concurrent.ConcurrentBag[object]]` and `.Add()` through `$using:` instead; confirmed to keep all 2000 items added concurrently at `-ThrottleLimit 16`, with no loss across repeated runs.
 
 ```powershell
 # WRONG

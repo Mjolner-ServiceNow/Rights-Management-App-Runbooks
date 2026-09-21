@@ -46,6 +46,15 @@ Invoke-RestMethod -Uri $Uri -Method Get
 Invoke-RmaRestMethod -Uri $Uri -Method GET
 ```
 
+## Empty catch blocks are a build failure here
+
+`references/error-handling.md` teaches never to leave a `catch {}` empty; in this repository
+that is not just style. `Measure-RmaEmptyCatchBlock` fails the analyzer on any `catch` with zero
+statements in its body — `Create-ADGroup.ps1` once wrapped a job-claim call in `catch {}`, so a
+failed claim still ran the job while the queue believed it was still pending, and the next poll
+picked up and re-ran the same job. Handle the error, set a failure flag, or re-throw; an empty
+block is never acceptable, not even with a comment inside it.
+
 ## No bare return at script scope
 
 A bare `return` outside any function exits the entire runbook, not just the enclosing `if`.

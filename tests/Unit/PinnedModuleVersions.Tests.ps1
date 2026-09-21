@@ -51,8 +51,8 @@ Describe 'Pinned module versions' -Tag 'Unit' {
     }
 
     It 'installs every third-party module the runbooks require' {
-        # RMA.Runbooks is excluded: it is installed from this repository, not the gallery,
-        # and Publish-RmaContent.ps1 already checks it against the module manifest.
+        # RMA.Runbooks is excluded here: it is installed from this repository rather than
+        # the gallery, and the test below checks it against the module manifest instead.
         $thirdParty = @($script:declared | Where-Object { $_.Module -ne 'RMA.Runbooks' })
         $unprovisioned = foreach ($requirement in $thirdParty) {
             if (-not $script:pinned.ContainsKey($requirement.Module)) {
@@ -65,9 +65,9 @@ Describe 'Pinned module versions' -Tag 'Unit' {
     It 'keeps every runbook pinned to the RMA.Runbooks version this repository builds' {
         # Nothing checked this. Assert-ModuleVersionBump requires the manifest to move on
         # every module pull request, but not the three #Requires lines that have to move
-        # with it, so a bump without them passed CI and was caught only later by
-        # Publish-RmaContent.ps1 - or, with a release drafted automatically, produced a
-        # module version no runbook refers to.
+        # with it, so a bump without them reached main unnoticed. It matters more now than
+        # when it was written: the ServiceNow app publishes whatever is on main, so main
+        # being self-consistent is the last check there is.
         $manifestVersion = (Import-PowerShellDataFile (Join-Path $repoRoot 'src/RMA.Runbooks/RMA.Runbooks.psd1')).ModuleVersion
 
         $shared = @($script:declared | Where-Object { $_.Module -eq 'RMA.Runbooks' })

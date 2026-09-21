@@ -59,7 +59,7 @@ $failures = @(
 )
 
 if ($failures.Count -gt 0) {
-    $failures | ForEach-Object { Write-Error $_ -ErrorAction Continue }
+    $failures | ForEach-Object { Write-Output $_ }
     Write-Output "FAILED: $($failures.Count) block(s)."
     exit 1
 }

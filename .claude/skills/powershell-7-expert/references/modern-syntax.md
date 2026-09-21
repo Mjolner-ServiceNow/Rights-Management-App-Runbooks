@@ -169,5 +169,4 @@ $path = Join-Path -Path $Root -ChildPath 'logs' -AdditionalChildPath 'run.log'
 | `Invoke-WebRequest -UseBasicParsing` | `Invoke-WebRequest` | The switch is accepted for compatibility but does nothing; basic parsing is the only mode. |
 | `Get-WmiObject` | `Get-CimInstance` | The WMI cmdlets do not exist in PowerShell 7. Use the CIM cmdlets, gated on `$IsWindows`. |
 | `Get-Content -Encoding Byte` | `Get-Content -AsByteStream` | `Byte` is not a valid `-Encoding` value in PowerShell 7; binding it throws. |
-| `Write-Host` for data | `Write-Output` | `Write-Host` now writes to the information stream instead of nowhere, but it is still not pipeline data. |
 | No `#Requires -Version` | `#Requires -Version 7.2` | Without it, a script written for one version can silently start running on the other and fail mid-execution instead of refusing to load. |

@@ -115,7 +115,7 @@ Piped through `[PSCustomObject]@{ Identity = 'alice' }, [PSCustomObject]@{ Ident
 
 ## SupportsShouldProcess and the guard idiom
 
-Declare `SupportsShouldProcess` on any function that changes state, and set `ConfirmImpact = 'High'` when the change is destructive or hard to undo. This alone wires up `-WhatIf` and `-Confirm`: no `-WhatIf` parameter is ever declared by hand. Guard the change itself with `$PSCmdlet.ShouldProcess(...)` and return early when it comes back `$false`.
+Declare `SupportsShouldProcess` on any function that changes state, and set `ConfirmImpact = 'High'` when the change is destructive or hard to undo. This alone wires up `-WhatIf` and `-Confirm`: no `-WhatIf` parameter is ever declared by hand. Guard the change itself with `$PSCmdlet.ShouldProcess(...)` and return early when it comes back `$false`. The same applies to a standalone script: declare `[CmdletBinding(SupportsShouldProcess)]` on the script's `param()` block at script scope and guard the change with `$PSCmdlet.ShouldProcess(...)` exactly as below.
 
 ```powershell
 # WRONG

@@ -14,7 +14,7 @@ description: Use when writing, reviewing, modernizing or debugging PowerShell 7+
 5. Never accumulate with `+=` in a loop. Emit to the pipeline, or use `[System.Collections.Generic.List[T]]`.
 6. Build paths with `Join-Path`. Never write a literal `\`.
 7. Validate parameters with attributes (`ValidateSet`, `ValidateNotNullOrEmpty`, `ValidateRange`), not with `if` checks in the body.
-8. Declare `SupportsShouldProcess` on functions that change state, and honor `$PSCmdlet.ShouldProcess`.
+8. Declare `SupportsShouldProcess` on any function or script that creates, deletes, writes or modifies something outside its own process, and honor `$PSCmdlet.ShouldProcess`.
 9. Keep secrets in `SecureString` or fetch them at run time. Never log a whole payload object — log named fields.
 10. Never use `Invoke-Expression`.
 11. Write to the right stream: `Write-Output` for data, `Write-Verbose`/`Write-Warning`/`Write-Error` for everything else. Not `Write-Host`.

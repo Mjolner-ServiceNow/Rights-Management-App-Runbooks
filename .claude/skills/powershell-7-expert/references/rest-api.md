@@ -1,6 +1,6 @@
 # REST APIs
 
-`Invoke-RestMethod` and `Invoke-WebRequest` are PowerShell's built-in HTTP clients — no external module needed to make the call itself. Get authentication, body encoding and pagination right, and most integration bugs disappear before they start.
+`Invoke-RestMethod` and `Invoke-WebRequest` are PowerShell's built-in HTTP clients — no external module needed to make the call itself. Get authentication, body encoding and pagination right, and most integration bugs disappear before they start. This repository has its own rules for making these calls — see `references/house-rules.md`.
 
 ## Invoke-RestMethod vs. Invoke-WebRequest
 

@@ -17,7 +17,8 @@ $ErrorActionPreference = 'Stop'
 Import-Module PSScriptAnalyzer -ErrorAction Stop
 
 $files = if (Test-Path -Path $Path -PathType Container) {
-    Get-ChildItem -Path $Path -Filter '*.md' -Recurse -File -Force
+    # Exclude test fixtures from directory validation; single-file mode can validate them explicitly
+    Get-ChildItem -Path $Path -Filter '*.md' -Recurse -File -Force | Where-Object { $_.FullName -notmatch '[\\/]fixtures[\\/]' }
 }
 else {
     Get-Item -Path $Path -Force

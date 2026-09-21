@@ -23,6 +23,48 @@ function Get-JobStatus {
 }
 ```
 
+## Take dependencies as parameters
+
+A function that builds or resolves its own collaborator internally — constructs a client, reads a fixed config path, calls `Get-Date` mid-calculation — gives a test nothing to substitute. Take the collaborator as a parameter with a sensible default: production call sites stay just as short, and a test can pass a fake.
+
+```powershell
+# WRONG
+function Get-JobAge {
+    param([datetime] $Started)
+    (Get-Date) - $Started
+}
+```
+
+```powershell
+# RIGHT
+function Get-JobAge {
+    param([datetime] $Started, [datetime] $Now = (Get-Date))
+    $Now - $Started
+}
+```
+
+## Keep side effects at the edges
+
+One function that fetches, computes and writes forces a test of the computation to also mock the I/O around it. Split the computation into a pure function — data in, data out — and keep the fetching and writing in a thin caller around it; the pure part then needs no mocks at all.
+
+```powershell
+# WRONG
+function Update-JobBudget {
+    param([string] $JobId)
+    $job = Invoke-RestMethod -Uri "https://api.example.com/jobs/$JobId"
+    $job.Budget = $job.Spent * 1.1; Invoke-RestMethod -Uri $job.Uri -Method Put -Body $job
+}
+```
+
+```powershell
+# RIGHT
+function Get-UpdatedBudget {
+    param($Job)
+    $Job.Budget = $Job.Spent * 1.1
+    $Job
+}
+```
+
 ## Mock -ParameterFilter
 
 A `Mock` with no `-ParameterFilter` replaces every call to that command with the same canned result, no matter what arguments it receives — a function under test that calls the same cmdlet against two different endpoints gets the same fake answer for both, and a bug that mixes them up passes anyway. Add `-ParameterFilter` so each mock only answers the calls it actually describes; stack several filtered mocks to cover several inputs.
@@ -150,13 +192,22 @@ function Connect-RemoteHost {
 }
 ```
 
+At the one narrow point where this is legitimate, wrap the value the instant it arrives and drop the plaintext copy immediately — this still trips the analyzer rule unconditionally, which is why it is marked `skip-validate` rather than `RIGHT`:
+
+```powershell
+# skip-validate
+$plaintextSecret = (Invoke-RestMethod -Uri $VaultUri -Authentication Bearer -Token $VaultToken).data.value
+$secureSecret = ConvertTo-SecureString -String $plaintextSecret -AsPlainText -Force
+Remove-Variable -Name plaintextSecret
+```
+
 ## Retrieve secrets at run time
 
 Fetch a secret from a store when the function runs instead of embedding it as a literal. `Get-Secret` belongs to `Microsoft.PowerShell.SecretManagement` (also used in `references/rest-api.md`), not built into `pwsh` — it needs that module installed and a vault registered, and it hands back a `SecureString` or plaintext depending on the parameter used, never a value you had to build from a literal yourself.
 
 ```powershell
 # WRONG
-$apiKey = 'sk-live-91f3a7c2d4b8e5f6a0c1d2e3f4a5b6c7'
+$apiKey = 'PLACEHOLDER-NOT-A-REAL-KEY'
 Invoke-RestMethod -Uri $Uri -Headers @{ Authorization = "Bearer $apiKey" }
 ```
 

@@ -3,9 +3,21 @@ name: Release
 # Packages RMA.Runbooks and attaches it to a GitHub release, so Hybrid Workers can be
 # provisioned from a versioned URL with no credentials. Touches nothing outside this
 # repository and uses no secrets beyond the automatic GITHUB_TOKEN.
+#
+# Two ways in, and build/Get-RmaReleasePlan.ps1 is what tells them apart:
+#
+#   push of a v* tag   somebody typed the version. Publishes.
+#   push to main       ModuleVersion changed and has no release yet. Drafts, so the
+#                      package, the hash and the notes are ready and a person decides
+#                      when it ships. A release here is the artefact somebody installs
+#                      on every Hybrid Worker by hand, so the last step stays human.
+#
+# Everything below is skipped when the plan says there is nothing to do, which is most
+# pushes to main.
 
 on:
   push:
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
 
@@ -16,28 +28,30 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth 0 so existing v* tags are visible to the plan.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Verify the tag matches the module version
+      - id: plan
+        name: Decide whether to release, and whether as a draft
         shell: pwsh
-        run: |
-          $tag = '${{ github.ref_name }}' -replace '^v', ''
-          $manifest = (Import-PowerShellDataFile ./src/RMA.Runbooks/RMA.Runbooks.psd1).ModuleVersion
-          if ($tag -and $tag -ne $manifest) {
-            # A release whose asset version disagrees with its tag is how a worker ends up
-            # running a module the runbooks are not pinned to.
-            throw "Tag v$tag does not match ModuleVersion $manifest."
-          }
-          Write-Host "Tag and manifest agree on $manifest"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./build/Get-RmaReleasePlan.ps1 -RefType '${{ github.ref_type }}' -RefName '${{ github.ref_name }}'
 
       - id: package
+        if: steps.plan.outputs.proceed == 'true'
         name: Package module
         shell: pwsh
         run: ./build/New-RmaModulePackage.ps1 -OutputDirectory ./out
 
       - name: Create release
+        if: steps.plan.outputs.proceed == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.plan.outputs.tag }}
+          draft: ${{ steps.plan.outputs.draft }}
           files: ./out/RMA.Runbooks-*.zip
           generate_release_notes: true
           body: |
@@ -60,3 +74,15 @@ jobs:
 
             The version installed must match the `RequiredVersion` in each runbook's
             `#Requires`. A mismatch fails the job at parse time, which is intended.
+
+      - name: Say what was produced
+        if: steps.plan.outputs.proceed == 'true'
+        shell: pwsh
+        run: |
+          $what = if ('${{ steps.plan.outputs.draft }}' -eq 'true') {
+            'Drafted ${{ steps.plan.outputs.tag }}. Nothing is public and no tag exists until someone publishes it. Do that when the workers are about to be provisioned.'
+          } else {
+            'Published ${{ steps.plan.outputs.tag }}.'
+          }
+          Write-Host $what
+          if ($env:GITHUB_STEP_SUMMARY) { "### $what" | Add-Content $env:GITHUB_STEP_SUMMARY }

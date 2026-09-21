@@ -144,6 +144,22 @@ Both gaps the docs used to overstate are now wired in
 One thing is still checked only by eye: nothing automated rejects customer-identifying
 values in committed files. See *This repository is public* below.
 
+## Releases are drafted automatically and published by hand
+
+[release.yml](.github/workflows/release.yml) has two entry points, and
+[build/Get-RmaReleasePlan.ps1](build/Get-RmaReleasePlan.ps1) is what tells them apart. A
+push to `main` whose `ModuleVersion` has no release yet **drafts** one, package and SHA256
+attached; a pushed `v*` tag **publishes**. Most pushes to `main` produce nothing, because a
+release for that version already exists.
+
+The last step stays human on purpose. A release here is not a marker — it is the artefact
+somebody installs on every Hybrid Worker by hand, after which the runbooks have to be
+republished. `Assert-ModuleVersionBump.ps1` requires a bump on every pull request that
+touches the module, so publishing automatically would put out one release per module pull
+request and let release cadence follow merge tempo rather than whether the fleet is ready.
+A draft holds its `tag_name` without creating the tag, so nothing is public until someone
+clicks Publish.
+
 ## This repository is public
 
 Nothing may identify a customer: ServiceNow instance names, tenant or subscription IDs,

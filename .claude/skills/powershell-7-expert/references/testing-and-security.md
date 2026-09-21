@@ -25,7 +25,7 @@ function Get-JobStatus {
 
 ## Take dependencies as parameters
 
-A function that builds or resolves its own collaborator internally — constructs a client, reads a fixed config path, calls `Get-Date` mid-calculation — gives a test nothing to substitute. Take the collaborator as a parameter with a sensible default: production call sites stay just as short, and a test can pass a fake.
+A function that builds or resolves its own collaborator internally — constructs a client, reads a fixed config path, calls `Get-Date` mid-calculation — forces a test to reach for a global `Mock` of that ambient dependency instead of substituting it directly, and a global mock is heavier, leaks across tests in the same scope, and couples the test to an implementation detail. Take the collaborator as a parameter with a sensible default: production call sites stay just as short, and a test can pass a fake with no mock at all.
 
 ```powershell
 # WRONG

@@ -58,6 +58,11 @@ $graphAppRoles = @(
     'Directory.Read.All'
     'AdministrativeUnit.ReadWrite.All'
     'UserAuthenticationMethod.ReadWrite.All'
+    'User-PasswordProfile.ReadWrite.All'
+    'User.Invite.All'
+    'User.RevokeSessions.All'
+    'Domain.Read.All'
+    'Organization.Read.All'
 )
 
 Write-Host "Connecting to Microsoft Graph in tenant $TenantId..."

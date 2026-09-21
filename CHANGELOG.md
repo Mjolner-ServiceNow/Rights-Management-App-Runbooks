@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- The release notes carry a second, clearly separate command for `-PruneUnpinned`.
+  Pruning was documented only in `docs/INSTALLATION.md` and appeared in neither
+  `docs/DEPLOYMENT.md`'s upgrade steps nor the block people now paste, so on the easiest
+  path nothing was ever cleaned up — while the accumulation it prevents is the incident
+  this repository was built around. It is kept out of the main block on purpose: it
+  uninstalls things, and a destructive step does not belong in a command people run
+  without reading.
 - `Initialize-RmaWorker.ps1` ships as a release asset beside the module it installs, and
   the release notes carry a generated block that downloads it, checks its SHA256 and runs
   it against the verified package. A worker needs no checkout and no copied files.
@@ -31,6 +38,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and let release cadence follow merge tempo rather than whether the fleet is ready. A
   draft holds its `tag_name` without creating the tag, so nothing is public until someone
   publishes it. Covered by `tests/Unit/ReleasePlan.Tests.ps1`.
+### Removed
+- `scripts/Publish-RmaContent.ps1`. The ServiceNow app pulls the runbooks from this
+  repository into the Automation Account, so the script published nothing anybody ran.
+
+  The one safety property it carried — refusing to publish a runbook whose pinned
+  `RMA.Runbooks` version disagrees with the module in the repository — is not lost; it
+  moved earlier. `tests/Unit/PinnedModuleVersions.Tests.ps1` asserts the same thing in CI
+  on every pull request, which matters more now, because the app publishes whatever is on
+  `main` and `main` being self-consistent is the last check there is.
+
+  What the script knew about Runtime environments is kept in `docs/INSTALLATION.md`, as a
+  requirement on whatever does the importing rather than as a feature of a script: 7.4 and
+  7.6 exist only in that experience, `-Type` stops at `PowerShell72`, the API refuses a
+  `runtimeEnvironment` on a `PowerShell72` runbook, runbook type is immutable through PUT
+  so a migration needs a PATCH first, and importing as a Draft keeps the live version
+  serving if the import fails.
+
 ### Fixed
 - `Initialize-RmaWorker.ps1 -WhatIf` failed on the URL path. The staging directory is
   created with `New-Item`, which honours `-WhatIf`, so it was never created, the download

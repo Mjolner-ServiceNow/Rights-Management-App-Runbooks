@@ -41,7 +41,8 @@ role and should not be.
 - A **ServiceNow integration account** with read access to the domain table and read/write
   on the command queue table.
 - Tooling on your workstation: [Azure CLI](https://aka.ms/azure-cli),
-  [PowerShell 7.4+](https://aka.ms/powershell), and the `Az.Automation` module.
+  [PowerShell 7.4+](https://aka.ms/powershell), and the `Microsoft.Graph.Applications`
+  module for step 5. Nothing here publishes runbooks, so `Az.Automation` is not needed.
 
 ### How long
 
@@ -382,11 +383,15 @@ add your own IP.
 
 **Who:** Contributor on the Automation Account.
 
-**Prerequisite:** a PowerShell **7.6** Runtime environment in the Automation account. The
-publish script does not create infrastructure; it verifies the Runtime environment exists
-and is the expected version, and refuses to publish otherwise. Create it under Automation
-account > **Runtime Environments** (Language PowerShell, Runtime version 7.4 or 7.6), or
-with the API:
+Publishing is done by the ServiceNow app, which pulls the runbooks from this repository
+and adds them to the Automation Account. This repository does not publish anything; what
+it guarantees is that `main` is always internally consistent, which is what the app
+copies. `tests/Unit/PinnedModuleVersions.Tests.ps1` and `build/Assert-ModuleVersionBump.ps1`
+enforce that on every pull request.
+
+**Prerequisite:** a PowerShell **7.6** Runtime environment in the Automation account, and
+the runbooks linked to it. Create it under Automation account > **Runtime Environments**
+(Language PowerShell, Runtime version 7.4 or 7.6), or with the API:
 
 ```bash
 az rest --method put \
@@ -394,32 +399,32 @@ az rest --method put \
   --body '{"properties":{"runtime":{"language":"PowerShell","version":"7.6"}}}'
 ```
 
-```powershell
-Connect-AzAccount
-./scripts/Publish-RmaContent.ps1 `
-    -ResourceGroup rg-rma-prod `
-    -AutomationAccountName aa-rma-prod
-```
-
-Pass `-RuntimeEnvironmentName` if yours is not called `Powershell_7-6`.
-
-Each runbook is imported as a Draft and then published, so a failed import cannot take a
-working runbook offline. The script also refuses to publish a runbook that pins a different
-`RMA.Runbooks` version than the one you installed in step 4.
+After the app has published them, confirm in the Automation Account that each runbook is
+of type **PowerShell** and linked to the `Powershell_7-6` Runtime environment. A runbook
+linked to no Runtime environment, or to the wrong one, never starts on a worker that has
+only PowerShell 7.6 registered, and the job output is empty — see *A PowerShell 7 runbook
+never starts* in Troubleshooting.
 
 The shared module is **not** published to the Automation Account. It lives on the worker.
 
-> **Why the runtime version is a Runtime environment and not a runbook type.** PowerShell
-> 7.4 and 7.6 exist only in the Runtime environment experience. `Import-AzAutomationRunbook`
-> stops at `PowerShell72`, and the API rejects a `runtimeEnvironment` on a `PowerShell72`
-> runbook. So runbooks are imported as type `PowerShell` and linked to a Runtime
-> environment, and that link decides the interpreter.
+> **Why the runtime version is a Runtime environment and not a runbook type.** This is the
+> non-obvious part, and anything that imports these runbooks has to get it right.
 >
-> Runbook type is immutable through the API's PUT, so importing over a runbook that an
-> earlier version of this script published as `PowerShell72` fails with "Runbook Type cannot
-> be modified". A PATCH *can* change the type and set the Runtime environment in one call,
-> and the script does that automatically for any runbook whose type is not `PowerShell`.
-> Migration needs no manual step and no deletion.
+> PowerShell 7.4 and 7.6 exist only in the Runtime environment experience.
+> `Import-AzAutomationRunbook`'s `-Type` stops at `PowerShell72`, and the API rejects a
+> `runtimeEnvironment` on a `PowerShell72` runbook with *"The property runtimeEnvironment
+> cannot be configured for runbookType PowerShell72"*. So a runbook must be imported as
+> type `PowerShell` and then **linked** to a Runtime environment; that link, not the type,
+> decides the interpreter.
+>
+> Runbook type is immutable through the API's PUT, which is what an import uses, so
+> importing over a runbook previously created as `PowerShell72` fails with *"Runbook Type
+> cannot be modified"*. A PATCH *can* change the type and set the Runtime environment in
+> one call, so a migration is a PATCH first, then the import — no deletion needed.
+>
+> Importing as a Draft and publishing afterwards is worth keeping too: the live version
+> keeps serving until the draft is published, so a failed import cannot take a working
+> runbook offline.
 
 ---
 

@@ -140,9 +140,11 @@ Two consequences worth understanding:
 
 **Version pinning is the coupling.** Each runbook pins an exact `RequiredVersion`. If the
 worker has a different one, the job fails at parse time with a precise message rather than
-part-way through a directory write. `Publish-RmaContent.ps1` refuses to publish runbooks
-whose pin disagrees with the module in the repository, so the mismatch is normally caught
-before it reaches Azure at all.
+part-way through a directory write. `tests/Unit/PinnedModuleVersions.Tests.ps1` asserts in
+CI that every runbook pins the version this repository builds, so a mismatch between the
+runbooks and the module is caught on the pull request, before anything reaches Azure. What
+CI cannot see is the worker's own disk; that is what the parse-time failure and
+`Test-RmaHealth` are for.
 
 **Upgrading is a two-sided change.** Bump `ModuleVersion`, update the `#Requires` in every
 affected runbook, and re-run `Initialize-RmaWorker.ps1` on every worker. All three in one

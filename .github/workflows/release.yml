@@ -85,6 +85,25 @@ jobs:
             Both hashes are checked before anything is installed. Add `-WhatIf` to the last
             command to see what it would do first.
 
+            ### Reclaiming disk from superseded versions
+
+            Not part of the command above, because it uninstalls things. Run it separately,
+            with `-WhatIf` first, and take `-WhatIf` off once the list looks right:
+
+            ```powershell
+            & "$dir/Initialize-RmaWorker.ps1" `
+                -ModuleSource "$base/RMA.Runbooks-${{ steps.package.outputs.version }}.zip" `
+                -ExpectedSha256 '${{ steps.package.outputs.sha256 }}' `
+                -PruneUnpinned -WhatIf
+            ```
+
+            This removes every `RMA.Runbooks` version other than the one pinned, and every
+            unpinned version of the Graph and Exchange modules — which is where the disk
+            actually goes. Superseded `RMA.Runbooks` versions are harmless to leave: runbooks
+            pin an exact `RequiredVersion`, so an old one is never loaded. They are only
+            noise when you are troubleshooting, because a bare `Import-Module RMA.Runbooks`
+            picks the highest version present rather than the one the jobs run.
+
             | asset | SHA256 |
             |---|---|
             | `RMA.Runbooks-${{ steps.package.outputs.version }}.zip` | `${{ steps.package.outputs.sha256 }}` |

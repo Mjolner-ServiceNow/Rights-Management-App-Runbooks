@@ -11,8 +11,8 @@ resources are created and changed by hand, in the portal or with the CLI.
 
 | You changed | Run | Also required |
 |---|---|---|
-| A runbook body | `Publish-RmaContent.ps1 -Name <runbook>` | — |
-| The shared module | `Initialize-RmaWorker.ps1` on **every** worker, then `Publish-RmaContent.ps1` | Bump `ModuleVersion` and every `#Requires` that pins it |
+| A runbook body | Nothing here. The ServiceNow app pulls runbooks from this repository into the Automation Account | — |
+| The shared module | `Initialize-RmaWorker.ps1` on **every** worker, then let the app re-publish the runbooks | Bump `ModuleVersion` and every `#Requires` that pins it |
 | A pinned third-party module | `Initialize-RmaWorker.ps1` on **every** worker | Update the `#Requires` in affected runbooks |
 | An Azure resource | By hand, in the portal or with the CLI | Keep the Automation Account identity at **None** |
 | A Key Vault secret | Update the secret. Runbooks read it at start of run | — |
@@ -36,17 +36,28 @@ working installation.
    and runs it against the verified module package — no checkout, and both hashes
    generated into the notes by the release workflow. Add `-WhatIf` to the last line to
    preview it first; the download and hash check still happen, nothing is installed.
-6. Run `Publish-RmaContent.ps1`, then `Test-RmaHealth`.
+6. Let the ServiceNow app pull the runbooks into the Automation Account, then run
+   `Test-RmaHealth`.
 
 Steps 5 and 6 in that order. A worker carrying the new module while the runbooks still pin
 the old one fails at parse time; so does the reverse. Both fail loudly and immediately
 rather than subtly, which is intentional, but neither processes work.
 
-Three things catch a half-done change before it reaches a worker. Steps 1 and 2 are checked
-against each other by `tests/Unit/PinnedModuleVersions.Tests.ps1`; step 1 on its own is
-required by `build/Assert-ModuleVersionBump.ps1` on every pull request that touches the
-module; and `Publish-RmaContent.ps1` refuses to publish a runbook whose pin disagrees with
-the module in the repository.
+Two checks catch a half-done change, and both now run before the merge rather than at
+publish time. Steps 1 and 2 are checked against each other by
+`tests/Unit/PinnedModuleVersions.Tests.ps1`; step 1 on its own is required by
+`build/Assert-ModuleVersionBump.ps1` on every pull request that touches the module. Since
+the app publishes whatever is on `main`, `main` being consistent is what matters, and that
+is exactly what these two enforce.
+
+What no check can see is whether the **workers** have the version the runbooks pin. That
+is caught at run time by `#Requires`, loudly and before any work is done, and by
+`Test-RmaHealth`. It is the reason step 5 comes before step 6.
+
+Superseded module versions may be left on a worker — runbooks pin an exact
+`RequiredVersion`, so an old one is never loaded. Add `-PruneUnpinned` (with `-WhatIf`
+first) when you want the disk back; the release notes carry the command. It matters most
+for the Graph and Exchange modules, which are hundreds of megabytes rather than kilobytes.
 
 Pushing a `v*` tag by hand still publishes immediately, without the draft step. Use it to
 re-cut a release that was deleted, not as the normal path.

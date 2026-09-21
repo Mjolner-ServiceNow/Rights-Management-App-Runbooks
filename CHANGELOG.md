@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-21
+
+First release of the shared module. Everything below shipped in 1.0.0's development and
+in the review that followed it; 1.1.0 is the first version a Hybrid Worker installs.
+
 ### Added
 - `build/Assert-ModuleVersionBump.ps1`, run by CI on every pull request. If anything under
   `src/RMA.Runbooks` changed against the merge base, `ModuleVersion` must be greater.

@@ -19,7 +19,7 @@ most common reason this takes days instead of hours.
 | Step | Role required | Where |
 |---|---|---|
 | 1 | ServiceNow administrator | ServiceNow |
-| 2 | Contributor on the **subscription** (the template creates the resource group) | Azure |
+| 2 | Contributor on the resource group, and rights to create it | Azure |
 | 3 | Contributor on the resource group | Azure |
 | 4 | Contributor on the VM (for Run Command), or local administrator on it | Azure or Windows |
 | 5 | Cloud Application Administrator | Microsoft Entra |
@@ -32,8 +32,7 @@ role and should not be.
 
 ### What you need
 
-- An Azure subscription. The template creates the resource group, so you do not need to
-  make one first.
+- An Azure subscription, and a resource group to put the platform in.
 - A **Windows Server VM in Azure** that will run the jobs. Two cores and 4 GB RAM minimum.
   It must reach your domain controllers and `service-now.com`.
 - A ServiceNow instance with the Rights Management App scoped application installed.
@@ -132,82 +131,47 @@ step 7.
 
 ---
 
-## Step 2 — Deploy the Azure infrastructure
+## Step 2 — Create the Azure resources
 
 **Who:** Contributor on the resource group.
 
-Clone the repository. **Do not edit the committed parameter file.** This repository is
-public, and a filled-in file publishes your subscription id, resource group, VM name and
-subnet. Copy it first:
+> **There is no infrastructure-as-code in this repository.** The Bicep templates were
+> removed because they did not meet the bar, and are deferred until the wider framework is
+> in place. Create these resources by hand, in the portal or with `az`. What follows is a
+> requirement, not a suggestion: the runbooks assume it.
 
-```bash
-cp infra/main.parameters.prod.json infra/main.parameters.prod.local.json
-```
+All of it goes in one resource group, per environment.
 
-`*.local.json` is gitignored, CI rejects real values in the committed templates, and
-`Deploy-RmaPlatform.ps1` uses the local copy automatically when it exists.
+| Resource | Required configuration |
+|---|---|
+| User-assigned managed identity | The only identity the platform uses. Record both its **client** ID and its **principal** ID. |
+| Automation Account | **No managed identity** — see the warning below. Create a Hybrid Worker Group in it for the worker VM. |
+| Key Vault | RBAC authorisation, not access policies. Soft delete on. In production also: purge protection, public access disabled, and a network rule for the worker VM's subnet only. |
+| Log Analytics workspace | Diagnostic settings on both the Automation Account and the Key Vault point at it. |
+| Action group and alert rules | Optional in dev and test. Production notifies on job failure and on the queue loop hitting its bounds. |
 
-```jsonc
-// infra/main.parameters.prod.local.json
-{
-  "workload":                   { "value": "rma" },
-  "environment":                { "value": "prod" },
-  "hybridWorkerVmResourceId":   { "value": "/subscriptions/.../virtualMachines/vm-rma-01" },
-  "allowedSubnetResourceId":    { "value": "/subscriptions/.../subnets/snet-automation" },
-  "secretsOfficerPrincipalIds": { "value": ["<object id of your operations group>"] },
-  "alertEmailAddresses":        { "value": ["operations@example.com"] },
-  "logRetentionDays":           { "value": 90 }
-}
-```
+Role assignments on the Key Vault, by built-in role ID:
 
-`allowedSubnetResourceId` is the subnet your Hybrid Worker VM sits in. In production the
-Key Vault firewall is enabled and only that subnet may reach it. The subnet needs the
-`Microsoft.KeyVault` service endpoint, or a private endpoint.
+| Assignee | Role | Role ID |
+|---|---|---|
+| The user-assigned managed identity | Key Vault Secrets User | `4633458b-17de-408a-b874-0445c86b69e6` |
+| Your operations group | Key Vault Secrets Officer | `b86a8fe4-44ce-4948-aee5-eccb2c155cd7` |
 
-Preview, then deploy:
+The subnet in the production Key Vault firewall rule is the one the Hybrid Worker VM sits
+in, and it needs the `Microsoft.KeyVault` service endpoint, or a private endpoint.
 
-```powershell
-./scripts/Deploy-RmaPlatform.ps1 -Environment prod -WhatIfOnly
-./scripts/Deploy-RmaPlatform.ps1 -Environment prod
-```
-
-`resourceGroupName` and `location` come from the parameter file, and **the resource group
-is created if it does not exist**. Re-running is safe: ARM converges an existing deployment
-rather than recreating anything, so neither the resource group nor the Automation Account is
-disturbed if it already matches.
-
-Or with the CLI directly, which is all the script does:
-
-```bash
-az deployment sub what-if --location westeurope \
-  --template-file infra/main.bicep --parameters infra/main.parameters.prod.local.json
-
-az deployment sub create --location westeurope \
-  --template-file infra/main.bicep --parameters infra/main.parameters.prod.local.json
-```
-
-The script adds four things worth having: it stops if the what-if itself fails rather than
-deploying blind, it refuses to proceed if the plan contains a `Delete`, it checks afterwards
-that the Automation Account has no managed identity, and it labels which output GUID is the
-**client** ID and which is the **principal** ID.
-
-> **If you cannot get Contributor on the subscription.** A resource-group-scoped template
-> cannot create its own resource group, which is why the default path deploys at
-> subscription scope. Where that is not granted for application deployments, create the
-> group yourself and deploy only the workload into it. Identical resources, narrower rights:
->
-> ```powershell
-> az group create --name rg-rma-prod --location westeurope
-> ./scripts/Deploy-RmaPlatform.ps1 -Environment prod -WorkloadOnly
-> ```
+Scheduled query rules over the Automation tables fail validation until Automation has sent
+data to the workspace, because the tables do not exist yet. Create them with query
+validation skipped, or wait until after the first job has run.
 
 **Record the Key Vault name, the managed identity client ID, and the managed identity
 principal ID.**
 
-> **The Automation Account must have no managed identity of its own.** The template sets
-> this and the script verifies it. If anyone later enables one in the portal, the Hybrid
-> Worker's identity is overridden and every runbook stops authenticating. It is the first
-> thing to check if authentication that worked yesterday stops working.
+> **The Automation Account must have no managed identity of its own.** Nothing enforces
+> this any more: no template sets it and no script checks it. If one is enabled at creation,
+> or by anyone later in the portal, the Hybrid Worker's identity is overridden and every
+> runbook stops authenticating. It is the first thing to check if authentication that worked
+> yesterday stops working.
 
 ---
 
@@ -584,28 +548,6 @@ will requeue work that is still running. With `MaxMinutes` at its default of 45,
 ## Troubleshooting
 
 Symptoms in the order you are likely to meet them.
-
-### The deployment fails with "Could not find the account"
-
-```
-BadRequest: {"Message":"Could not find the account. SubscriptionId: ... AccountName: aa-rma-..."}
-```
-
-The Automation resource provider returns this when it rejects something in the request
-body, not when an account is genuinely missing. It is what you get from an explicit
-`identity: { type: 'None' }`, which is why the template omits the identity property
-instead. If you see it after editing `modules/automation.bicep`, that edit is the cause.
-
-### The deployment fails on the alert rules
-
-```
-'where' operator: Failed to resolve table or column expression named 'AutomationJobLogs'
-```
-
-The alert queries reference tables that only exist once Automation has sent data to the
-workspace, and scheduled query rules validate their KQL at creation time. The template sets
-`skipQueryValidation: true` for exactly this. The rules evaluate to an error until the first
-job runs, then start working.
 
 ### The health check fails on "Managed identity token"
 

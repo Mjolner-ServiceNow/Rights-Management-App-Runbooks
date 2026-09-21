@@ -12,9 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Guaranteed terminal state via `Invoke-RmaQueueLoop`, closing the stranded-job defect.
 - Bounded queue loop with iteration and wall-clock limits.
 - Structured logging with a correlation id per job.
-- Bicep infrastructure for the Automation Account, Key Vault, managed identity and monitoring.
-- CI pipeline: PSScriptAnalyzer with custom rules, Pester, Bicep lint and what-if.
-- CD pipeline: environment-gated infrastructure and content deployment.
+- CI pipeline: PSScriptAnalyzer with custom rules, Pester and a coverage floor.
 - Watchdog runbook that requeues jobs stranded in Work in Progress.
 - `tests/Unit/PinnedModuleVersions.Tests.ps1`, asserting that every `RequiredVersion` a
   runbook declares matches what `Initialize-RmaWorker.ps1` installs, that the provisioner
@@ -61,14 +59,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   executes as local SYSTEM, the account the jobs use, so it cannot install to the wrong
   profile. Added a troubleshooting entry for a PowerShell 7 job that never starts.
 
-### Changed
-- `infra/main.bicep` now targets the subscription and creates the resource group, then
-  deploys the workload into it. The previous resource-group-scoped template required the
-  group to exist first, which a template at that scope cannot create.
-- `infra/workload.bicep` holds the resources and is still deployable directly into an
-  existing resource group with `-WorkloadOnly`, for environments where Contributor on the
-  subscription is not granted.
-
 ### Fixed
 - `Initialize-RmaWorker.ps1` could not run with `-WhatIf`, and silently skipped
   RSAT-AD-PowerShell without it. `ServerManager` has no PowerShell 7 build, so PowerShell 7
@@ -78,26 +68,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the script reported the feature already present while installing nothing. It now tests for
   the `ActiveDirectory` module, which is what the runbooks actually require, and verifies the
   module is discoverable after installing the feature.
-- The Automation Account could not be created. `identity: { type: 'None' }` is rejected by
-  the Automation resource provider, which fails the deployment with the misleading
-  `BadRequest: Could not find the account`. No identity is now expressed by omitting the
-  property. Isolated by bisecting the request body: every other property is accepted.
-- Scheduled query alerts could not be created against a new Log Analytics workspace.
-  `AutomationJobLogs` and `AutomationJobStreams` do not exist until Automation sends data,
-  and the rules validate their KQL at creation time. Added `skipQueryValidation: true`.
-- The what-if delete gate produced a false positive on every plan. It matched a regex
-  against the human-readable output, which begins with a legend containing the literal line
-  `  - Delete`. It now reads `changeType` from `--no-pretty-print` JSON, and prints a
-  grouped per-resource summary instead of the raw text.
-- `Deploy-RmaPlatform.ps1` did not check the exit code of `az deployment what-if`. A failed
-  what-if printed its error and the script deployed anyway, which defeated the purpose of
-  having the gate.
-- Added fail-fast checks for not being signed in, an inaccessible subscription, and a
-  missing resource group, so those produce one clear line instead of an Azure CLI traceback.
-- CI would have failed on the first pull request: the parameter-file check required
-  production parameters to be filled in, which is correct for a private repository and
-  wrong for a public one. Inverted, so it now fails if a committed template contains a real
-  Azure resource id.
 - `.gitignore` coverage patterns were lowercase and would not have matched `Coverage.xml`
   on a case-sensitive filesystem, so CI on Linux could have committed test output.
 - Corrected the scheduling guidance throughout. Azure Automation schedules cannot run more

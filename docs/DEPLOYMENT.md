@@ -3,9 +3,9 @@
 For a first-time setup, use [`INSTALLATION.md`](INSTALLATION.md). This document covers
 changes to an installation that already works.
 
-The Bicep template is a deployment artefact: it is deployed manually by whoever owns the
-target subscription. This repository holds no credentials and deploys nothing itself. CI
-validates code on pull requests and has no Azure access.
+This repository holds no credentials and deploys nothing itself. CI validates code on pull
+requests and has no Azure access. There is no infrastructure-as-code here either: the Azure
+resources are created and changed by hand, in the portal or with the CLI.
 
 ## What to update, and when
 
@@ -14,7 +14,7 @@ validates code on pull requests and has no Azure access.
 | A runbook body | `Publish-RmaContent.ps1 -Name <runbook>` | — |
 | The shared module | `Initialize-RmaWorker.ps1` on **every** worker, then `Publish-RmaContent.ps1` | Bump `ModuleVersion` and every `#Requires` that pins it |
 | A pinned third-party module | `Initialize-RmaWorker.ps1` on **every** worker | Update the `#Requires` in affected runbooks |
-| Infrastructure | `Deploy-RmaPlatform.ps1` | — |
+| An Azure resource | By hand, in the portal or with the CLI | Keep the Automation Account identity at **None** |
 | A Key Vault secret | Update the secret. Runbooks read it at start of run | — |
 
 Rotating a password needs no redeployment. That is the point of it being in Key Vault.
@@ -37,25 +37,18 @@ rather than subtly, which is intentional, but neither processes work.
 `Publish-RmaContent.ps1` refuses to publish a runbook whose pin disagrees with the module in
 the repository, so a forgotten step 2 is caught before it reaches Azure.
 
-## Updating infrastructure
+## Changing infrastructure
 
-```powershell
-./scripts/Deploy-RmaPlatform.ps1 -Environment prod -WhatIfOnly
-./scripts/Deploy-RmaPlatform.ps1 -Environment prod
-```
+There is no template and no deployment script. Change the resource directly, in the portal
+or with `az`, and note what you changed — there is no plan to diff against and no what-if
+to review, so a mistake is only visible in its effect.
 
-Bicep is declarative, so redeploying converges rather than duplicating. The script stops if
-the what-if fails, and refuses to proceed if the plan contains a `Delete` - which on this
-platform could mean the Key Vault or the Automation Account.
+Two changes are load-bearing and easy to make by accident:
 
-Two entry points, producing identical resources:
-
-| Template | Scope | Creates the resource group | Rights needed |
-|---|---|---|---|
-| `infra/main.bicep` | subscription | yes | Contributor on the subscription |
-| `infra/workload.bicep` | resource group | no | Contributor on that group |
-
-Use the second with `-WorkloadOnly` where subscription Contributor is not available.
+- **Never enable a managed identity on the Automation Account.** It overrides the Hybrid
+  Worker VM's identity and every runbook stops authenticating. Nothing blocks it.
+- **The Key Vault firewall in production** allows only the worker's subnet. Moving the VM
+  to another subnet breaks secret reads until the rule follows it.
 
 ## Downtime and rollback
 
@@ -67,7 +60,7 @@ downtime means jobs accumulate unprocessed in ServiceNow. Nothing is dropped.
 | Emergency stop | Disable the schedules. Jobs queue and are processed on re-enable. | seconds |
 | One runbook | Publish the previous draft from the Automation Account. | ~2 min |
 | Shared module | Re-run `Initialize-RmaWorker.ps1` on each worker from the previous tag, then re-publish the runbooks that pin it. Both sides must move together. | ~10 min |
-| Infrastructure | Re-deploy from the previous tag. | ~10 min |
+| Infrastructure | Revert the change by hand. No template to roll back to. | varies |
 
 Runbooks are always imported as a Draft and then published, so a failed import cannot take
 a working runbook offline.

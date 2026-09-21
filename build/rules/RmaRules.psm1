@@ -174,6 +174,13 @@ function Measure-RmaUnredactedObjectLogging {
         Create-EntraUser.ps1 wrote the decoded ServiceNow payload to the job log with
         `Write-Output $ParameterObject`. That payload carried the new user's password,
         which was then retained in Automation job output.
+
+        The name list covers what this repository actually calls the payload, not only
+        what the previous library called it: Invoke-RmaQueueLoop decodes it into
+        $parameters and hands it to the body as $p, which is the name every runbook
+        copies from Create-EntraUser.ps1. $job and $response are here for the same
+        reason - the queue row carries the base64 payload, and a token response carries
+        the token.
     .INPUTS
         [System.Management.Automation.Language.ScriptBlockAst]
     .OUTPUTS
@@ -184,7 +191,7 @@ function Measure-RmaUnredactedObjectLogging {
     param( [Parameter(Mandatory)][ValidateNotNullOrEmpty()] [ScriptBlockAst] $ScriptBlockAst )
 
     $writers  = @('Write-Output', 'Write-Host', 'Write-Information')
-    $suspect  = 'ParameterObject|Payload|JobQueueItem|JsonObject|Credential|Secret'
+    $suspect  = 'Payload|Parameters|^p$|Job|Json|Credential|Secret|Token|Response|Assertion'
     $results  = [System.Collections.Generic.List[DiagnosticRecord]]::new()
 
     foreach ($cmd in $ScriptBlockAst.FindAll({ $args[0] -is [CommandAst] }, $true)) {

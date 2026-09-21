@@ -27,6 +27,14 @@ function Invoke-RmaQueueLoop {
         Action guard      A payload whose action does not match is failed explicitly rather
                           than silently skipped while holding the claim.
 
+        Claim backoff     A job this worker cannot claim is backed off and, after
+                          MaxConsecutiveSkips in a row, the loop stops with reason
+                          'claim-contention'. A lost claim leaves the row Pending, so the
+                          next poll returns the same job; without a backoff and a ceiling
+                          that is an unthrottled request loop against ServiceNow for the
+                          whole MaxMinutes window, and MaxJobs never applies because
+                          nothing was processed.
+
         The body receives the raw job record and the decoded parameter object, and is
         expected to throw on failure. Returning normally means success.
     .PARAMETER Body
@@ -59,12 +67,19 @@ function Invoke-RmaQueueLoop {
         # Consecutive empty polls before concluding the queue is drained. >1 tolerates a
         # brief ServiceNow read-replica lag.
         [ValidateRange(1, 10)]
-        [int] $EmptyPollsBeforeExit = 1
+        [int] $EmptyPollsBeforeExit = 1,
+
+        # Consecutive lost claims before the loop gives up. In a healthy queue a lost
+        # claim is followed by a different job, so a long run of them means either heavy
+        # contention or a ServiceNow that is failing every PATCH.
+        [ValidateRange(1, 1000)]
+        [int] $MaxConsecutiveSkips = 25
     )
 
     $sw        = [Diagnostics.Stopwatch]::StartNew()
     $workerId  = Get-RmaWorkerId
     $processed = 0; $succeeded = 0; $failed = 0; $skipped = 0; $emptyPolls = 0
+    $consecutiveSkips = 0
     $stopReason = 'drained'
 
     Write-RmaLog -Level Information -Message 'Queue loop started' -Data @{
@@ -90,8 +105,15 @@ function Invoke-RmaQueueLoop {
 
         if (-not (Request-RmaJobClaim -Context $Context -SysId $job.sys_id -WorkerId $workerId)) {
             $skipped++
+            $consecutiveSkips++
+            if ($consecutiveSkips -ge $MaxConsecutiveSkips) { $stopReason = 'claim-contention'; break }
+
+            # The row is still Pending, so the next poll returns it again. Back off before
+            # asking, or a persistently failing claim polls as fast as the network allows.
+            Start-Sleep -Milliseconds ([math]::Min(2000, 100 * $consecutiveSkips))
             continue
         }
+        $consecutiveSkips = 0
 
         $processed++
         $script:RmaCorrelationId = $job.sys_id

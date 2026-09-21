@@ -38,6 +38,20 @@ Describe 'Write-RmaLog secret redaction' -Tag 'Unit', 'Security' {
         $parsed.timestamp | Should -Not -BeNullOrEmpty
     }
 
+    It 'sends a Debug record to the verbose stream instead of discarding it' {
+        # Write-Verbose was called with -Verbose:$false, which made every Debug record
+        # unreachable no matter what the caller asked for. 'Job claim lost to another
+        # worker' is logged at Debug, so claim contention left no trace at all.
+        $records = @(Write-RmaLog -Level Debug -Message 'claim lost' -Verbose 4>&1)
+
+        $records.Count | Should -Be 1
+        ($records[0].Message | ConvertFrom-Json).level | Should -Be 'Debug'
+    }
+
+    It 'stays quiet at Debug when the caller has not asked for verbose' {
+        @(Write-RmaLog -Level Debug -Message 'quiet' 4>&1).Count | Should -Be 0
+    }
+
     It 'covers the common secret-bearing property names' {
         foreach ($name in 'password', 'secret', 'token', 'clientSecret', 'apiKey', 'authorization', 'assertion') {
             $line = Write-RmaLog -Level Information -Message 'x' -Data @{ $name = 'LEAKED' } | Out-String

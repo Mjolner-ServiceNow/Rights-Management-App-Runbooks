@@ -5,9 +5,17 @@
 #>
 [CmdletBinding()]
 param(
-    [string]   $Path = "$PSScriptRoot/..",
+    [string] $Path = "$PSScriptRoot/..",
+
+    # Validated deliberately. Under `pwsh -File` arguments arrive as raw strings and are
+    # never parsed into an array, so `-FailOn Error,Warning` bound one literal string that
+    # matched no severity and the gate reported success with Error findings on screen.
+    # ValidateSet turns that silent pass into a binding failure. Use the `-Command` form
+    # from a shell; inside a pwsh session either spelling parses correctly.
+    [ValidateSet('Error', 'Warning', 'Information', 'ParseError')]
     [string[]] $FailOn = @('Error'),
-    [string]   $OutputSarif
+
+    [string] $OutputSarif
 )
 
 $ErrorActionPreference = 'Stop'

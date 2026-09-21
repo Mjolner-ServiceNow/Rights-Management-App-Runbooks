@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `tests/Unit/RmaRules.Tests.ps1`. The five custom analyzer rules are the gate's teeth and
+  had no tests of their own; a rule that quietly matches nothing lets the build go green
+  while the defect it exists to stop walks through. The CI test job now installs
+  PSScriptAnalyzer so it can run them.
 - `RMA.Runbooks` shared module replacing the per-runbook preamble.
 - Atomic job claim (`Request-RmaJobClaim`) so a queued job can only be executed once.
 - Guaranteed terminal state via `Invoke-RmaQueueLoop`, closing the stranded-job defect.
@@ -60,6 +64,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   profile. Added a troubleshooting entry for a PowerShell 7 job that never starts.
 
 ### Fixed
+- `Invoke-RmaQueueLoop` polled without bound when it could not claim a job. A lost claim
+  leaves the row Pending, so the next poll returns the same job; nothing incremented, so
+  `MaxJobs` never applied, the empty-poll exit never triggered, and there was no sleep on
+  that path. Measured at 90,637 polls in 60 seconds against a claim that always failed —
+  and `Request-RmaJobClaim` returns `$false` precisely when ServiceNow is failing the
+  PATCH, so the flood arrived when the instance was already struggling. Lost claims are
+  now backed off, and `-MaxConsecutiveSkips` (default 25) stops the loop with
+  `StopReason = 'claim-contention'`.
+- `Write-RmaLog -Level Debug` discarded every record. It called
+  `Write-Verbose $line -Verbose:$false`, which forces the preference off for that call, so
+  no Debug record was reachable by any caller under any preference. Among them was
+  'Job claim lost to another worker' — the one line that would have made the loop above
+  visible in the job log. Debug now goes to the verbose stream and honours the caller.
+- `build/Invoke-Analysis.ps1` reported success while Error findings were on screen.
+  `-FailOn` took an unvalidated `[string[]]`, so under `pwsh -File` the literal string
+  `Error,Warning` bound as one value that matched no severity. Verified against four Error
+  findings, which the gate passed. `-FailOn` is now a `ValidateSet`, turning the silent
+  pass into a binding failure.
+- `RmaAvoidUnredactedObjectLogging` did not cover the variable names this repository uses.
+  It matched `$ParameterObject` and `$Payload` from the previous library, but
+  `Invoke-RmaQueueLoop` decodes the payload into `$parameters` and hands it to the body as
+  `$p` — the name every runbook copies from `Create-EntraUser.ps1`. `Write-Output $p` with
+  a password in it passed the gate. The name list now covers `$parameters`, `$p`, `$job`,
+  `$response`, `$token` and `$assertion`.
 - `Initialize-RmaWorker.ps1` could not run with `-WhatIf`, and silently skipped
   RSAT-AD-PowerShell without it. `ServerManager` has no PowerShell 7 build, so PowerShell 7
   loads it through the Windows PowerShell compatibility shim, which stages a proxy module

@@ -100,6 +100,45 @@ Describe 'Invoke-RmaQueueLoop' -Tag 'Unit', 'Concurrency' {
         }
     }
 
+    Context 'a job this worker can never claim' {
+        It 'backs off and stops instead of polling without bound' {
+            # Measured before the ceiling existed: 90,637 polls in 60 seconds. A lost
+            # claim leaves the row Pending, so the next poll returns the same job, and
+            # neither MaxJobs (nothing is processed) nor the empty-poll exit applies.
+            Mock -ModuleName RMA.Runbooks Get-RmaPendingJob { @(New-TestJob -SysId ('9' * 32) -Action 'Create-EntraUser') }
+            Mock -ModuleName RMA.Runbooks Request-RmaJobClaim { $false }
+            Mock -ModuleName RMA.Runbooks Start-Sleep {}
+
+            $result = Invoke-RmaQueueLoop -Context $script:Context -DomainId $script:DomainId `
+                -Command 'Create-EntraUser' -MaxConsecutiveSkips 5 -Body { }
+
+            $result.StopReason        | Should -Be 'claim-contention'
+            $result.SkippedNotClaimed | Should -Be 5
+            $result.Processed         | Should -Be 0
+            $script:States.Count      | Should -Be 0
+
+            Should -Invoke -ModuleName RMA.Runbooks Get-RmaPendingJob -Times 5 -Exactly
+            # Four backoffs: the fifth skip reaches the ceiling and breaks before sleeping.
+            Should -Invoke -ModuleName RMA.Runbooks Start-Sleep -Times 4 -Exactly
+        }
+
+        It 'resets the run of skips after a claim it does win' {
+            $script:Attempt = 0
+            Mock -ModuleName RMA.Runbooks Get-RmaPendingJob { @(New-TestJob -SysId ('8' * 32) -Action 'Create-EntraUser') }
+            Mock -ModuleName RMA.Runbooks Request-RmaJobClaim { $script:Attempt++; $script:Attempt -eq 3 }
+            Mock -ModuleName RMA.Runbooks Start-Sleep {}
+
+            $result = Invoke-RmaQueueLoop -Context $script:Context -DomainId $script:DomainId `
+                -Command 'Create-EntraUser' -MaxConsecutiveSkips 3 -Body { }
+
+            # lose, lose, win, lose, lose, lose. Without the reset the third loss overall
+            # would have stopped the loop before the job it actually won.
+            $result.Processed         | Should -Be 1
+            $result.SkippedNotClaimed | Should -Be 5
+            $result.StopReason        | Should -Be 'claim-contention'
+        }
+    }
+
     Context 'safety limits' {
         It 'stops at MaxJobs and reports why' {
             Mock -ModuleName RMA.Runbooks Get-RmaPendingJob { @(New-TestJob -SysId ('e' * 32) -Action 'Create-EntraUser') }

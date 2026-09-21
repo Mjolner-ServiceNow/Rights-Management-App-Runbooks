@@ -11,7 +11,7 @@ function Connect-RmaGraph {
     [CmdletBinding()]
     [OutputType([void])]
     param(
-        [Parameter(Mandatory)] [pscustomobject] $Context,
+        [Parameter(Mandatory)] [PSTypeName('Rma.Context')] $Context,
         [Parameter(Mandatory)][ValidateNotNullOrEmpty()] [string] $ApplicationId,
         [string] $Scope = 'https://graph.microsoft.com/.default'
     )

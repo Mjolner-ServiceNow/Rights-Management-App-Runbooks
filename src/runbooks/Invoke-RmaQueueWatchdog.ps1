@@ -1,5 +1,5 @@
 #Requires -Version 7.2
-#Requires -Modules @{ ModuleName = 'RMA.Runbooks'; RequiredVersion = '1.0.0' }
+#Requires -Modules @{ ModuleName = 'RMA.Runbooks'; RequiredVersion = '1.1.0' }
 
 <#
 .SYNOPSIS
@@ -54,7 +54,12 @@ $context.BaseUri, [uri]::EscapeDataString($query), ($MaxRequeue + 1)
 
 function Invoke-RmaRequeue {
     [CmdletBinding(SupportsShouldProcess)]
-    param($Context, $StaleJobs, [int]$StaleAfterMinutes)
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)] [PSTypeName('Rma.ServiceNowContext')] $Context,
+        [Parameter(Mandatory)][AllowEmptyCollection()] [object[]] $StaleJobs,
+        [Parameter(Mandatory)][ValidateRange(5, 1440)] [int] $StaleAfterMinutes
+    )
 
     $requeued = 0
     foreach ($job in $StaleJobs) {

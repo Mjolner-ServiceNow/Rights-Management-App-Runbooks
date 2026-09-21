@@ -1,5 +1,5 @@
 #Requires -Version 7.2
-#Requires -Modules @{ ModuleName = 'RMA.Runbooks';                        RequiredVersion = '1.0.0'  }
+#Requires -Modules @{ ModuleName = 'RMA.Runbooks';                        RequiredVersion = '1.1.0'  }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Authentication';      RequiredVersion = '2.39.0' }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Users';               RequiredVersion = '2.39.0' }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Identity.DirectoryManagement'; RequiredVersion = '2.39.0' }
@@ -47,13 +47,24 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'C
     $domain = (Get-MgDomain -All | Where-Object { $_.IsDefault }).Id
     if (-not $domain) { throw 'No default verified domain found in the tenant.' }
 
+    # Validated, not just trimmed. This value comes straight from the ServiceNow payload
+    # and goes into the UPN. The set is the local part Entra accepts, apostrophe included:
+    # O'Brien is a real name and rejecting it would be a worse bug than the one below.
     $userName = "$($p.username)".Trim()
-    if (-not $userName) { throw 'Payload field "username" is empty.' }
+    if ($userName -notmatch '^[A-Za-z0-9._!#^~''-]{1,64}$') {
+        throw "Payload field 'username' is empty or contains characters Entra does not " +
+        "accept in a user principal name. Correct the ServiceNow record."
+    }
     $upn = "$userName@$domain"
+
+    # An OData string literal escapes a single quote by doubling it. Without this, the one
+    # legitimate character that can appear in a name changes what the filter matches, and
+    # the idempotency check below silently stops being a check.
+    $upnFilter = $upn -replace "'", "''"
 
     # Idempotency. A duplicate execution, or a retry after a partial failure, must not
     # produce a second user or a spurious failure.
-    if (Get-MgUser -Filter "userPrincipalName eq '$upn'" -ErrorAction SilentlyContinue) {
+    if (Get-MgUser -Filter "userPrincipalName eq '$upnFilter'" -ErrorAction SilentlyContinue) {
         Write-RmaLog -Level Warning -Message 'User already exists; treating as success' -Data @{ upn = $upn }
         return
     }

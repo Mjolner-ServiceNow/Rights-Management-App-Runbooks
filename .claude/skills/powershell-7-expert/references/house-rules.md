@@ -114,11 +114,16 @@ duration of that job; `Write-RmaLog`'s `-CorrelationId` parameter defaults to it
 generate your own id or thread one through as an extra parameter — read the ambient one so
 every log line for a job can be queried by the same `sys_id` end to end.
 
-## Pester version is pinned to 5.5.0
+## Pester is floored at 5.5.0 and capped below 6
 
 Every file under `tests/Unit/` starts with
 `#Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '5.5.0' }` — see
-`references/testing-and-security.md` for why a test file should pin a version at all.
+`references/testing-and-security.md` for why a test file should state a version at all.
+Note what that means: `ModuleVersion` in `#Requires` is a *floor*, not a pin, so it does
+nothing to stop Pester 6 being loaded. `build/Invoke-Tests.ps1` supplies the ceiling with
+`Import-Module Pester -MinimumVersion 5.5.0 -MaximumVersion 5.99.99`, and prints the
+version it loaded. Without that cap a machine with Pester 6 installed ran the suite on a
+different major version than CI's 5.8.0, and the two only agreed by luck.
 
 ## Every exported function is registered and tested
 
@@ -127,6 +132,23 @@ A new public function lives in `src/RMA.Runbooks/Public/`, is listed under
 `tests/Unit/`. An unlisted function is not part of the module's documented surface (see
 `references/function-design.md` on `FunctionsToExport`); an untested one drags line coverage
 toward the floor below and can fail the build through `build/Assert-Coverage.ps1` instead.
+
+`build/Test-ModuleManifestIntegrity.ps1` enforces the first two by parsing the AST of every
+file under `Public/`, so a second function defined inside a file named after another one is
+caught, and `.SYNOPSIS` and `[CmdletBinding()]` are checked per function rather than per
+file. A helper that only the module calls belongs in `Private/`, where none of this applies.
+It runs in CI, in the `module` job, alongside `build/Assert-ModuleVersionBump.ps1`.
+
+## Say which context a function takes
+
+Two context shapes travel through this module. `Connect-RmaServiceNow` returns an
+`Rma.ServiceNowContext`, carrying `Instance`, `BaseUri` and `Headers`; `Test-RmaPrerequisite`
+returns an `Rma.Context`, which adds `ManagedIdentityClientId` and `Domain` and also answers
+to `Rma.ServiceNowContext` so the queue functions accept it. Declare the one you need with
+`[PSTypeName('Rma.Context')]` or `[PSTypeName('Rma.ServiceNowContext')]` rather than
+`[pscustomobject]`, so handing `Connect-RmaGraph` the wrong one fails at binding instead of
+as a property-not-found further in. A test fixture builds one by putting
+`PSTypeName = 'Rma.ServiceNowContext'` in the hashtable literal.
 
 ## Coverage floor is 70% of lines
 

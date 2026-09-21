@@ -42,6 +42,7 @@ function Connect-RmaServiceNow {
     }
 
     $context = [pscustomobject]@{
+        PSTypeName = 'Rma.ServiceNowContext'
         Instance = $Instance
         BaseUri  = "https://$Instance.service-now.com"
         Headers  = $headers

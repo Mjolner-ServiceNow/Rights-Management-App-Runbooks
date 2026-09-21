@@ -36,10 +36,11 @@ pwsh -NoProfile -Command "& ./build/Invoke-Analysis.ps1 -FailOn Error,Warning"
 Inside a `pwsh` session, and in `.github/workflows/ci.yml`, `-FailOn Error, Warning` is
 parsed correctly. Do not "fix" the workflow to match this file.
 
-One more, not run by CI (see *Where enforcement actually lives*):
+Two more, both now also run by CI (see *Where enforcement actually lives*):
 
 ```powershell
-./build/Test-ModuleManifestIntegrity.ps1   # Public/*.ps1 vs FunctionsToExport, and help
+./build/Test-ModuleManifestIntegrity.ps1              # Public/ functions vs FunctionsToExport, and help
+./build/Assert-ModuleVersionBump.ps1 -BaseRef main    # pull requests only
 ```
 
 ### A single test
@@ -52,8 +53,11 @@ Invoke-Pester -Path ./tests/Unit/Logging.Tests.ps1
 Invoke-Pester -Path ./tests/Unit/Logging.Tests.ps1 -FullNameFilter '*redact*'
 ```
 
-CI installs Pester 5.8.0. A machine with Pester 6 also installed will load 6 by default;
-pin with `Import-Module Pester -MaximumVersion 5.99.99` if a test behaves oddly.
+CI installs Pester 5.8.0. `Invoke-Tests.ps1` caps itself with
+`-MaximumVersion 5.99.99` and prints the version it loaded, so a machine that also has
+Pester 6 still runs the suite on 5.x. Calling `Invoke-Pester` directly, as above, does not
+get that cap — add `Import-Module Pester -MaximumVersion 5.99.99` first if a test behaves
+oddly.
 
 ## Architecture
 
@@ -82,7 +86,9 @@ module-scoped and deliberately unexported.
 
 Every function in `Public/` must appear in `FunctionsToExport` in
 [RMA.Runbooks.psd1](src/RMA.Runbooks/RMA.Runbooks.psd1) and must carry comment-based help.
-`Test-ModuleManifestIntegrity.ps1` checks both — run it yourself; CI does not.
+`Test-ModuleManifestIntegrity.ps1` checks both from the AST, per function rather than per
+file, locally and in CI. A helper only the module calls goes in `Private/`, where neither
+requirement applies.
 
 ### One identity, and the constraint that governs everything
 
@@ -124,16 +130,19 @@ Suppressions are allowed but need a real `Justification`.
 
 ## Where enforcement actually lives
 
-The docs overstate CI in two places. What CI actually runs is in
-[.github/workflows/ci.yml](.github/workflows/ci.yml):
+Both gaps the docs used to overstate are now wired in
+([.github/workflows/ci.yml](.github/workflows/ci.yml), job `module`):
 
-- **`Test-ModuleManifestIntegrity.ps1` is not in CI.** CI runs three of the four local
-  commands. An export missing from the manifest reaches `main`.
-- **No `ModuleVersion` bump is enforced on a pull request.** CONTRIBUTING says CI enforces
-  it. The only check is in `release.yml`, comparing the `v*` tag against the manifest at
-  release time — so an unbumped module change passes PR CI and fails later, at tagging.
+- **`Test-ModuleManifestIntegrity.ps1` runs in CI.** It reads functions from the AST, so a
+  second function defined inside a file named after another one is caught, and it checks
+  `.SYNOPSIS` and `[CmdletBinding()]` per function rather than once per file.
+- **`Assert-ModuleVersionBump.ps1` runs on every pull request.** If anything under
+  `src/RMA.Runbooks` changed against the merge base with the target branch, `ModuleVersion`
+  must be greater. `release.yml` still compares the `v*` tag against the manifest at
+  release time; that is now a backstop rather than the first time anyone finds out.
 
-Treat both as things to check by hand until they are wired in.
+One thing is still checked only by eye: nothing automated rejects customer-identifying
+values in committed files. See *This repository is public* below.
 
 ## This repository is public
 

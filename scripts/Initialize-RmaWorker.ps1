@@ -26,6 +26,11 @@
 .PARAMETER SkipSharedModule
     Install only the third-party dependencies. Use when RMA.Runbooks is delivered by
     separate configuration management.
+.PARAMETER ExpectedSha256
+    SHA256 of the RMA.Runbooks package, as published in the GitHub release notes. When
+    supplied, a package that does not match is refused before it is expanded. Supply it
+    whenever -ModuleSource is a URL or a zip: this is the one point where code from
+    outside the machine is written into Program Files as administrator.
 .PARAMETER PruneUnpinned
     Removes non-pinned versions of managed modules. Review the -WhatIf output first.
 #>
@@ -35,7 +40,10 @@
 param(
     [switch] $PruneUnpinned,
     [string] $ModuleSource,
-    [switch] $SkipSharedModule
+    [switch] $SkipSharedModule,
+
+    [ValidatePattern('^[0-9a-fA-F]{64}$')]
+    [string] $ExpectedSha256
 )
 
 $ErrorActionPreference = 'Stop'
@@ -167,14 +175,33 @@ if (-not $SkipSharedModule) {
         # a ModuleSource that does not exist leaves every branch below unentered.
         $sourceDir = $null
 
+        $package = $null
         if ($ModuleSource -match '^https?://') {
             Write-Host "  downloading $ModuleSource"
-            $download = Join-Path $staging 'package.zip'
-            Invoke-WebRequest -Uri $ModuleSource -OutFile $download -UseBasicParsing
-            Expand-Archive -Path $download -DestinationPath $staging -Force
-            $sourceDir = (Get-ChildItem $staging -Recurse -Filter 'RMA.Runbooks.psd1' | Select-Object -First 1).Directory
+            $package = Join-Path $staging 'package.zip'
+            Invoke-WebRequest -Uri $ModuleSource -OutFile $package
         } elseif ($ModuleSource -like '*.zip') {
-            Expand-Archive -Path $ModuleSource -DestinationPath $staging -Force
+            $package = $ModuleSource
+        }
+
+        if ($package) {
+            # The release publishes a SHA256 and nothing checked it. This is the only place
+            # code from off the machine is expanded into Program Files as administrator, so
+            # verify it here or say plainly that it was not verified.
+            if ($ExpectedSha256) {
+                $actual = (Get-FileHash -Path $package -Algorithm SHA256).Hash
+                if ($actual -ne $ExpectedSha256) {
+                    throw ("RMA.Runbooks package hash mismatch. Expected $ExpectedSha256, got $actual. " +
+                        'Nothing was installed. Re-download the release asset and compare it against the ' +
+                        'SHA256 in the release notes before running this again.')
+                }
+                Write-Host "  sha256 verified: $actual"
+            } else {
+                Write-Warning ('  package not verified: -ExpectedSha256 was not supplied. The SHA256 is ' +
+                    'published in the GitHub release notes; pass it so a substituted package is refused.')
+            }
+
+            Expand-Archive -Path $package -DestinationPath $staging -Force
             $sourceDir = (Get-ChildItem $staging -Recurse -Filter 'RMA.Runbooks.psd1' | Select-Object -First 1).Directory
         } elseif (Test-Path -LiteralPath $ModuleSource) {
             $sourceDir = Get-Item -LiteralPath $ModuleSource
@@ -188,7 +215,7 @@ if (-not $SkipSharedModule) {
         }
 
         $version = (Import-PowerShellDataFile (Join-Path $sourceDir 'RMA.Runbooks.psd1')).ModuleVersion
-        $target  = Join-Path $modulesRoot "RMA.Runbooks\$version"
+        $target  = Join-Path $modulesRoot 'RMA.Runbooks' $version
 
         if (Test-Path (Join-Path $target 'RMA.Runbooks.psd1')) {
             Write-Host ('  {0,-52} {1}  present' -f 'RMA.Runbooks', $version)

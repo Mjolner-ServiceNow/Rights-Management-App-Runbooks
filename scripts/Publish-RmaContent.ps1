@@ -93,6 +93,7 @@ $accountPath = (
 # through the management API. Invoke-AzRestMethod reuses the current Az context, so this
 # adds no new authentication path.
 function Invoke-AutomationApi {
+    [CmdletBinding()]
     [OutputType([pscustomobject])]
     param(
         [Parameter(Mandatory)][ValidateSet('GET', 'PATCH')]  [string] $Method,
@@ -176,8 +177,11 @@ foreach ($file in $files) {
         # Import-AzAutomationRunbook would fail with "Runbook Type cannot be modified" on a
         # runbook published as PowerShell72 by an earlier version of this script. PATCH is
         # the only operation that can change the type, so it goes first.
-        if ($existing -and $existing.properties.runbookType -ne 'PowerShell') {
-            Write-Host "  migrating $($file.BaseName) from type $($existing.properties.runbookType)" -ForegroundColor Yellow
+        # Guarded: the ARM response shape is not ours to rely on, and an unguarded read
+        # throws under Set-StrictMode rather than falling through to the import below.
+        $existingType = if ($existing) { $existing.properties.PSObject.Properties['runbookType']?.Value }
+        if ($existingType -and $existingType -ne 'PowerShell') {
+            Write-Host "  migrating $($file.BaseName) from type $existingType" -ForegroundColor Yellow
             $null = Invoke-AutomationApi -Method PATCH -RelativePath "/runbooks/$($file.BaseName)" -Payload $patchBody
         }
 

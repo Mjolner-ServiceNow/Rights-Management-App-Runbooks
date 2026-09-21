@@ -14,7 +14,7 @@ function Get-RmaDomainConfig {
     [CmdletBinding()]
     [OutputType([pscustomobject])]
     param(
-        [Parameter(Mandatory)] [pscustomobject] $Context,
+        [Parameter(Mandatory)] [PSTypeName('Rma.ServiceNowContext')] $Context,
 
         [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{32}$')]
         [string] $DomainId,
@@ -29,10 +29,10 @@ function Get-RmaDomainConfig {
 
     $response = Invoke-RmaRestMethod -Uri $uri -Method GET -Headers $Context.Headers
 
-    if (-not $response.result) {
+    $r = Get-RmaProperty -InputObject $response -Name 'result'
+    if (-not $r) {
         throw "ServiceNow domain record '$DomainId' was not found on instance '$($Context.Instance)'."
     }
-    $r = $response.result
 
     $get = {
         param($name)

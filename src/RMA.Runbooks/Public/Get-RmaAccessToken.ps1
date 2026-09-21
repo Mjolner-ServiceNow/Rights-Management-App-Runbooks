@@ -45,7 +45,12 @@ function Get-RmaAccessToken {
         [switch] $Force
     )
 
-    $cacheKey = '{0}|{1}|{2}' -f $PSCmdlet.ParameterSetName, $Resource, $ManagedIdentityClientId
+    # Every input that changes which token comes back is part of the key. ApplicationId and
+    # TenantId were missing, so two federated calls for the same scope through the same
+    # managed identity but a different app or tenant shared one entry and the second caller
+    # was handed the first caller's token. Multi-domain is the normal case here.
+    $cacheKey = '{0}|{1}|{2}|{3}|{4}' -f
+    $PSCmdlet.ParameterSetName, $Resource, $ManagedIdentityClientId, $ApplicationId, $TenantId
     $now = (Get-Date).ToUniversalTime()
 
     if (-not $Force -and $script:RmaTokenCache.ContainsKey($cacheKey)) {
@@ -74,10 +79,21 @@ function Get-RmaAccessToken {
         client_assertion      = $assertion
     }
 
+    $accessToken = Get-RmaProperty -InputObject $response -Name 'access_token'
+    if ([string]::IsNullOrEmpty($accessToken)) {
+        throw ("The token exchange for '$Resource' succeeded but returned no access_token. " +
+            "Verify the federated identity credential on application '$ApplicationId' names this " +
+            'managed identity PRINCIPAL id as its subject.')
+    }
+
+    # expires_in is documented as seconds but has been absent on error-shaped 200s.
+    $expiresIn = Get-RmaProperty -InputObject $response -Name 'expires_in'
+    $expiresOn = if ($null -ne $expiresIn) { $now.AddSeconds([int] $expiresIn) } else { $now.AddMinutes(55) }
+
     $script:RmaTokenCache[$cacheKey] = [pscustomobject]@{
-        AccessToken = $response.access_token
-        ExpiresOn   = $now.AddSeconds([int] $response.expires_in)
+        AccessToken = $accessToken
+        ExpiresOn   = $expiresOn
         Resource    = $Resource
     }
-    return $response.access_token
+    return $accessToken
 }

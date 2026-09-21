@@ -4,9 +4,10 @@ BeforeAll {
     Import-Module "$PSScriptRoot/../../src/RMA.Runbooks/RMA.Runbooks.psd1" -Force
 
     $script:Context = [pscustomobject]@{
-        Instance = 'contoso'
-        BaseUri  = 'https://contoso.service-now.com'
-        Headers  = @{}
+        PSTypeName = 'Rma.ServiceNowContext'
+        Instance   = 'contoso'
+        BaseUri    = 'https://contoso.service-now.com'
+        Headers    = @{}
     }
     $script:DomainId = 'abcdef0123456789abcdef0123456789'
 
@@ -97,6 +98,86 @@ Describe 'Invoke-RmaQueueLoop' -Tag 'Unit', 'Concurrency' {
             $script:Ran | Should -BeFalse
             $result.SkippedNotClaimed | Should -Be 1
             $script:States.Count | Should -Be 0
+        }
+    }
+
+    Context 'a job this worker can never claim' {
+        It 'backs off and stops instead of polling without bound' {
+            # Measured before the ceiling existed: 90,637 polls in 60 seconds. A lost
+            # claim leaves the row Pending, so the next poll returns the same job, and
+            # neither MaxJobs (nothing is processed) nor the empty-poll exit applies.
+            Mock -ModuleName RMA.Runbooks Get-RmaPendingJob { @(New-TestJob -SysId ('9' * 32) -Action 'Create-EntraUser') }
+            Mock -ModuleName RMA.Runbooks Request-RmaJobClaim { $false }
+            Mock -ModuleName RMA.Runbooks Start-Sleep {}
+
+            $result = Invoke-RmaQueueLoop -Context $script:Context -DomainId $script:DomainId `
+                -Command 'Create-EntraUser' -MaxConsecutiveSkips 5 -Body { }
+
+            $result.StopReason        | Should -Be 'claim-contention'
+            $result.SkippedNotClaimed | Should -Be 5
+            $result.Processed         | Should -Be 0
+            $script:States.Count      | Should -Be 0
+
+            Should -Invoke -ModuleName RMA.Runbooks Get-RmaPendingJob -Times 5 -Exactly
+            # Four backoffs: the fifth skip reaches the ceiling and breaks before sleeping.
+            Should -Invoke -ModuleName RMA.Runbooks Start-Sleep -Times 4 -Exactly
+        }
+
+        It 'resets the run of skips after a claim it does win' {
+            $script:Attempt = 0
+            Mock -ModuleName RMA.Runbooks Get-RmaPendingJob { @(New-TestJob -SysId ('8' * 32) -Action 'Create-EntraUser') }
+            Mock -ModuleName RMA.Runbooks Request-RmaJobClaim { $script:Attempt++; $script:Attempt -eq 3 }
+            Mock -ModuleName RMA.Runbooks Start-Sleep {}
+
+            $result = Invoke-RmaQueueLoop -Context $script:Context -DomainId $script:DomainId `
+                -Command 'Create-EntraUser' -MaxConsecutiveSkips 3 -Body { }
+
+            # lose, lose, win, lose, lose, lose. Without the reset the third loss overall
+            # would have stopped the loop before the job it actually won.
+            $result.Processed         | Should -Be 1
+            $result.SkippedNotClaimed | Should -Be 5
+            $result.StopReason        | Should -Be 'claim-contention'
+        }
+    }
+
+    Context 'a queue row without a sys_id' {
+        It 'skips the row instead of throwing out of the loop' {
+            # Reading $job.sys_id unguarded threw under StrictMode from outside the
+            # try/finally, so one malformed row abandoned every remaining job.
+            $script:Polls = 0
+            Mock -ModuleName RMA.Runbooks Get-RmaPendingJob {
+                $script:Polls++
+                if ($script:Polls -eq 1) { @([pscustomobject]@{ input = '' }) } else { @() }
+            }
+            Mock -ModuleName RMA.Runbooks Request-RmaJobClaim { $true }
+            Mock -ModuleName RMA.Runbooks Start-Sleep {}
+
+            $result = Invoke-RmaQueueLoop -Context $script:Context -DomainId $script:DomainId `
+                -Command 'Create-EntraUser' -Body { }
+
+            $result.StopReason | Should -Be 'drained'
+            $result.Processed  | Should -Be 0
+            $script:States.Count | Should -Be 0
+            Should -Invoke -ModuleName RMA.Runbooks Write-RmaLog -ParameterFilter {
+                $Level -eq 'Error' -and $Message -match 'no sys_id'
+            }
+        }
+    }
+
+    Context 'a payload the queue could not supply' {
+        It 'fails the job with a message naming the missing field' {
+            Mock -ModuleName RMA.Runbooks Get-RmaPendingJob {
+                if ($script:Served) { @() } else { $script:Served = $true; @([pscustomobject]@{ sys_id = ('7' * 32) }) }
+            }
+            Mock -ModuleName RMA.Runbooks Request-RmaJobClaim { $true }
+            $script:Served = $false
+
+            $result = Invoke-RmaQueueLoop -Context $script:Context -DomainId $script:DomainId `
+                -Command 'Create-EntraUser' -Body { }
+
+            $result.Failed | Should -Be 1
+            $script:States[0].State | Should -Be 'Failed'
+            $script:States[0].Error | Should -Match "no 'input' payload"
         }
     }
 

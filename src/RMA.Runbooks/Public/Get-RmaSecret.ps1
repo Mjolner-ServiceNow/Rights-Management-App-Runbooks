@@ -41,10 +41,11 @@ function Get-RmaSecret {
 
     $token = Get-RmaAccessToken -Resource 'https://vault.azure.net' -ManagedIdentityClientId $ManagedIdentityClientId
 
-    $value = (Invoke-RmaRestMethod `
-            -Uri "https://$VaultName.vault.azure.net/secrets/$($Name)?api-version=$ApiVersion" `
-            -Method GET `
-            -Headers @{ Authorization = "Bearer $token" }).value
+    $response = Invoke-RmaRestMethod `
+        -Uri "https://$VaultName.vault.azure.net/secrets/$($Name)?api-version=$ApiVersion" `
+        -Method GET `
+        -Headers @{ Authorization = "Bearer $token" }
+    $value = Get-RmaProperty -InputObject $response -Name 'value'
 
     if ([string]::IsNullOrEmpty($value)) {
         throw "Key Vault secret '$Name' in vault '$VaultName' is empty or was not returned."

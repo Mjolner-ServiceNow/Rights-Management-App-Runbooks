@@ -13,7 +13,7 @@ function Connect-RmaExchange {
     [CmdletBinding()]
     [OutputType([void])]
     param(
-        [Parameter(Mandatory)] [pscustomobject] $Context,
+        [Parameter(Mandatory)] [PSTypeName('Rma.Context')] $Context,
         [Parameter(Mandatory)][ValidateNotNullOrEmpty()] [string] $ApplicationId,
         [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9-]+\.onmicrosoft\.com$')] [string] $Organization
     )

@@ -1,5 +1,5 @@
 #Requires -Version 7.2
-#Requires -Modules @{ ModuleName = 'RMA.Runbooks'; RequiredVersion = '1.0.0' }
+#Requires -Modules @{ ModuleName = 'RMA.Runbooks'; RequiredVersion = '1.1.0' }
 
 <#
 .SYNOPSIS
@@ -36,7 +36,12 @@ Set-StrictMode -Version Latest
 $checks = [System.Collections.Generic.List[object]]::new()
 
 function Add-Check {
-    param([string]$Name, [scriptblock]$Test)
+    [CmdletBinding()]
+    [OutputType([void])]
+    param(
+        [Parameter(Mandatory)][ValidateNotNullOrEmpty()] [string] $Name,
+        [Parameter(Mandatory)] [scriptblock] $Test
+    )
     $sw = [Diagnostics.Stopwatch]::StartNew()
     try {
         $detail = & $Test

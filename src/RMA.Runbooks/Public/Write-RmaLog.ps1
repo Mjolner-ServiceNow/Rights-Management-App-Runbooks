@@ -10,7 +10,9 @@ function Write-RmaLog {
         secret is redacted before it reaches the log.
     .PARAMETER Level
         Severity. Error and Warning are additionally written to their native streams so
-        Automation surfaces them on the job summary.
+        Automation surfaces them on the job summary. Debug goes to the verbose stream,
+        which Automation captures when 'Log verbose records' is enabled on the runbook;
+        it does not use Write-Debug, because Automation does not capture that stream.
     .PARAMETER CorrelationId
         Defaults to the ambient correlation id set by Invoke-RmaQueueLoop, which is the
         ServiceNow job sys_id. That is what lets one ticket be traced end to end.
@@ -39,7 +41,7 @@ function Write-RmaLog {
         message       = $Message
         runbook       = $Runbook
         correlationId = $CorrelationId
-        worker        = $env:COMPUTERNAME
+        worker        = [Environment]::MachineName
     }
 
     if ($PSBoundParameters.ContainsKey('Data') -and $Data.Count -gt 0) {
@@ -48,10 +50,13 @@ function Write-RmaLog {
 
     $line = $record | ConvertTo-Json -Depth 10 -Compress
 
+    # Debug is routed to Write-Verbose without -Verbose:$false. Suppressing it there made
+    # every Debug record unreachable, including 'Job claim lost to another worker', which
+    # is the one line that makes claim contention visible.
     switch ($Level) {
         'Error'       { Write-Error   $line -ErrorAction Continue }
         'Warning'     { Write-Warning $line }
-        'Debug'       { Write-Verbose $line -Verbose:$false }
+        'Debug'       { Write-Verbose $line }
         default       { Write-Output  $line }
     }
 }

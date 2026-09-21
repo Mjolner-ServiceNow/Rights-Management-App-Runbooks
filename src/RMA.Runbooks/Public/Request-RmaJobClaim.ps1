@@ -27,7 +27,7 @@ function Request-RmaJobClaim {
     [CmdletBinding()]
     [OutputType([bool])]
     param(
-        [Parameter(Mandatory)] [pscustomobject] $Context,
+        [Parameter(Mandatory)] [PSTypeName('Rma.ServiceNowContext')] $Context,
 
         [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{32}$')]
         [string] $SysId,
@@ -65,23 +65,4 @@ function Request-RmaJobClaim {
         -Data @{ sysId = $SysId; workerId = $WorkerId; won = [bool] $won }
 
     [bool] $won
-}
-
-function Get-RmaWorkerId {
-    <#
-    .SYNOPSIS
-        Returns an identifier unique to this runbook execution.
-    #>
-    [CmdletBinding()]
-    [OutputType([string])]
-    param()
-
-    $jobId = 'local'
-    if (Get-Variable -Name PSPrivateMetadata -Scope Global -ErrorAction SilentlyContinue) {
-        $meta = Get-Variable -Name PSPrivateMetadata -Scope Global -ValueOnly
-        if ($meta -and $meta.PSObject.Properties.Name -contains 'JobId' -and $meta.JobId) {
-            $jobId = "$($meta.JobId)"
-        }
-    }
-    '{0}/{1}' -f $env:COMPUTERNAME, $jobId
 }

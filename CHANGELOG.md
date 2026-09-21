@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `build/Assert-ModuleVersionBump.ps1`, run by CI on every pull request. If anything under
+  `src/RMA.Runbooks` changed against the merge base, `ModuleVersion` must be greater.
+  CONTRIBUTING.md claimed CI enforced this; the only check was in `release.yml` at tagging
+  time, so an unbumped change passed pull-request CI and failed later in front of whoever
+  was cutting the release. `Test-ModuleManifestIntegrity.ps1` is in the same new CI job,
+  having also been documented as enforced while running only by hand.
+- `tests/Unit/Identity.Tests.ps1`. `Get-RmaImdsToken`, `Test-RmaPrerequisite`,
+  `Connect-RmaGraph` and `Connect-RmaExchange` were all at 0% line coverage — the identity
+  path, which is the constraint the whole design turns on, was the one part with no tests,
+  and the coverage floor was met on the back of the queue logic. Covers the `client_id`
+  that stops IMDS returning the VM's system-assigned identity, the Automation sandbox
+  branch, token cache isolation between tenants, the context contract between
+  `Test-RmaPrerequisite` and the two Connect functions, and that Graph is handed a
+  `SecureString` rather than a raw token. Line coverage is 92.9%, from 73.2%.
+- `-ExpectedSha256` on `scripts/Initialize-RmaWorker.ps1`.
+- `-MaxConsecutiveSkips` on `Invoke-RmaQueueLoop`.
+- `tests/Unit/RmaRules.Tests.ps1`. The five custom analyzer rules are the gate's teeth and
+  had no tests of their own; a rule that quietly matches nothing lets the build go green
+  while the defect it exists to stop walks through. The CI test job now installs
+  PSScriptAnalyzer so it can run them.
 - `RMA.Runbooks` shared module replacing the per-runbook preamble.
 - Atomic job claim (`Request-RmaJobClaim`) so a queued job can only be executed once.
 - Guaranteed terminal state via `Invoke-RmaQueueLoop`, closing the stranded-job defect.
@@ -60,6 +80,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   profile. Added a troubleshooting entry for a PowerShell 7 job that never starts.
 
 ### Fixed
+- Responses are read through `Get-RmaProperty` everywhere, not almost everywhere. The
+  helper exists because ServiceNow, IMDS and Graph are all shape-variable and an unguarded
+  read throws under `Set-StrictMode -Version Latest`, but nine call sites still read
+  directly. The worst was `$job.sys_id` in `Invoke-RmaQueueLoop`, outside the try/finally:
+  one malformed row threw out of the loop and abandoned every remaining job. A row without
+  a `sys_id` is now skipped and logged, and a row without an `input` payload fails that one
+  job with a message naming the field.
+- Two context shapes travelled through the module under one parameter name and one type,
+  so passing the wrong one surfaced as a property-not-found far from the call.
+  `Connect-RmaServiceNow` now returns an `Rma.ServiceNowContext` and `Test-RmaPrerequisite`
+  an `Rma.Context` that also answers to the former, and each function declares which it
+  takes with `[PSTypeName(...)]`. Handing `Connect-RmaGraph` a ServiceNow context now fails
+  at parameter binding.
+- `CustomRulePath` in `build/PSScriptAnalyzerSettings.psd1` never loaded the custom rules.
+  A relative path in a settings file resolves against the current directory, so from
+  anywhere but the repository root the run failed outright with "Cannot find path
+  .../build/rules", and from the repository root the rules did not load at all — verified
+  both ways. Removed; `build/Invoke-Analysis.ps1` passes `-CustomRulePath` explicitly,
+  which is the mechanism that works. The `ExcludeRules` comment also described two rules
+  other than the two excluded.
+- `$env:COMPUTERNAME` is `[Environment]::MachineName`. The former is null off Windows, so
+  the worker id in the log and in the claim read-back was `/local` on a Linux runner.
+- `Join-Path $modulesRoot "RMA.Runbooks\$version"` had a literal backslash three lines
+  below an explicit non-Windows branch. PowerShell normalises it, so this was style rather
+  than a break, but the house rule says no literal separators and the file argued both
+  ways at once.
+- `[CmdletBinding()]` and validated parameters on `Add-Check`, `Invoke-AutomationApi` and
+  `Invoke-RmaRequeue`, and `-ErrorAction Stop` on the `Invoke-RestMethod` inside
+  `Get-RmaImdsToken`'s try.
+- `Get-RmaAccessToken` could hand one tenant a token minted for another. The cache key was
+  parameter set, resource and managed identity client id; `ApplicationId` and `TenantId`
+  were missing, so two federated calls for the same scope through the same managed
+  identity but a different app registration shared one entry. Multi-domain is the normal
+  case here, which is what made this reachable.
+- `Set-RmaAppRegistration.ps1` could not run with `-WhatIf` on a tenant where the
+  application did not exist yet. The create was skipped, `$app` stayed `$null`, and the
+  next line threw under `Set-StrictMode -Version Latest` — so the switch was unusable on a
+  first run, which is exactly when you want to see what it would do. The reads that need a
+  real object id are now skipped under `-WhatIf` and every planned operation is printed.
+- OData string literals are escaped. `Set-RmaAppRegistration.ps1` interpolated
+  `-DisplayName` and `Create-EntraUser.ps1` the payload's `username` straight into a
+  `$filter`; a single quote — legitimate in a name like O'Brien — changed what the filter
+  matched, which silently turned the idempotency check into no check. `username` is also
+  validated against the local part Entra accepts, so a value carrying spaces or brackets
+  is refused before it reaches Graph.
+- `Initialize-RmaWorker.ps1` installs an unverified package no longer. `-ExpectedSha256`
+  is checked before the archive is expanded; without it the script warns instead of going
+  quiet. This is the one point where code from off the machine is written into
+  `Program Files` as administrator, and the release already published a SHA256 that
+  nothing compared. The release notes now show the verified form.
+- `Get-RmaWorkerId` lived in `Public/Request-RmaJobClaim.ps1` and was never listed in
+  `FunctionsToExport`, so it looked exported and was unreachable from a runbook. It is in
+  `Private/` now. `Test-ModuleManifestIntegrity.ps1` could not see it because it compared
+  file names; it now reads functions from the AST and checks `.SYNOPSIS` and
+  `[CmdletBinding()]` per function rather than once per file.
+- `build/Invoke-Tests.ps1` caps Pester with `-MaximumVersion 5.99.99` and prints the
+  version it loaded. `#Requires -Modules @{ ModuleVersion = '5.5.0' }` is a floor, not a
+  pin, so a machine with Pester 6 installed ran the suite on a different major version
+  than CI's 5.8.0. The house rules said the version was pinned; it was not.
+- `Invoke-RmaQueueLoop` polled without bound when it could not claim a job. A lost claim
+  leaves the row Pending, so the next poll returns the same job; nothing incremented, so
+  `MaxJobs` never applied, the empty-poll exit never triggered, and there was no sleep on
+  that path. Measured at 90,637 polls in 60 seconds against a claim that always failed —
+  and `Request-RmaJobClaim` returns `$false` precisely when ServiceNow is failing the
+  PATCH, so the flood arrived when the instance was already struggling. Lost claims are
+  now backed off, and `-MaxConsecutiveSkips` (default 25) stops the loop with
+  `StopReason = 'claim-contention'`.
+- `Write-RmaLog -Level Debug` discarded every record. It called
+  `Write-Verbose $line -Verbose:$false`, which forces the preference off for that call, so
+  no Debug record was reachable by any caller under any preference. Among them was
+  'Job claim lost to another worker' — the one line that would have made the loop above
+  visible in the job log. Debug now goes to the verbose stream and honours the caller.
+- `build/Invoke-Analysis.ps1` reported success while Error findings were on screen.
+  `-FailOn` took an unvalidated `[string[]]`, so under `pwsh -File` the literal string
+  `Error,Warning` bound as one value that matched no severity. Verified against four Error
+  findings, which the gate passed. `-FailOn` is now a `ValidateSet`, turning the silent
+  pass into a binding failure.
+- `RmaAvoidUnredactedObjectLogging` did not cover the variable names this repository uses.
+  It matched `$ParameterObject` and `$Payload` from the previous library, but
+  `Invoke-RmaQueueLoop` decodes the payload into `$parameters` and hands it to the body as
+  `$p` — the name every runbook copies from `Create-EntraUser.ps1`. `Write-Output $p` with
+  a password in it passed the gate. The name list now covers `$parameters`, `$p`, `$job`,
+  `$response`, `$token` and `$assertion`.
 - `Initialize-RmaWorker.ps1` could not run with `-WhatIf`, and silently skipped
   RSAT-AD-PowerShell without it. `ServerManager` has no PowerShell 7 build, so PowerShell 7
   loads it through the Windows PowerShell compatibility shim, which stages a proxy module

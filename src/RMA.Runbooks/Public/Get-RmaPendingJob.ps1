@@ -6,7 +6,7 @@ function Get-RmaPendingJob {
     [CmdletBinding()]
     [OutputType([object[]])]
     param(
-        [Parameter(Mandatory)] [pscustomobject] $Context,
+        [Parameter(Mandatory)] [PSTypeName('Rma.ServiceNowContext')] $Context,
 
         [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{32}$')]
         [string] $DomainId,
@@ -23,6 +23,7 @@ function Get-RmaPendingJob {
     $Context.BaseUri, [uri]::EscapeDataString($query), $Limit
 
     $response = Invoke-RmaRestMethod -Uri $uri -Method GET -Headers $Context.Headers
-    if (-not $response.result) { return @() }
-    @($response.result)
+    $result = Get-RmaProperty -InputObject $response -Name 'result'
+    if (-not $result) { return @() }
+    @($result)
 }

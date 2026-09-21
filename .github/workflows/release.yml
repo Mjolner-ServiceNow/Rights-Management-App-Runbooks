@@ -52,7 +52,9 @@ jobs:
         with:
           tag_name: ${{ steps.plan.outputs.tag }}
           draft: ${{ steps.plan.outputs.draft }}
-          files: ./out/RMA.Runbooks-*.zip
+          files: |
+            ./out/RMA.Runbooks-*.zip
+            ./out/Initialize-RmaWorker.ps1
           generate_release_notes: true
           body: |
             ## Installing on a Hybrid Runbook Worker
@@ -61,16 +63,39 @@ jobs:
             into an Automation Account serve Azure sandbox jobs only; a worker resolves
             modules from its own `PSModulePath`.
 
-            On each worker, elevated:
+            No checkout needed. On each worker, in an **elevated PowerShell 7** session,
+            paste this. It downloads the provisioning script from this release, verifies it,
+            and runs it against the verified module package:
 
             ```powershell
-            ./scripts/Initialize-RmaWorker.ps1 `
-                -ModuleSource 'https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/RMA.Runbooks-${{ steps.package.outputs.version }}.zip' `
+            $ver  = '${{ steps.plan.outputs.tag }}'
+            $base = "https://github.com/${{ github.repository }}/releases/download/$ver"
+            $dir  = New-Item -ItemType Directory -Force -Path (Join-Path $env:TEMP "rma-$ver")
+
+            Invoke-WebRequest "$base/Initialize-RmaWorker.ps1" -OutFile "$dir/Initialize-RmaWorker.ps1"
+            if ((Get-FileHash "$dir/Initialize-RmaWorker.ps1" -Algorithm SHA256).Hash -ne '${{ steps.package.outputs.workerScriptSha256 }}') {
+                throw 'Provisioning script hash mismatch. Nothing has run.'
+            }
+
+            & "$dir/Initialize-RmaWorker.ps1" `
+                -ModuleSource "$base/RMA.Runbooks-${{ steps.package.outputs.version }}.zip" `
                 -ExpectedSha256 '${{ steps.package.outputs.sha256 }}'
             ```
 
-            `-ExpectedSha256` is checked before the package is expanded. Omit it and the
-            script installs the download unverified, with a warning.
+            Both hashes are checked before anything is installed. Add `-WhatIf` to the last
+            command to see what it would do first.
+
+            | asset | SHA256 |
+            |---|---|
+            | `RMA.Runbooks-${{ steps.package.outputs.version }}.zip` | `${{ steps.package.outputs.sha256 }}` |
+            | `Initialize-RmaWorker.ps1` | `${{ steps.package.outputs.workerScriptSha256 }}` |
+
+            Do not replace this with `iex (irm ...)`. `#Requires` is a parse-time directive
+            for script files and is ignored when the text is run through
+            `Invoke-Expression`, so `-RunAsAdministrator` and `-Version 7.2` would both stop
+            being enforced; parameters cannot be passed that way either, so the script would
+            run with its defaults and report an error only afterwards, having already done
+            work. Nothing would be verified, and a branch URL is mutable.
 
             The version installed must match the `RequiredVersion` in each runbook's
             `#Requires`. A mismatch fails the job at parse time, which is intended.

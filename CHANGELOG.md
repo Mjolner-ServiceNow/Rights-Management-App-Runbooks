@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `Initialize-RmaWorker.ps1` ships as a release asset beside the module it installs, and
+  the release notes carry a generated block that downloads it, checks its SHA256 and runs
+  it against the verified package. A worker needs no checkout and no copied files.
+
+  Deliberately not `iex (irm ...)`. `#Requires` is a parse-time directive for script files
+  and is ignored when the text runs through `Invoke-Expression` — measured: a script with
+  `#Requires -Version 99.0` is refused as a file and runs anyway through `iex` — so
+  `-RunAsAdministrator` and `-Version 7.2` would both stop being enforced. Parameters
+  cannot be passed that way either: `iex "$text -ModuleSource ..."` runs the body with its
+  defaults and reports the error afterwards, having already installed modules. And a
+  branch URL is mutable, so two workers provisioned a week apart would get different
+  scripts, which is the opposite of what the version pinning here is for.
+- `tests/Unit/ReleasePackage.Tests.ps1`, asserting that each published hash matches the
+  artefact it describes and that the shipped script is byte-identical to the source. The
+  hash in the notes is the only thing between a worker and a substituted payload.
 - `build/Get-RmaReleasePlan.ps1` and a second entry point in `release.yml`. A push to
   `main` whose `ModuleVersion` has no release yet now **drafts** one, with the package and
   its SHA256 attached; a pushed `v*` tag still publishes. The last step stays human on
@@ -16,6 +31,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and let release cadence follow merge tempo rather than whether the fleet is ready. A
   draft holds its `tag_name` without creating the tag, so nothing is public until someone
   publishes it. Covered by `tests/Unit/ReleasePlan.Tests.ps1`.
+### Fixed
+- `Initialize-RmaWorker.ps1 -WhatIf` failed on the URL path. The staging directory is
+  created with `New-Item`, which honours `-WhatIf`, so it was never created, the download
+  had nowhere to land, and the preview died on
+  `Could not find a part of the path ...\package.zip`. The scratch operations inside that
+  temp directory now run with `-WhatIf:$false`; the state changes `-WhatIf` is actually
+  about stay behind `ShouldProcess`. Found by testing the `-WhatIf` advice in the new
+  release notes before publishing it.
+
+### Added (continued)
 - `tests/Unit/PinnedModuleVersions.Tests.ps1` asserts that every runbook's `RMA.Runbooks`
   `RequiredVersion` matches the manifest. `Assert-ModuleVersionBump.ps1` requires the
   manifest to move but not the three `#Requires` lines that have to move with it, so a

@@ -23,6 +23,14 @@
     Where to get RMA.Runbooks from. Either a path to a repository checkout, a path to a
     package produced by build/New-RmaModulePackage.ps1, or the URL of a release asset.
     Defaults to the checkout this script is part of.
+
+    This script is itself published as a release asset, so a worker needs no checkout: the
+    release notes carry a block that downloads it, verifies its SHA256 and runs it. Do not
+    replace that with Invoke-Expression. #Requires is a parse-time directive for script
+    files and is ignored when the text is run through iex, so -RunAsAdministrator and
+    -Version 7.2 would stop being enforced, and parameters cannot be passed that way at
+    all - the script would run with its defaults and report an error only afterwards,
+    having already installed modules.
 .PARAMETER SkipSharedModule
     Install only the third-party dependencies. Use when RMA.Runbooks is delivered by
     separate configuration management.
@@ -166,8 +174,14 @@ if (-not $SkipSharedModule) {
         $ModuleSource = Join-Path (Split-Path $PSScriptRoot -Parent) 'src/RMA.Runbooks'
     }
 
+    # -WhatIf:$false on the scratch operations below. They happen inside a temp directory
+    # that the finally block removes, and simulating them broke -WhatIf outright: the
+    # staging directory was never created, so the download had nowhere to land and the
+    # preview died on "Could not find a part of the path ...\package.zip". The state
+    # changes that -WhatIf is actually about - Copy-Item into the modules root, and the
+    # installs above - stay behind ShouldProcess.
     $staging = Join-Path ([IO.Path]::GetTempPath()) "rma-module-$([guid]::NewGuid().ToString('N'))"
-    $null = New-Item -ItemType Directory -Path $staging -Force
+    $null = New-Item -ItemType Directory -Path $staging -Force -WhatIf:$false
 
     try {
         # Resolve the source down to a directory containing RMA.Runbooks.psd1.
@@ -201,7 +215,7 @@ if (-not $SkipSharedModule) {
                     'published in the GitHub release notes; pass it so a substituted package is refused.')
             }
 
-            Expand-Archive -Path $package -DestinationPath $staging -Force
+            Expand-Archive -Path $package -DestinationPath $staging -Force -WhatIf:$false
             $sourceDir = (Get-ChildItem $staging -Recurse -Filter 'RMA.Runbooks.psd1' | Select-Object -First 1).Directory
         } elseif (Test-Path -LiteralPath $ModuleSource) {
             $sourceDir = Get-Item -LiteralPath $ModuleSource
@@ -243,7 +257,7 @@ if (-not $SkipSharedModule) {
             }
         }
     } finally {
-        Remove-Item $staging -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item $staging -Recurse -Force -ErrorAction SilentlyContinue -WhatIf:$false
     }
 }
 

@@ -6,6 +6,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `build/Get-RmaReleasePlan.ps1` and a second entry point in `release.yml`. A push to
+  `main` whose `ModuleVersion` has no release yet now **drafts** one, with the package and
+  its SHA256 attached; a pushed `v*` tag still publishes. The last step stays human on
+  purpose: a release here is not a marker but the artefact somebody installs on every
+  Hybrid Worker by hand, and since `Assert-ModuleVersionBump.ps1` requires a bump on every
+  module pull request, publishing automatically would put out one release per pull request
+  and let release cadence follow merge tempo rather than whether the fleet is ready. A
+  draft holds its `tag_name` without creating the tag, so nothing is public until someone
+  publishes it. Covered by `tests/Unit/ReleasePlan.Tests.ps1`.
+- `tests/Unit/PinnedModuleVersions.Tests.ps1` asserts that every runbook's `RMA.Runbooks`
+  `RequiredVersion` matches the manifest. `Assert-ModuleVersionBump.ps1` requires the
+  manifest to move but not the three `#Requires` lines that have to move with it, so a
+  half-done bump passed CI and was caught only later by `Publish-RmaContent.ps1` — or
+  would have produced a drafted release no runbook refers to.
+
 ## [1.1.0] - 2026-09-21
 
 First release of the shared module. Everything below shipped in 1.0.0's development and

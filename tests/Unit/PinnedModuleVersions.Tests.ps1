@@ -62,6 +62,25 @@ Describe 'Pinned module versions' -Tag 'Unit' {
         $unprovisioned | Should -BeNullOrEmpty
     }
 
+    It 'keeps every runbook pinned to the RMA.Runbooks version this repository builds' {
+        # Nothing checked this. Assert-ModuleVersionBump requires the manifest to move on
+        # every module pull request, but not the three #Requires lines that have to move
+        # with it, so a bump without them passed CI and was caught only later by
+        # Publish-RmaContent.ps1 - or, with a release drafted automatically, produced a
+        # module version no runbook refers to.
+        $manifestVersion = (Import-PowerShellDataFile (Join-Path $repoRoot 'src/RMA.Runbooks/RMA.Runbooks.psd1')).ModuleVersion
+
+        $shared = @($script:declared | Where-Object { $_.Module -eq 'RMA.Runbooks' })
+        $shared.Count | Should -BeGreaterThan 0 -Because 'every runbook declares the shared module'
+
+        $drifted = foreach ($requirement in $shared) {
+            if ($requirement.Version -ne $manifestVersion) {
+                '{0} pins {1}, manifest builds {2}' -f $requirement.Runbook, $requirement.Version, $manifestVersion
+            }
+        }
+        $drifted | Should -BeNullOrEmpty
+    }
+
     It 'keeps every Microsoft.Graph submodule on one version' {
         # The submodules share Microsoft.Graph.Core and the Authentication module's
         # assemblies. Mixing versions in one session produces assembly load failures that

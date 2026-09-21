@@ -26,16 +26,27 @@ working installation.
 
 1. Bump `ModuleVersion` in `src/RMA.Runbooks/RMA.Runbooks.psd1`.
 2. Update the `RequiredVersion` in the `#Requires` of every runbook that uses it.
-3. Merge, tag, and let the release workflow publish the package.
-4. Run `Initialize-RmaWorker.ps1` on **every** worker in the group.
-5. Run `Publish-RmaContent.ps1`.
+3. Merge. The release workflow drafts a release for the new version automatically, with
+   the package and its SHA256 attached.
+4. **Publish the draft** when you are about to provision the workers. Nothing is public
+   and no tag exists until you do. This is the one deliberate step, and it is deliberate
+   because of 5 and 6.
+5. Run `Initialize-RmaWorker.ps1` on **every** worker in the group, passing
+   `-ExpectedSha256` from the release notes.
+6. Run `Publish-RmaContent.ps1`, then `Test-RmaHealth`.
 
-Steps 4 and 5 in that order. A worker carrying the new module while the runbooks still pin
+Steps 5 and 6 in that order. A worker carrying the new module while the runbooks still pin
 the old one fails at parse time; so does the reverse. Both fail loudly and immediately
 rather than subtly, which is intentional, but neither processes work.
 
-`Publish-RmaContent.ps1` refuses to publish a runbook whose pin disagrees with the module in
-the repository, so a forgotten step 2 is caught before it reaches Azure.
+Three things catch a half-done change before it reaches a worker. Steps 1 and 2 are checked
+against each other by `tests/Unit/PinnedModuleVersions.Tests.ps1`; step 1 on its own is
+required by `build/Assert-ModuleVersionBump.ps1` on every pull request that touches the
+module; and `Publish-RmaContent.ps1` refuses to publish a runbook whose pin disagrees with
+the module in the repository.
+
+Pushing a `v*` tag by hand still publishes immediately, without the draft step. Use it to
+re-cut a release that was deleted, not as the normal path.
 
 ## Changing infrastructure
 

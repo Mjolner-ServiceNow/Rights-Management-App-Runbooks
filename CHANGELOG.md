@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `docs/DEPLOYMENT.md` said to provision the workers before the runbooks, and why, but not
+  what a mismatch looks like or what it costs. Both are now written down: `#Requires` is a
+  parse-time directive, so the runbook body never runs, `Invoke-RmaQueueLoop` is never
+  reached, no claim is attempted and queue rows stay at `status = 1` — a version mismatch
+  postpones work rather than creating any. The error text is included verbatim because it
+  says the module is **missing** even when it is installed and only the version differs,
+  which sends whoever reads it looking for a failed installation.
+
+## [1.2.0] - 2026-09-22
+
 ### Changed
 - `Invoke-RmaQueueLoop` polls a batch of rows per request instead of one, and enters the
   batch at a random offset. Polling one row at a time made every worker contend for the

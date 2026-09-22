@@ -43,6 +43,33 @@ Steps 5 and 6 in that order. A worker carrying the new module while the runbooks
 the old one fails at parse time; so does the reverse. Both fail loudly and immediately
 rather than subtly, which is intentional, but neither processes work.
 
+**Neither leaves anything to clean up.** `#Requires` is a parse-time directive, checked
+before the script body runs, so `Invoke-RmaQueueLoop` is never reached and no claim is ever
+attempted. Queue rows stay at `status = 1`, untouched: nothing moves to Work in Progress,
+nothing strands, nothing needs requeueing. A version mismatch postpones work rather than
+creating any, and the next run after the order is corrected picks it all up.
+
+That is a consequence of where the check lives. Had it been inside the runbook body instead,
+the job would be claimed first and fail afterwards, and a botched upgrade would leave rows
+to recover rather than an order to fix.
+
+**The error names the wrong cause**, which is what makes this look worse than it is:
+
+```
+ResourceUnavailable: The script 'Create-EntraUser.ps1' cannot be run because the
+following modules that are specified by the "#requires" statements of the script are
+missing: The module 'RMA.Runbooks' cannot be found with RequiredVersion '1.2.0'.
+```
+
+It says **missing** even when the module is installed and only the version differs — the
+useful half of that sentence is the last clause, after everything else has said the module
+is absent. Someone reading it under pressure goes looking for a failed installation. Check
+the version first:
+
+```powershell
+Get-Module -ListAvailable RMA.Runbooks | Select-Object Version, ModuleBase
+```
+
 Two checks catch a half-done change, and both now run before the merge rather than at
 publish time. Steps 1 and 2 are checked against each other by
 `tests/Unit/PinnedModuleVersions.Tests.ps1`; step 1 on its own is required by

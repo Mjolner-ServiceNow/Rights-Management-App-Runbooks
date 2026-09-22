@@ -55,8 +55,30 @@ check identity first with `Test-RmaHealth`.
 Runs are ending with work still queued. Not urgent once, a capacity problem if sustained.
 In order of preference: increase schedule frequency, raise `MaxJobs`, add a worker.
 
+Check `stopReason` before treating it as a fault. `max-minutes` means jobs are slow;
+`max-jobs` means there were simply more of them than the cap allows. `MaxJobs` defaults to
+500, which was chosen against a low-volume test instance — on a busy queue `max-jobs` is the
+*expected* outcome of a healthy run, not a runaway. Tune the default to the installation
+rather than leaving this alert to fire on normal operation, because an alert that always
+fires is one nobody reads.
+
 ### `job-claim-contention`
-Workers competing for an empty queue. Reduce frequency or worker count. Harmless but wasteful.
+The loop gave up after `MaxConsecutiveSkips` consecutive batches in which it attempted
+claims and won none. It counts batches, not individual lost claims.
+
+Three causes, in order of likelihood:
+
+1. **The queue holds only rows other workers are winning.** Normal near the end of a drain,
+   and harmless. Reduce schedule frequency or worker count if it is constant.
+2. **`BatchSize` is too small for the fleet.** Workers are colliding on the same few rows
+   instead of spreading across a window. Raise it before adding workers — see the scaling
+   section in [ARCHITECTURE.md](ARCHITECTURE.md).
+3. **ServiceNow is failing every `PATCH`.** Check for claim failures in the logs:
+   `Job claim request failed` is logged at Warning by `Request-RmaJobClaim`. This one is
+   not harmless, and it looks identical to contention from the summary alone.
+
+A run that reports `claim-contention` with `Processed = 0` on a queue that is not empty is
+cause 2 or 3, never cause 1.
 
 ### `module-install-attempted`
 An unreviewed runbook reached production, or a rollback restored an old one. Find it, remove

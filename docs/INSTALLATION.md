@@ -1,7 +1,17 @@
 # Installation guide
 
-Complete setup from nothing to a working, verified installation. Follow the steps in order:
-each one produces a value the next one needs.
+**Scope: the Azure side only** — the runbooks, the worker, the identity and the secrets.
+
+Setting up the ServiceNow application itself is a **separate guide, maintained outside this
+repository**. That is where the scoped application is installed, the domain record is
+populated and the integration account is created. Nothing in this repository asks you to
+change anything in ServiceNow.
+
+Do the ServiceNow guide first. It produces three values this one consumes, listed under
+*Values to record* below. The two guides will be merged into one end-to-end document once
+the solution is settled; until then they are read in that order.
+
+Follow the steps here in order: each one produces a value the next one needs.
 
 For updating an existing installation, see [`DEPLOYMENT.md`](DEPLOYMENT.md). For day-to-day
 running, see [`RUNBOOK-OPERATIONS.md`](RUNBOOK-OPERATIONS.md).
@@ -12,37 +22,39 @@ running, see [`RUNBOOK-OPERATIONS.md`](RUNBOOK-OPERATIONS.md).
 
 ### Who you need
 
-Installation touches four systems, and no single person usually has rights to all of them.
+This guide touches three systems, and no single person usually has rights to all of them.
 Line these people up before you begin, because waiting for an approval mid-install is the
 most common reason this takes days instead of hours.
 
 | Step | Role required | Where |
 |---|---|---|
-| 1 | ServiceNow administrator | ServiceNow |
-| 2 | Contributor on the resource group, and rights to create it | Azure |
-| 3 | Contributor on the resource group | Azure |
-| 4 | Contributor on the VM (for Run Command), or local administrator on it | Azure or Windows |
-| 5 | Cloud Application Administrator | Microsoft Entra |
-| 6 | Privileged Role Administrator or Global Administrator | Microsoft Entra |
-| 7 | Key Vault Secrets Officer, plus the actual passwords | Azure |
-| 8, 9 | Contributor on the Automation Account | Azure |
+| 1 | Contributor on the resource group, and rights to create it | Azure |
+| 2 | Contributor on the resource group | Azure |
+| 3 | Contributor on the VM (for Run Command), or local administrator on it | Azure or Windows |
+| 4 | Cloud Application Administrator | Microsoft Entra |
+| 5 | Privileged Role Administrator or Global Administrator | Microsoft Entra |
+| 6 | Key Vault Secrets Officer, plus the actual passwords | Azure |
+| 7 | Contributor on the Automation Account | Azure |
 
-Steps 5 and 6 are separate deliberately. Step 5 can be delegated; step 6 grants a directory
+Steps 4 and 5 are separate deliberately. Step 4 can be delegated; step 5 grants a directory
 role and should not be.
+
+The ServiceNow administrator is not listed, because none of their work happens here — see
+the scope note above.
 
 ### What you need
 
 - An Azure subscription, and a resource group to put the platform in.
 - A **Windows Server VM in Azure** that will run the jobs. Two cores and 4 GB RAM minimum.
   It must reach your domain controllers and `service-now.com`.
-- A ServiceNow instance with the Rights Management App scoped application installed.
+- **The ServiceNow guide already completed**, which leaves you with a working scoped
+  application, a populated domain record and an integration account. You need the three
+  values it produces, not access to change any of it.
 - An **Active Directory service account** that can create, modify and disable users and
   groups in the target OUs.
-- A **ServiceNow integration account** with read access to the domain table and read/write
-  on the command queue table.
 - Tooling on your workstation: [Azure CLI](https://aka.ms/azure-cli),
   [PowerShell 7.4+](https://aka.ms/powershell), and the `Microsoft.Graph.Applications`
-  module for step 5. Nothing here publishes runbooks, so `Az.Automation` is not needed.
+  module for step 4. Nothing here publishes runbooks, so `Az.Automation` is not needed.
 
 ### How long
 
@@ -51,17 +63,22 @@ imposes. The Azure parts take minutes; the Entra consent is the one that queues.
 
 ### Values to record as you go
 
-Keep these somewhere as you work. Four of them are produced by one step and consumed by
-another.
+Three come from the ServiceNow guide. The rest are produced by one step here and consumed
+by another.
 
 | Value | Produced in | Used in |
 |---|---|---|
-| Domain record sys_id | Step 1 | Step 9, and the ServiceNow application |
-| ServiceNow instance name | Step 1 | Step 9, and the ServiceNow application |
-| Managed identity **client** ID | Step 2 | Steps 9, 10 |
-| Managed identity **principal** ID | Step 2 | Step 5 |
-| Key Vault name | Step 2 | Steps 7, 9, 10 |
-| Application (client) ID | Step 5 | Steps 9, 10 |
+| Domain record sys_id | **ServiceNow guide** | Step 8 |
+| ServiceNow instance name | **ServiceNow guide** | Step 8 |
+| Integration account username | **ServiceNow guide** | Steps 6, 8 |
+| Managed identity **client** ID | Step 1 | Step 8 |
+| Managed identity **principal** ID | Step 1 | Step 4 |
+| Key Vault name | Step 1 | Steps 6, 8 |
+| Application (client) ID | Step 4 | Step 8 |
+
+If you do not have the first three, stop and go back to the ServiceNow guide. Step 6 puts
+the integration account's password into Key Vault, and step 8 cannot verify anything
+without the other two.
 
 > **The two managed identity GUIDs are different and are not interchangeable.** The client
 > ID is what a runbook uses to request a token. The principal ID is what the federated
@@ -71,55 +88,7 @@ another.
 
 ---
 
-## Step 1 — Confirm the ServiceNow application
-
-**Who:** ServiceNow administrator.
-
-**You do not add anything to the command queue table.** `worker_id` and `claimed_at`, and
-the behaviour that depends on them, ship with the scoped application: they arrive when the
-customer updates it. Earlier versions of this guide had you add the columns by hand — if you
-are following those instructions, stop.
-
-What remains here is the configuration only the customer can supply.
-
-### 1a. Confirm the application version
-
-The queue claim needs `worker_id` and `claimed_at` on
-`x_autps_active_dir_command_queue`. Confirm the installed application version includes
-them before going further.
-
-**Without them nothing runs at all.** The Table API ignores unknown fields silently, so the
-claim `PATCH` appears to succeed and moves the row to Work in Progress — then the read-back
-in `Request-RmaJobClaim` finds no `worker_id`, every claim is lost, and rows strand in Work
-in Progress with no terminal state. It does not fail loudly; it fails as silence.
-
-### 1b. Populate the domain record
-
-The domain record on `x_autps_active_dir_domain` holds **configuration only**, and its
-values are specific to this customer, so they cannot ship with the application:
-
-| Field | Example |
-|---|---|
-| `tenant_azure_active_directory` | your Entra tenant ID |
-| `forest_name` | `contoso.local` |
-| `domain_controller_ip` | `10.0.0.4` |
-
-Record the record's **sys_id**; it is the `DomainId` parameter throughout.
-
-If you are migrating from an earlier version, the fields `thumbprint`,
-`entra_id_client_secret_credentials` and `automation_credentials` are no longer read.
-Remove them once the new installation is verified. They point at credentials, and a domain
-record that points at credentials puts ServiceNow inside your secrets boundary.
-
-### 1c. Integration account
-
-Confirm the account the runbooks will use has read on `x_autps_active_dir_domain` and
-read/write on `x_autps_active_dir_command_queue`. Record the username; the password goes
-into Key Vault in step 7.
-
----
-
-## Step 2 — Create the Azure resources
+## Step 1 — Create the Azure resources
 
 **Who:** Contributor on the resource group.
 
@@ -163,7 +132,7 @@ principal ID.**
 
 ---
 
-## Step 3 — Attach the identity and register the worker
+## Step 2 — Attach the identity and register the worker
 
 **Who:** Contributor on the VM and the Automation Account.
 
@@ -183,7 +152,7 @@ Wait for the worker to report healthy before continuing.
 
 ---
 
-## Step 4 — Provision the worker
+## Step 3 — Provision the worker
 
 **Who:** Contributor on the VM, or local administrator on it.
 
@@ -215,7 +184,7 @@ which is the mistake the `AllUsers` note below exists to prevent.
 If you would rather work on the VM directly, both scripts run the same way from an elevated
 prompt over Bastion or RDP.
 
-### 4a. Make the machine a PowerShell 7 host
+### 3a. Make the machine a PowerShell 7 host
 
 ```powershell
 ./scripts/Initialize-RmaWorkerHost.ps1 -WhatIf
@@ -252,7 +221,7 @@ It runs under the Windows PowerShell 5.1 that ships with the operating system, a
 PowerShell 7.x runbooks also need Hybrid Worker extension **1.3.63 or above**. The script
 prints the installed version and warns if it is older.
 
-### 4b. Install the modules
+### 3b. Install the modules
 
 Every module the runbooks need must be installed **on this machine**. Modules imported into
 an Azure Automation Account are only available to jobs running in Azure's own sandbox; a
@@ -298,14 +267,14 @@ presents as intermittent failures rather than an obvious outage.
 
 ---
 
-## Step 5 — Create the app registration
+## Step 4 — Create the app registration
 
 **Who:** Cloud Application Administrator.
 
 ```powershell
 ./scripts/Set-RmaAppRegistration.ps1 `
     -DisplayName 'RMA Runbooks (prod)' `
-    -ManagedIdentityPrincipalId '<managed identity PRINCIPAL id from step 2>' `
+    -ManagedIdentityPrincipalId '<managed identity PRINCIPAL id from step 1>' `
     -TenantId '<your tenant id>'
 ```
 
@@ -321,7 +290,7 @@ ID. Entra accepts either without complaint.
 
 ---
 
-## Step 6 — Grant consent and the directory role
+## Step 5 — Grant consent and the directory role
 
 **Who:** Privileged Role Administrator or Global Administrator.
 
@@ -342,7 +311,7 @@ Two manual actions, deliberately left to a person.
 
 ---
 
-## Step 7 — Add the secrets
+## Step 6 — Add the secrets
 
 **Who:** Key Vault Secrets Officer.
 
@@ -366,7 +335,7 @@ add your own IP.
 
 ---
 
-## Step 8 — Runbook publication
+## Step 7 — Runbook publication
 
 **Who:** nobody, for the publication itself. Contributor on the Automation Account for the
 one prerequisite below.
@@ -416,7 +385,7 @@ The shared module is **not** published to the Automation Account. It lives on th
 
 ---
 
-## Step 9 — Verify
+## Step 8 — Verify
 
 **Who:** nobody, in the normal case.
 
@@ -472,7 +441,7 @@ All checks passed.
 
 ---
 
-## Step 10 — How work reaches the worker
+## Step 9 — How work reaches the worker
 
 **Who:** nobody. There is nothing to create here.
 
@@ -605,8 +574,10 @@ of jobs into a broken system makes it worse.
 
 ### The same job appears to run twice
 
-Return to step 1b. The conditional `PATCH` is not behaving as an atomic compare-and-set on
-your instance, and you need the Scripted REST endpoint approach.
+The conditional `PATCH` behind the job claim is not behaving as an atomic compare-and-set
+on your instance. That is a ServiceNow-side problem: raise it with whoever maintains the
+scoped application, who will need the Scripted REST endpoint approach. Nothing in this
+guide changes.
 
 ### The worker's disk fills up
 

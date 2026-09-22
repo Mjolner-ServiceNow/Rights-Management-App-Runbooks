@@ -45,12 +45,15 @@ Work top to bottom. Anything marked **BLOCKER** stops the release.
 
 ## 5. ServiceNow
 
-- [ ] Installed application version ships `worker_id` and `claimed_at` on `x_autps_active_dir_command_queue` **BLOCKER** — without them every claim is lost, no job executes, and rows strand in Work in Progress. These arrive with the application; do not add them by hand
-- [ ] **Conditional PATCH verified.** Two concurrent claims on the same row: exactly one must win **BLOCKER**
-- [ ] `exception` field confirmed as the correct column for failure text
-- [ ] Integration user has read on the queue and domain tables, write on the queue
-- [ ] Domain record populated with tenant id, forest name, domain controller IP
-- [ ] Domain record contains **no** credential pointers. Remove `thumbprint`, `entra_id_client_secret_credentials` and `automation_credentials` once migration is complete
+Configuring ServiceNow is covered by its own guide, maintained outside this repository. What
+belongs here is only what the runbooks fail on — and both fail *silently*, which is why they
+are worth a line on this list rather than being left to the other guide alone.
+
+- [ ] Installed application version ships `worker_id` and `claimed_at` on `x_autps_active_dir_command_queue` **BLOCKER** — without them every claim is lost, no job executes, and rows strand in Work in Progress. The Table API ignores unknown fields, so this does not fail loudly; it fails as silence
+- [ ] **Conditional PATCH verified.** Two concurrent claims on the same row: exactly one must win **BLOCKER** — if the instance does not honour the filter atomically, two workers execute the same job and nothing in Azure notices
+
+Everything else — domain record contents, integration user permissions, removal of the
+legacy credential fields — is verified in the ServiceNow guide.
 
 ## 6. Monitoring
 

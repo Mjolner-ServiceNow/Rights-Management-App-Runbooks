@@ -93,10 +93,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   table because none of their work happens here. The two guides are to be merged into one
   end-to-end document once the solution is settled.
 
-  `PRODUCTION-CHECKLIST.md`'s ServiceNow section is trimmed to the two blockers that the
-  runbooks fail *silently* on — missing claim columns, and a conditional `PATCH` that is
-  not atomic. Both are invisible from Azure, which is the reason they stay on a list read
-  by whoever installs the Azure side; everything else now points at the ServiceNow guide.
+  `PRODUCTION-CHECKLIST.md`'s ServiceNow section is now a pointer to that guide and
+  verifies nothing itself. The Azure-side consequence is still covered: the
+  duplicate-execution test in section 7 proves the job claim works end to end, which is the
+  behaviour that depends on the queue columns and on the conditional `PATCH` being atomic,
+  so a ServiceNow-side problem still surfaces here rather than in production.
 - **The installation guide described a scheduled design that was never how this works.**
   Every job is event-driven: ServiceNow writes a queue row and starts the runbook job that
   drains it. Step 10 had the customer create Azure Automation schedules for each runbook

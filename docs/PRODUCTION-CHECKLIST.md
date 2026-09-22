@@ -45,15 +45,14 @@ Work top to bottom. Anything marked **BLOCKER** stops the release.
 
 ## 5. ServiceNow
 
-Configuring ServiceNow is covered by its own guide, maintained outside this repository. What
-belongs here is only what the runbooks fail on — and both fail *silently*, which is why they
-are worth a line on this list rather than being left to the other guide alone.
+Covered by the ServiceNow application's own guide, maintained outside this repository.
+Complete it before working through this list.
 
-- [ ] Installed application version ships `worker_id` and `claimed_at` on `x_autps_active_dir_command_queue` **BLOCKER** — without them every claim is lost, no job executes, and rows strand in Work in Progress. The Table API ignores unknown fields, so this does not fail loudly; it fails as silence
-- [ ] **Conditional PATCH verified.** Two concurrent claims on the same row: exactly one must win **BLOCKER** — if the instance does not honour the filter atomically, two workers execute the same job and nothing in Azure notices
-
-Everything else — domain record contents, integration user permissions, removal of the
-legacy credential fields — is verified in the ServiceNow guide.
+Nothing on the ServiceNow side is verified here. The Azure-side consequences still are: the
+**duplicate-execution test** in section 7 proves the job claim works end to end, which is
+the behaviour that depends on the queue columns and on the conditional `PATCH` being atomic.
+If that test fails, the cause is usually on the ServiceNow side rather than in anything this
+repository ships.
 
 ## 6. Monitoring
 

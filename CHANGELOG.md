@@ -81,6 +81,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   serving if the import fails.
 
 ### Fixed
+- `docs/INSTALLATION.md` specified `claimed_at` as String (64). It must be a Date/Time
+  field: `Invoke-RmaQueueWatchdog` queries it with the `RELATIVELT@minute@ago@` operator,
+  and a date operator does not behave reliably against a string column. Caught before the
+  column was built, which is the only reason it is a documentation fix rather than a
+  migration.
+- The `worker_id` / `claimed_at` blocker in `docs/PRODUCTION-CHECKLIST.md` and
+  `docs/INSTALLATION.md` understated its own effect. It said the duplicate-execution
+  protection would not work; in fact **nothing runs at all**. The Table API ignores unknown
+  fields silently, so the claim `PATCH` appears to succeed and moves the row to Work in
+  Progress, but the read-back finds no `worker_id`, every claim is lost, and rows strand
+  with no terminal state. The difference matters: one reads as a missing safety net, the
+  other as a full stop that also dirties the queue.
+- `docs/ARCHITECTURE.md`'s scaling section implied that adding workers raises throughput
+  because the claim makes it safe. The claim makes it *correct*; the batched poll is what
+  makes it faster. Both are now stated, with `BatchSize` added as a fourth lever.
+- The `job-claim-contention` response in `docs/RUNBOOK-OPERATIONS.md` described only one of
+  its three causes. A ServiceNow instance failing every `PATCH` produces an identical
+  summary to ordinary contention and is not harmless; the entry now separates them and says
+  which log line tells them apart.
 - `Initialize-RmaWorker.ps1 -WhatIf` failed on the URL path. The staging directory is
   created with `New-Item`, which honours `-WhatIf`, so it was never created, the download
   had nowhere to land, and the preview died on

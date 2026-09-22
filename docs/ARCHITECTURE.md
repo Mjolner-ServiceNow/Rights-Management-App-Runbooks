@@ -104,7 +104,11 @@ exchange.
 ```
 
 The claim is the property that makes everything else safe. Without it, running two workers
-doubles the duplicate-execution rate; with it, workers can be added freely.
+doubles the duplicate-execution rate; with it, workers can be added without risking
+duplicate execution.
+
+Safe is not the same as useful. The claim makes a second worker *correct*; the batched poll
+described under **Scaling** is what makes it *faster*.
 
 > **Verify before relying on this.** Correctness depends on the filtered `PATCH` being a
 > single server-side compare-and-set on your ServiceNow instance. Confirm it in the
@@ -158,17 +162,30 @@ AllUsers location; a per-user install is invisible to them. All 7.x versions sha
 
 ## Scaling
 
-Throughput is `workers × jobs-per-run ÷ schedule-interval`. Three levers:
+Throughput is `workers × jobs-per-run ÷ schedule-interval`. Four levers:
 
 | Lever | When | Cost |
 |---|---|---|
 | Increase schedule frequency | Queue drains but latency is too high | None |
 | Raise `MaxJobs` / `MaxMinutes` | Runs stop on a safety limit with work left | Longer job duration |
+| Raise `BatchSize` | Workers are losing claims to each other | One larger read per poll |
 | Add a Hybrid Worker to the group | Single worker is saturated | One VM |
 
-Adding workers is safe **because of the claim** and for no other reason. The
-`job-claim-contention` alert shows when workers are fighting over an empty queue, which
-means the schedule is too aggressive rather than the workers too few.
+Adding workers is safe **because of the claim**. It is *productive* because of the batched
+poll, which is a separate mechanism and worth understanding before the fleet grows.
+
+A poll fetches up to `BatchSize` rows and the worker walks that window from a random
+offset. Fetching a single row instead makes every worker contend for the same head of the
+queue: one wins, the rest lose, and the losers never reach the rows behind it. A worker in
+that state stops with `claim-contention` having processed nothing while the queue is full,
+so adding workers buys wasted `PATCH` calls rather than throughput.
+
+**Raise `BatchSize` roughly in step with the worker count.** The default of 20 suits a small
+fleet. Contention falls as the window widens, because two workers entering a 20-row window
+at random offsets rarely start on the same row.
+
+The `job-claim-contention` alert no longer means simply "too many workers" — see
+[RUNBOOK-OPERATIONS.md](RUNBOOK-OPERATIONS.md).
 
 Both safety limits are deliberate. Azure Automation applies a three-hour fair-share limit
 to cloud jobs; Hybrid Worker jobs are not capped, so an unbounded loop can run until

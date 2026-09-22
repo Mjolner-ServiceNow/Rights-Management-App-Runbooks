@@ -45,7 +45,7 @@ Work top to bottom. Anything marked **BLOCKER** stops the release.
 
 ## 5. ServiceNow
 
-- [ ] `worker_id` and `claimed_at` columns added to `x_autps_active_dir_command_queue` **BLOCKER**
+- [ ] `worker_id` and `claimed_at` columns added to `x_autps_active_dir_command_queue` (`claimed_at` as Date/Time, not String) **BLOCKER** — without them every claim is lost, no job executes, and rows strand in Work in Progress
 - [ ] **Conditional PATCH verified.** Two concurrent claims on the same row: exactly one must win **BLOCKER**
 - [ ] `exception` field confirmed as the correct column for failure text
 - [ ] Integration user has read on the queue and domain tables, write on the queue

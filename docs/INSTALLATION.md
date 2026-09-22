@@ -83,10 +83,19 @@ On `x_autps_active_dir_command_queue`, add:
 | Column | Type | Purpose |
 |---|---|---|
 | `worker_id` | String (255) | Which worker claimed the job |
-| `claimed_at` | String (64) | UTC timestamp of the claim, ISO 8601 |
+| `claimed_at` | **Date/Time** | When the claim was taken |
 
-These are what make it impossible for two workers to execute the same job. Without them
-the installation will run, but the duplicate-execution protection does not work.
+`claimed_at` must be a real Date/Time field. An earlier version of this guide specified
+String (64), which is wrong: `Invoke-RmaQueueWatchdog` queries the column with the
+`RELATIVELT@minute@ago@` operator, and a date operator does not behave reliably against a
+string column.
+
+These are what make it impossible for two workers to execute the same job. **Without them
+nothing runs at all.** The Table API ignores unknown fields silently, so the claim `PATCH`
+appears to succeed and moves the row to Work in Progress, but the read-back comparison in
+`Request-RmaJobClaim` finds no `worker_id` and every claim is therefore lost. No job is
+executed, and rows are left stranded in Work in Progress with no terminal state. This is
+not a degraded mode.
 
 ### 1b. Verify the conditional update behaves correctly
 

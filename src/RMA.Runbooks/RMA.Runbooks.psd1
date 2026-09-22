@@ -1,6 +1,6 @@
 ﻿@{
     RootModule        = 'RMA.Runbooks.psm1'
-    ModuleVersion     = '1.1.0'
+    ModuleVersion     = '1.2.0'
     GUID              = 'c2f6b1e4-9a3d-4f7b-8c15-2e6d4a9b7c30'
     Author            = 'Cloud Operations Department'
     CompanyName       = 'Mjølner Informatics A/S'

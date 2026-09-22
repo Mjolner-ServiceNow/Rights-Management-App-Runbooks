@@ -212,4 +212,131 @@ Describe 'Invoke-RmaQueueLoop' -Tag 'Unit', 'Concurrency' {
             Should -Invoke -ModuleName RMA.Runbooks Write-RmaLog -ParameterFilter { $Level -eq 'Error' }
         }
     }
+
+    Context 'a fleet of workers contending for one queue' {
+
+        # A shared queue in which every row belongs to exactly one worker. From inside a
+        # single worker that is indistinguishable from a real race: claims on rows it owns
+        # succeed, claims on everyone else's fail, and the rows it loses stay Pending and
+        # keep coming back. Deterministic, so the assertions below are not probabilistic.
+        BeforeEach {
+            $script:Pending    = [System.Collections.Generic.List[string]]::new()
+            $script:Owner      = @{}
+            $script:Executed   = [System.Collections.Generic.List[string]]::new()
+            $script:ClaimOrder = [System.Collections.Generic.List[string]]::new()
+            $script:Worker     = 0
+
+            Mock -ModuleName RMA.Runbooks Start-Sleep {}
+
+            Mock -ModuleName RMA.Runbooks Get-RmaPendingJob {
+                $take = [math]::Min($Limit, $script:Pending.Count)
+                if ($take -eq 0) { return @() }
+                @($script:Pending[0..($take - 1)] | ForEach-Object {
+                        [pscustomobject]@{
+                            sys_id = $_
+                            input  = [Convert]::ToBase64String(
+                                [Text.Encoding]::UTF8.GetBytes('{"action":"Create-EntraUser"}'))
+                        }
+                    })
+            }
+
+            Mock -ModuleName RMA.Runbooks Request-RmaJobClaim {
+                $script:ClaimOrder.Add($SysId)
+                if ($script:Owner[$SysId] -ne $script:Worker) { return $false }
+                $null = $script:Pending.Remove($SysId)
+                $true
+            }
+        }
+
+        It 'executes every job exactly once across contending workers' {
+            # The property that must survive batching. A batch is a window, not a lock:
+            # if walking it ever executed a row whose claim was lost, or the same row
+            # twice, duplicate execution would be back - the defect this module exists
+            # to remove.
+            $workers = 4
+            0..39 | ForEach-Object {
+                $sysId = '{0:x32}' -f $_
+                $script:Pending.Add($sysId)
+                $script:Owner[$sysId] = $_ % $workers
+            }
+
+            $pass = 0
+            while ($script:Pending.Count -gt 0 -and $pass -lt 20) {
+                $script:Worker = $pass % $workers
+                $null = Invoke-RmaQueueLoop -Context $script:Context -DomainId $script:DomainId `
+                    -Command 'Create-EntraUser' -BatchSize 10 -Body { param($job, $p) $null = $p; $script:Executed.Add($job.sys_id) }
+                $pass++
+            }
+
+            $script:Pending.Count  | Should -Be 0
+            $script:Executed.Count | Should -Be 40
+            ($script:Executed | Select-Object -Unique).Count | Should -Be 40
+        }
+
+        It 'walks past a row it cannot claim instead of stalling behind it' {
+            # The regression that motivated batching. With one row per poll the worker
+            # re-reads the same unclaimable head row until it gives up, and reports
+            # claim-contention with a full queue and nothing done.
+            $head = '{0:x32}' -f 99
+            $script:Pending.Add($head); $script:Owner[$head] = 1
+            0..4 | ForEach-Object {
+                $sysId = '{0:x32}' -f $_
+                $script:Pending.Add($sysId); $script:Owner[$sysId] = 0
+            }
+            $script:Worker = 0
+
+            $starved = Invoke-RmaQueueLoop -Context $script:Context -DomainId $script:DomainId `
+                -Command 'Create-EntraUser' -BatchSize 1 -Body { $script:Executed.Add('x') }
+
+            $starved.Processed  | Should -Be 0
+            $starved.StopReason | Should -Be 'claim-contention'
+
+            $batched = Invoke-RmaQueueLoop -Context $script:Context -DomainId $script:DomainId `
+                -Command 'Create-EntraUser' -BatchSize 10 -Body { $script:Executed.Add('x') }
+
+            $batched.Processed | Should -Be 5
+        }
+
+        It 'lets every worker in a ten-worker fleet make progress' {
+            # At Limit 1 the arithmetic is ((N-1)/N)^MaxConsecutiveSkips: with ten workers
+            # a worker abandons its run often enough to matter. Batching has to remove
+            # that, or adding workers buys contention rather than throughput.
+            $workers = 10
+            0..99 | ForEach-Object {
+                $sysId = '{0:x32}' -f $_
+                $script:Pending.Add($sysId)
+                $script:Owner[$sysId] = $_ % $workers
+            }
+
+            $progress = 0..($workers - 1) | ForEach-Object {
+                $script:Worker = $_
+                (Invoke-RmaQueueLoop -Context $script:Context -DomainId $script:DomainId `
+                    -Command 'Create-EntraUser' -BatchSize 20 -Body { }).Processed
+            }
+
+            $progress.Count | Should -Be $workers
+            $progress | Should -Not -Contain 0
+        }
+
+        It 'enters the batch at a varying offset so workers do not collide on row 0' {
+            # Without this every worker walks the same batch in the same order and they
+            # queue up on row 0 exactly as they did when the poll fetched a single row.
+            0..19 | ForEach-Object {
+                $sysId = '{0:x32}' -f $_
+                $script:Pending.Add($sysId)
+                $script:Owner[$sysId] = 1          # owned by nobody in this run
+            }
+            $script:Worker = 0
+
+            $firstTouched = 1..10 | ForEach-Object {
+                $script:ClaimOrder.Clear()
+                $null = Invoke-RmaQueueLoop -Context $script:Context -DomainId $script:DomainId `
+                    -Command 'Create-EntraUser' -BatchSize 20 -MaxConsecutiveSkips 1 -Body { }
+                $script:ClaimOrder[0]
+            }
+
+            $firstTouched.Count | Should -Be 10
+            ($firstTouched | Select-Object -Unique).Count | Should -BeGreaterThan 1
+        }
+    }
 }

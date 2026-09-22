@@ -6,6 +6,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- `Invoke-RmaQueueLoop` polls a batch of rows per request instead of one, and enters the
+  batch at a random offset. Polling one row at a time made every worker contend for the
+  same head of the queue: one won and the rest lost, every time, so adding workers raised
+  the wasted-PATCH rate without raising throughput. Worse, a worker that kept losing the
+  head row never reached the rows behind it and stopped with `claim-contention` having
+  processed nothing while the queue was full — measured in `Invoke-RmaQueueLoop.Tests.ps1`,
+  which runs the same fixture at `-BatchSize 1` (0 jobs done) and `-BatchSize 10` (5).
+  New `-BatchSize` parameter, default 20; `Get-RmaPendingJob` already accepted up to 100
+  and is unchanged.
+
+- **Behaviour change:** `MaxConsecutiveSkips` now counts consecutive *batches* in which a
+  claim was attempted and none was won, not individual lost claims, and its default drops
+  from 25 to 5. Under batching the old meaning was actively misleading — losing most of a
+  batch and winning the rest is a healthy outcome, and would have exhausted the budget
+  within a single poll. The parameter name is unchanged, so no caller breaks; callers that
+  pass an explicit value should divide it by roughly their batch size.
+
+  Rows too malformed to claim now back the loop off without counting toward the ceiling,
+  so a bad row can no longer be reported as contention. The stop stays bounded by
+  `MaxMinutes`, as before.
+
+  `MaxJobs` and `MaxMinutes` are now also checked between rows of a batch, so a large
+  `BatchSize` cannot overshoot either cap.
+
 ### Added
 - The release notes carry a second, clearly separate command for `-PruneUnpinned`.
   Pruning was documented only in `docs/INSTALLATION.md` and appeared in neither

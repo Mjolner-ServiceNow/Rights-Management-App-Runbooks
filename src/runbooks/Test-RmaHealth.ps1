@@ -1,5 +1,5 @@
 #Requires -Version 7.2
-#Requires -Modules @{ ModuleName = 'RMA.Runbooks'; RequiredVersion = '1.1.0' }
+#Requires -Modules @{ ModuleName = 'RMA.Runbooks'; RequiredVersion = '1.2.0' }
 
 <#
 .SYNOPSIS

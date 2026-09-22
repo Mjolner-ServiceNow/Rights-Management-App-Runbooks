@@ -82,7 +82,7 @@ downtime means jobs accumulate unprocessed in ServiceNow. Nothing is dropped.
 
 | Scope | How | Time |
 |---|---|---|
-| Emergency stop | Disable the schedules. Jobs queue and are processed on re-enable. | seconds |
+| Emergency stop | Stop the ServiceNow application from starting runs. Jobs queue and are processed when it resumes. | seconds |
 | One runbook | Publish the previous draft from the Automation Account. | ~2 min |
 | Shared module | Re-run `Initialize-RmaWorker.ps1` on each worker from the previous tag, then re-publish the runbooks that pin it. Both sides must move together. | ~10 min |
 | Infrastructure | Revert the change by hand. No template to roll back to. | varies |
@@ -92,17 +92,17 @@ a working runbook offline.
 
 ### Draining before a planned change
 
-```powershell
-Get-AzAutomationSchedule -ResourceGroupName $rg -AutomationAccountName $aa |
-    Set-AzAutomationSchedule -IsEnabled $false
+Stop the ServiceNow application from starting new runs first — there are no Azure
+schedules to disable — then wait for the runs already in flight:
 
+```powershell
 while (Get-AzAutomationJob -ResourceGroupName $rg -AutomationAccountName $aa -Status Running) {
     Start-Sleep 30
 }
 # Every run is bounded by MaxMinutes, so this always terminates.
 ```
 
-Re-enable the schedules afterwards. Queued work is picked up on the next run.
+Let the application resume afterwards. Queued work is picked up by the next run it starts.
 
 ## Adding a worker
 

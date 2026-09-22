@@ -3,7 +3,8 @@
 
 <#
 .SYNOPSIS
-    Read-only health check. Run by the deployment pipeline before any schedule is enabled.
+    Read-only health check. Run by the ServiceNow application, which surfaces the result
+    in ServiceNow; also runnable by hand when that view is what is unavailable.
 .DESCRIPTION
     Proves every dependency of the platform works end to end without mutating anything:
     managed identity, Key Vault, ServiceNow, the domain record, Graph, and (optionally)

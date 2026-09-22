@@ -81,6 +81,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   serving if the import fails.
 
 ### Fixed
+- **`docs/INSTALLATION.md` is now scoped to Azure only.** Setting up the ServiceNow
+  application has its own guide, maintained outside this repository, and this one was
+  duplicating part of it: step 1 had the reader confirm the application version, populate
+  the domain record and check the integration account's permissions. That step is removed
+  and the remaining nine renumbered.
+
+  The guide now opens with a scope note saying to read the ServiceNow guide first, names
+  the three values it produces (domain record sys_id, instance name, integration account
+  username) in *Values to record*, and drops the ServiceNow administrator from the roles
+  table because none of their work happens here. The two guides are to be merged into one
+  end-to-end document once the solution is settled.
+
+  `PRODUCTION-CHECKLIST.md`'s ServiceNow section is now a pointer to that guide and
+  verifies nothing itself. The Azure-side consequence is still covered: the
+  duplicate-execution test in section 7 proves the job claim works end to end, which is the
+  behaviour that depends on the queue columns and on the conditional `PATCH` being atomic,
+  so a ServiceNow-side problem still surfaces here rather than in production.
+- **The installation guide described a scheduled design that was never how this works.**
+  Every job is event-driven: ServiceNow writes a queue row and starts the runbook job that
+  drains it. Step 10 had the customer create Azure Automation schedules for each runbook
+  plus four offset hourly ones for the watchdog; all of it is removed, and the section now
+  explains the event-driven flow and says to delete any schedules found in an existing
+  installation, because a schedule competing with the application doubles claim contention
+  for no gain.
+
+  The same assumption was load-bearing in five other places and is corrected in each:
+  `ARCHITECTURE.md`'s throughput formula (`workers × jobs-per-run ÷ schedule-interval`, of
+  which the last term no longer exists), the emergency stop and drain procedure in
+  `DEPLOYMENT.md`, the "stop everything" and alert-response guidance in
+  `RUNBOOK-OPERATIONS.md`, two checklist items in `PRODUCTION-CHECKLIST.md`, and the
+  docstrings of `Invoke-RmaQueueWatchdog.ps1` and `Test-RmaHealth.ps1`.
+
+  The batched poll from the previous entry is unaffected, and matters more under this
+  model rather than less: concurrency is now set by request arrival rather than by a worker
+  count anyone configures, so overlapping runs are the normal case.
+- Step 1 had the customer add `worker_id` and `claimed_at` to the command queue table by
+  hand. They ship with the scoped application and arrive when it is updated. What is left
+  in step 1 is the configuration only the customer can supply: the domain record and the
+  integration account.
+- Step 8 was headed *Publish the runbooks* under "Who: Contributor on the Automation
+  Account", though its own body already said the application publishes them. The customer's
+  only task there is creating the PowerShell 7.6 Runtime environment for the application to
+  link them to.
+- Step 9 had the customer trigger the health check by hand. The application runs it and
+  surfaces the result in ServiceNow. The manual invocation is kept, demoted to what it
+  actually is: a diagnostic for when the ServiceNow-side view is the thing that is broken.
 - `docs/INSTALLATION.md` specified `claimed_at` as String (64). It must be a Date/Time
   field: `Invoke-RmaQueueWatchdog` queries it with the `RELATIVELT@minute@ago@` operator,
   and a date operator does not behave reliably against a string column. Caught before the

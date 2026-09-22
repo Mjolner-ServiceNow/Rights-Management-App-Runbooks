@@ -98,7 +98,7 @@ exchange.
    Completed (4)  or  Failed (3)
 
    Worker dies before finally ──▶ stuck at (2)
-                                    │  Invoke-RmaQueueWatchdog (4 offset hourly)
+                                    │  Invoke-RmaQueueWatchdog (ServiceNow, on a cadence)
                                     ▼
                                  Pending (1)
 ```
@@ -162,14 +162,18 @@ AllUsers location; a per-user install is invisible to them. All 7.x versions sha
 
 ## Scaling
 
-Throughput is `workers × jobs-per-run ÷ schedule-interval`. Four levers:
+Work is **event-driven**: ServiceNow writes a queue row and starts the runbook job that
+drains it. There are no Azure Automation schedules, so there is no schedule interval to
+tune and arrival rate is set by whatever the customer's users are doing. Three levers:
 
 | Lever | When | Cost |
 |---|---|---|
-| Increase schedule frequency | Queue drains but latency is too high | None |
 | Raise `MaxJobs` / `MaxMinutes` | Runs stop on a safety limit with work left | Longer job duration |
 | Raise `BatchSize` | Workers are losing claims to each other | One larger read per poll |
 | Add a Hybrid Worker to the group | Single worker is saturated | One VM |
+
+Concurrency is therefore not a number anyone configures. A burst of requests starts several
+runbook jobs that overlap on the same queue, and a quiet hour starts none.
 
 Adding workers is safe **because of the claim**. It is *productive* because of the batched
 poll, which is a separate mechanism and worth understanding before the fleet grows.

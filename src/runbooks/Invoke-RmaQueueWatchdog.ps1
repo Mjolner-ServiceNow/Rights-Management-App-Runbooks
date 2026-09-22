@@ -7,15 +7,16 @@
 .DESCRIPTION
     A job is claimed, then its worker dies: the VM reboots, the network partitions, or the
     process is killed. Without this, that job stays in Work in Progress forever and no
-    scheduled run will ever pick it up again, because the queue query only matches Pending.
+    later run will ever pick it up, because the queue query only matches Pending.
 
     The watchdog is the safety net behind the try/finally in Invoke-RmaQueueLoop. The
     finally block handles the ordinary cases; this handles the ones where the process
     never reached it.
 
-    Azure Automation schedules cannot run more often than hourly. For a 15 minute cadence
-    register this runbook against four hourly schedules offset by 15 minutes; see
-    docs/INSTALLATION.md. Running several instances concurrently is safe.
+    Started by the ServiceNow application on a cadence, not by an Azure Automation
+    schedule. It cannot be request-driven like the command runbooks: there is no event for
+    "a worker died", so this one has to be a periodic sweep. Running several instances
+    concurrently is safe.
 
     StaleAfterMinutes must exceed the longest expected job by a comfortable margin, or a
     slow job will be requeued while it is still running. Keep it above Invoke-RmaQueueLoop's

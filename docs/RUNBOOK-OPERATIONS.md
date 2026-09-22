@@ -29,8 +29,8 @@ AutomationJobStreams
 ```
 
 ```kusto
-// Claim contention. Sustained non-zero with an empty queue means the schedule is
-// too aggressive, not that more workers are needed.
+// Claim contention. Sustained non-zero with an empty queue means runs are overlapping
+// more than the queue justifies, not that more workers are needed.
 AutomationJobStreams
 | where TimeGenerated > ago(24h)
 | extend L = parse_json(ResultDescription)
@@ -53,7 +53,9 @@ check identity first with `Test-RmaHealth`.
 
 ### `queue-loop-hit-safety-limit`
 Runs are ending with work still queued. Not urgent once, a capacity problem if sustained.
-In order of preference: increase schedule frequency, raise `MaxJobs`, add a worker.
+In order of preference: raise `MaxJobs`, raise `BatchSize`, add a worker. There is no
+schedule frequency to increase — runs are started by the ServiceNow application per
+request, so the queue is refilled by user demand rather than drained on a clock.
 
 Check `stopReason` before treating it as a fault. `max-minutes` means jobs are slow;
 `max-jobs` means there were simply more of them than the cap allows. `MaxJobs` defaults to
@@ -69,7 +71,8 @@ claims and won none. It counts batches, not individual lost claims.
 Three causes, in order of likelihood:
 
 1. **The queue holds only rows other workers are winning.** Normal near the end of a drain,
-   and harmless. Reduce schedule frequency or worker count if it is constant.
+   and harmless. Constant rather than occasional means runs are overlapping more than the
+   arrival rate justifies; reduce the worker count.
 2. **`BatchSize` is too small for the fleet.** Workers are colliding on the same few rows
    instead of spreading across a window. Raise it before adding workers — see the scaling
    section in [ARCHITECTURE.md](ARCHITECTURE.md).
@@ -86,16 +89,24 @@ it, and check how it bypassed the analyzer gate.
 
 ## Common tasks
 
-**Reprocess a failed job.** Set its ServiceNow status back to `1` (Pending). The next
-scheduled run picks it up. Do not edit `worker_id` or `claimed_at`.
+**Reprocess a failed job.** Set its ServiceNow status back to `1` (Pending). It is picked
+up by the next run that drains that command and domain. Do not edit `worker_id` or
+`claimed_at`.
 
-**Stop everything.** Disable the schedules. Jobs queue and are processed when re-enabled.
-Nothing is lost — the queue is durable.
+**Stop everything.** Runs are started by the ServiceNow application, not by an Azure
+schedule, so the stop is a ServiceNow-side control — confirm with the application team
+which one it is before you need it in anger. Nothing is lost either way: the queue is
+durable and rows accumulate at `status = 1`.
 
-**Change how often a runbook runs.** Azure Automation schedules have a one hour minimum.
-For a finer cadence, add offset hourly schedules (`:00`, `:15`, `:30`, `:45`) rather than
-looking for a setting that does not exist. Overlapping runs are safe because jobs are
-claimed atomically.
+As an Azure-side fallback, stopping the Hybrid Worker service on the VM leaves triggered
+jobs queued in Automation rather than running them. Use it when the ServiceNow control is
+unavailable, not as the first choice — it makes Azure look broken to anyone reading job
+history.
+
+**Change how often runbooks run.** You cannot, from Azure. Arrival rate is set by what the
+customer's users are doing, and the application starts a run per request. Overlapping runs
+are safe because jobs are claimed atomically; if they are overlapping wastefully, raise
+`BatchSize` rather than looking for a cadence setting that does not exist.
 
 **Add a worker.** Attach the same user-assigned identity to the new VM, run
 `Initialize-RmaWorker.ps1`, register it into the Hybrid Worker Group. No code change. Safe

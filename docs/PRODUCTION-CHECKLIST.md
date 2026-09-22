@@ -45,7 +45,7 @@ Work top to bottom. Anything marked **BLOCKER** stops the release.
 
 ## 5. ServiceNow
 
-- [ ] `worker_id` and `claimed_at` columns added to `x_autps_active_dir_command_queue` (`claimed_at` as Date/Time, not String) **BLOCKER** — without them every claim is lost, no job executes, and rows strand in Work in Progress
+- [ ] Installed application version ships `worker_id` and `claimed_at` on `x_autps_active_dir_command_queue` **BLOCKER** — without them every claim is lost, no job executes, and rows strand in Work in Progress. These arrive with the application; do not add them by hand
 - [ ] **Conditional PATCH verified.** Two concurrent claims on the same row: exactly one must win **BLOCKER**
 - [ ] `exception` field confirmed as the correct column for failure text
 - [ ] Integration user has read on the queue and domain tables, write on the queue
@@ -76,8 +76,8 @@ Work top to bottom. Anything marked **BLOCKER** stops the release.
 
 ## 8. Operational readiness
 
-- [ ] Schedules created, with frequency justified by measured queue depth. Remember the one hour platform minimum
-- [ ] Watchdog scheduled. Azure Automation's minimum is hourly, so use four offset hourly schedules for a 15 minute cadence **BLOCKER**
+- [ ] **No** Azure Automation schedules exist. Work is event-driven; a schedule competing with the application doubles claim contention for no gain
+- [ ] ServiceNow application confirmed to trigger `Invoke-RmaQueueWatchdog` on a cadence **BLOCKER** — nothing else recovers a job whose worker died, and there is no event for it
 - [ ] `StaleAfterMinutes` comfortably above the longest observed job, and above `MaxMinutes`
 - [ ] On-call knows where the alerts land and what the first response is
 - [ ] `docs/RUNBOOK-OPERATIONS.md` reviewed by whoever will be woken up
@@ -89,7 +89,7 @@ Work top to bottom. Anything marked **BLOCKER** stops the release.
 - [ ] Watch for one full business cycle before enabling the next tenant
 - [ ] Confirm no `module-install-attempted` alerts
 - [ ] Confirm worker disk is flat, not growing
-- [ ] Review claim contention; tune schedule or worker count
+- [ ] Review claim contention; raise `BatchSize` before adding workers
 - [ ] Re-run the analyzer against production content and confirm it still reports zero
 
 ---

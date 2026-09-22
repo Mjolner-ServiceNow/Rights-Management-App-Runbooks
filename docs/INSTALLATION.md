@@ -47,8 +47,7 @@ role and should not be.
 ### How long
 
 Roughly half a day of work, spread across whatever approval waits your organisation
-imposes. The Azure parts take minutes; the Entra consent and the ServiceNow table change
-are the ones that queue.
+imposes. The Azure parts take minutes; the Entra consent is the one that queues.
 
 ### Values to record as you go
 
@@ -57,8 +56,8 @@ another.
 
 | Value | Produced in | Used in |
 |---|---|---|
-| Domain record sys_id | Step 1 | Steps 9, 10 |
-| ServiceNow instance name | Step 1 | Steps 9, 10 |
+| Domain record sys_id | Step 1 | Step 9, and the ServiceNow application |
+| ServiceNow instance name | Step 1 | Step 9, and the ServiceNow application |
 | Managed identity **client** ID | Step 2 | Steps 9, 10 |
 | Managed identity **principal** ID | Step 2 | Step 5 |
 | Key Vault name | Step 2 | Steps 7, 9, 10 |
@@ -72,53 +71,32 @@ another.
 
 ---
 
-## Step 1 — Prepare ServiceNow
+## Step 1 — Confirm the ServiceNow application
 
 **Who:** ServiceNow administrator.
 
-### 1a. Add two columns to the command queue table
+**You do not add anything to the command queue table.** `worker_id` and `claimed_at`, and
+the behaviour that depends on them, ship with the scoped application: they arrive when the
+customer updates it. Earlier versions of this guide had you add the columns by hand — if you
+are following those instructions, stop.
 
-On `x_autps_active_dir_command_queue`, add:
+What remains here is the configuration only the customer can supply.
 
-| Column | Type | Purpose |
-|---|---|---|
-| `worker_id` | String (255) | Which worker claimed the job |
-| `claimed_at` | **Date/Time** | When the claim was taken |
+### 1a. Confirm the application version
 
-`claimed_at` must be a real Date/Time field. An earlier version of this guide specified
-String (64), which is wrong: `Invoke-RmaQueueWatchdog` queries the column with the
-`RELATIVELT@minute@ago@` operator, and a date operator does not behave reliably against a
-string column.
+The queue claim needs `worker_id` and `claimed_at` on
+`x_autps_active_dir_command_queue`. Confirm the installed application version includes
+them before going further.
 
-These are what make it impossible for two workers to execute the same job. **Without them
-nothing runs at all.** The Table API ignores unknown fields silently, so the claim `PATCH`
-appears to succeed and moves the row to Work in Progress, but the read-back comparison in
-`Request-RmaJobClaim` finds no `worker_id` and every claim is therefore lost. No job is
-executed, and rows are left stranded in Work in Progress with no terminal state. This is
-not a degraded mode.
+**Without them nothing runs at all.** The Table API ignores unknown fields silently, so the
+claim `PATCH` appears to succeed and moves the row to Work in Progress — then the read-back
+in `Request-RmaJobClaim` finds no `worker_id`, every claim is lost, and rows strand in Work
+in Progress with no terminal state. It does not fail loudly; it fails as silence.
 
-### 1b. Verify the conditional update behaves correctly
+### 1b. Populate the domain record
 
-This is the one genuine unknown in the installation, and it is worth ten minutes now rather
-than an incident later.
-
-The job claim is a `PATCH` filtered on `status=1`, which must behave as a single
-server-side compare-and-set. Test it:
-
-1. Create a test row in the queue with `status = 1`.
-2. Issue two `PATCH` requests to
-   `/api/now/table/x_autps_active_dir_command_queue/<sys_id>?sysparm_query=status%3D1`
-   as close to simultaneously as you can, each with a different `worker_id`.
-3. Read the row back.
-
-**Exactly one `worker_id` must be recorded.** If both requests report success and the second
-overwrote the first, your instance does not honour the filter as an atomic operation. In
-that case, implement a small Scripted REST endpoint that performs the compare-and-set server
-side and point `Request-RmaJobClaim` at it. Nothing else in the codebase changes.
-
-### 1c. Confirm the domain record
-
-The domain record on `x_autps_active_dir_domain` holds **configuration only**. Populate:
+The domain record on `x_autps_active_dir_domain` holds **configuration only**, and its
+values are specific to this customer, so they cannot ship with the application:
 
 | Field | Example |
 |---|---|
@@ -133,11 +111,11 @@ If you are migrating from an earlier version, the fields `thumbprint`,
 Remove them once the new installation is verified. They point at credentials, and a domain
 record that points at credentials puts ServiceNow inside your secrets boundary.
 
-### 1d. Integration account
+### 1c. Integration account
 
-Confirm the account you will use has read on `x_autps_active_dir_domain` and read/write on
-`x_autps_active_dir_command_queue`. Record the username; the password goes into Key Vault in
-step 7.
+Confirm the account the runbooks will use has read on `x_autps_active_dir_domain` and
+read/write on `x_autps_active_dir_command_queue`. Record the username; the password goes
+into Key Vault in step 7.
 
 ---
 
@@ -388,18 +366,19 @@ add your own IP.
 
 ---
 
-## Step 8 — Publish the runbooks
+## Step 8 — Runbook publication
 
-**Who:** Contributor on the Automation Account.
+**Who:** nobody, for the publication itself. Contributor on the Automation Account for the
+one prerequisite below.
 
-Publishing is done by the ServiceNow app, which pulls the runbooks from this repository
-and adds them to the Automation Account. This repository does not publish anything; what
-it guarantees is that `main` is always internally consistent, which is what the app
-copies. `tests/Unit/PinnedModuleVersions.Tests.ps1` and `build/Assert-ModuleVersionBump.ps1`
-enforce that on every pull request.
+**The customer does not publish the runbooks.** The ServiceNow application pulls them from
+this repository and adds them to the Automation Account. This repository publishes nothing;
+what it guarantees is that `main` is always internally consistent, which is what the
+application copies. `tests/Unit/PinnedModuleVersions.Tests.ps1` and
+`build/Assert-ModuleVersionBump.ps1` enforce that on every pull request.
 
-**Prerequisite:** a PowerShell **7.6** Runtime environment in the Automation account, and
-the runbooks linked to it. Create it under Automation account > **Runtime Environments**
+**One prerequisite you do have to create:** a PowerShell **7.6** Runtime environment in the
+Automation account, for the application to link the runbooks to. Create it under Automation account > **Runtime Environments**
 (Language PowerShell, Runtime version 7.4 or 7.6), or with the API:
 
 ```bash
@@ -408,8 +387,8 @@ az rest --method put \
   --body '{"properties":{"runtime":{"language":"PowerShell","version":"7.6"}}}'
 ```
 
-After the app has published them, confirm in the Automation Account that each runbook is
-of type **PowerShell** and linked to the `Powershell_7-6` Runtime environment. A runbook
+After the application has published them, confirm in the Automation Account that each
+runbook is of type **PowerShell** and linked to the `Powershell_7-6` Runtime environment. A runbook
 linked to no Runtime environment, or to the wrong one, never starts on a worker that has
 only PowerShell 7.6 registered, and the job output is empty — see *A PowerShell 7 runbook
 never starts* in Troubleshooting.
@@ -439,9 +418,25 @@ The shared module is **not** published to the Automation Account. It lives on th
 
 ## Step 9 — Verify
 
-**Who:** anyone who can start a runbook.
+**Who:** nobody, in the normal case.
 
-Run the health check on the real worker, with every value you recorded:
+**The customer does not trigger the health check.** The ServiceNow application runs
+`Test-RmaHealth` and surfaces the result in ServiceNow, where the status of each check is
+visible without leaving the platform. That is the intended way to read it, during
+installation and afterwards.
+
+**Do not continue until every check passes.** A green deployment with a broken identity
+looks exactly like a working one until the first real job fails.
+
+Then work through the [production checklist](PRODUCTION-CHECKLIST.md), which covers the
+verification this guide does not: the duplicate-execution test, the stranding test, and
+confirming secrets never reach the logs.
+
+### Running it by hand
+
+Only needed when the application cannot reach Azure at all, or when you are diagnosing why
+the automatic run is failing — at which point the ServiceNow-side view is exactly what is
+unavailable. It performs no writes, so it is safe to run at any time:
 
 ```powershell
 Start-AzAutomationRunbook `
@@ -460,7 +455,7 @@ Start-AzAutomationRunbook `
     }
 ```
 
-It performs no writes. Expected output:
+Expected output:
 
 ```
 RMA health check
@@ -475,87 +470,49 @@ Active Directory reachable                  Pass     90  contacted 10.0.0.4
 All checks passed.
 ```
 
-**Do not continue until every check passes.** A green deployment with a broken identity
-looks exactly like a working one until the first real job fails.
-
-Then work through the [production checklist](PRODUCTION-CHECKLIST.md), which covers the
-verification this guide does not: the duplicate-execution test, the stranding test, and
-confirming secrets never reach the logs.
-
 ---
 
-## Step 10 — Create the schedules
+## Step 10 — How work reaches the worker
 
-**Who:** Contributor on the Automation Account.
+**Who:** nobody. There is nothing to create here.
 
-Only once step 9 passes and the checklist is complete.
+**There are no Azure Automation schedules in this design.** Every job is event-driven:
 
-Each runbook needs a schedule, with the same parameters used in step 9.
+1. Something happens in ServiceNow — a user requests a password reset, an account is
+   onboarded, a group membership changes.
+2. The application writes a row to `x_autps_active_dir_command_queue` with `status = 1`.
+3. The application starts the matching runbook job in Azure Automation, on the Hybrid
+   Worker group.
+4. `Invoke-RmaQueueLoop` claims and drains what is queued for that command and domain,
+   then exits.
 
-> **Azure Automation schedules cannot run more often than once an hour.** That is a platform
-> limit, not a setting. For a 15 minute cadence the documented approach is four hourly
-> schedules offset by 15 minutes each. The alternative is a Logic App calling a runbook
-> webhook, which gives finer control at the cost of another moving part.
+A triggered run **drains the queue** rather than handling the single row that caused it, so
+a burst of requests does not produce a burst of runbook jobs each doing one row. `MaxJobs`
+and `MaxMinutes` bound the run; `EmptyPollsBeforeExit` ends it once the queue is empty.
+
+Overlapping runs are safe and expected. Two requests close together can start two runbook
+jobs that poll the same queue at the same time. The atomic claim is what makes that
+correct; `BatchSize` is what keeps them from fighting over the same rows. See *Scaling* in
+[ARCHITECTURE.md](ARCHITECTURE.md).
 
 ### The watchdog
 
-**This one is not optional.** `Invoke-RmaQueueWatchdog` requeues jobs whose worker died
-before finishing. Without it those jobs stay in Work in Progress forever, invisible, and are
-never retried.
+`Invoke-RmaQueueWatchdog` is also started by the ServiceNow application, but on a cadence
+rather than in response to a request. It cannot be request-driven: it requeues jobs whose
+worker died before finishing, and **there is no event for "a worker died"** — it is a sweep,
+and something has to run it periodically.
 
-Four offset hourly schedules give an effective 15 minute cadence:
-
-```powershell
-$rg     = 'rg-rma-prod'
-$aa     = 'aa-rma-prod'
-$group  = 'hwg-rma-prod'
-$params = @{
-    DomainId                = '<domain record sys_id>'
-    Instance                = '<servicenow instance name>'
-    VaultName               = '<key vault name>'
-    ManagedIdentityClientId = '<managed identity CLIENT id>'
-    ServiceNowUserName      = '<integration account username>'
-    StaleAfterMinutes       = 60      # must exceed your longest expected job
-}
-
-# Start on the next whole hour so the four offsets land on :00, :15, :30, :45.
-$base = (Get-Date).Date.AddHours((Get-Date).Hour + 2)
-
-foreach ($offset in 0, 15, 30, 45) {
-    $name = "watchdog-hourly-$offset"
-
-    New-AzAutomationSchedule -ResourceGroupName $rg -AutomationAccountName $aa `
-        -Name $name -StartTime $base.AddMinutes($offset) -HourInterval 1 | Out-Null
-
-    Register-AzAutomationScheduledRunbook -ResourceGroupName $rg -AutomationAccountName $aa `
-        -RunbookName 'Invoke-RmaQueueWatchdog' -ScheduleName $name `
-        -RunOn $group -Parameters $params | Out-Null
-
-    Write-Host "scheduled watchdog at :$('{0:d2}' -f $offset)"
-}
-```
-
-### The command runbooks
-
-One schedule each, hourly to begin with. Start conservative: it is easier to add offsets
-later than to explain a thundering herd. Use the queue depth after a week to decide whether
-you need a finer cadence.
-
-```powershell
-New-AzAutomationSchedule -ResourceGroupName $rg -AutomationAccountName $aa `
-    -Name 'commands-hourly' -StartTime $base -HourInterval 1
-
-Register-AzAutomationScheduledRunbook -ResourceGroupName $rg -AutomationAccountName $aa `
-    -RunbookName 'Create-EntraUser' -ScheduleName 'commands-hourly' `
-    -RunOn $group -Parameters $commandParams
-```
-
-Because every job is claimed atomically, overlapping runs are safe. That is what lets you
-add offsets or workers later without redesigning anything.
-
-`StaleAfterMinutes` must be comfortably above your longest expected job, or the watchdog
-will requeue work that is still running. With `MaxMinutes` at its default of 45, a
+`StaleAfterMinutes` must be comfortably above the longest expected job, or the watchdog will
+requeue work that is still running. With `MaxMinutes` at its default of 45, a
 `StaleAfterMinutes` of 60 is a sensible floor.
+
+### If you find schedules in an existing installation
+
+Earlier versions of this guide had you create Azure Automation schedules for each runbook,
+plus four offset hourly schedules for the watchdog. Those are obsolete. Remove them: two
+things starting the same runbook doubles claim contention and buys nothing, and a scheduled
+run competing with an event-driven one makes queue latency harder to reason about, not
+easier.
 
 ---
 
@@ -641,8 +598,8 @@ Automation Account modules to Hybrid Workers.
 
 ### Jobs sit in "Work in Progress" and never finish
 
-The worker died mid-job. The watchdog requeues them; confirm it is scheduled and check its
-own job history. If many jobs are stranded at once, the watchdog deliberately refuses to act
+The worker died mid-job. The watchdog requeues them; confirm the ServiceNow application is
+still triggering it on its cadence, and check its own job history. If many jobs are stranded at once, the watchdog deliberately refuses to act
 and raises instead, because mass stranding means something systemic and requeueing hundreds
 of jobs into a broken system makes it worse.
 

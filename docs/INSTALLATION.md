@@ -424,9 +424,11 @@ Start-AzAutomationRunbook `
     }
 ```
 
-`DomainController` and `AdUserName` add the Active Directory check, which reads the AD
-password from Key Vault and signs in with it. Leave both out to check only the Entra side.
-With more than one AD domain, pass `AdSecretName` as well.
+Pass the values of every directory the domain uses. `TenantId` and `ApplicationId` add the
+Microsoft Graph check. `DomainController` and `AdUserName` add the Active Directory check,
+which reads the AD password from Key Vault and signs in with it. Leave out the pair for a
+directory the domain does not use; at least one pair is required. With more than one AD
+domain, pass `AdSecretName` as well.
 
 Expected output:
 

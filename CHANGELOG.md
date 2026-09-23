@@ -23,11 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Create-EntraUser` takes a new mandatory `TenantId`. `TenantId`, `ApplicationId` and
     `ManagedIdentityClientId` must be GUIDs, checked when the job binds its parameters
     rather than at token exchange.
-  - `Test-RmaHealth` takes `TenantId`, and replaces `-IncludeActiveDirectory` with
-    `DomainController`, `AdUserName` and an optional `AdSecretName`. Supplying them runs
-    the AD check, which now signs in with the AD service account from Key Vault instead
-    of reading the RootDSE anonymously, so a wrong username or an expired password fails
-    the health check rather than the first real job. The *Key Vault + ServiceNow + domain
+  - `Test-RmaHealth` replaces `-IncludeActiveDirectory` with three parameter sets, one
+    per combination of directories: `TenantId` and `ApplicationId` run the Graph check,
+    `DomainController`, `AdUserName` and an optional `AdSecretName` run the AD check, and
+    at least one pair is required. A domain with Entra switched off can therefore still be
+    health-checked. The AD check now signs in with the AD service account from Key
+    Vault instead of reading the RootDSE anonymously, so a wrong username or an expired
+    password fails the health check rather than the first real job. The *Key Vault + ServiceNow + domain
     record* check is now *Key Vault + ServiceNow*.
   - `Test-RmaPrerequisite` loses `-DomainId` and `-RequireDomainField`, and its context no
     longer carries `DomainId` or `Domain`.

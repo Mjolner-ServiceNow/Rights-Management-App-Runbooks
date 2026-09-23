@@ -93,8 +93,14 @@ only table they query, and what they send back is job state and the results of t
 | `AdUserName` | Active Directory | The AD service account |
 | `AdSecretName` | Active Directory | Key Vault secret with that account's password. Defaults to `ad-service-account-password`. |
 
-`Test-RmaHealth` takes all of them; the Active Directory ones switch on its AD check. Every
-Active Directory command runbook uses the same names.
+`Test-RmaHealth` takes all of them. A domain can use Entra ID, Active Directory or both, so
+it has a parameter set for each: pass `TenantId` and `ApplicationId` for the Graph check,
+`DomainController` and `AdUserName` for the AD check, or all four. At least one pair is
+required, and a pair with one half missing fails at binding rather than skipping the check.
+Every Active Directory command runbook uses the same names.
+
+The ServiceNow application must **leave out** the parameters of a directory the domain
+does not use, not pass them as empty strings. An empty value fails validation.
 
 Three rules follow from putting configuration here:
 

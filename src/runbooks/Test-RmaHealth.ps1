@@ -7,8 +7,12 @@
     in ServiceNow; also runnable by hand when that view is what is unavailable.
 .DESCRIPTION
     Proves every dependency of the platform works end to end without mutating anything:
-    managed identity, Key Vault, ServiceNow, the command queue, Graph, and (optionally)
-    Active Directory.
+    managed identity, Key Vault, ServiceNow and the command queue always, then Graph and
+    Active Directory for whichever of the two the domain uses.
+
+    A domain can use Entra ID, Active Directory or both, so each of those checks runs when
+    its parameters are passed and is left out otherwise. At least one of them is required:
+    a health check that proves neither directory proves nothing a job depends on.
 
     Every value is a parameter, passed by the ServiceNow application exactly as it passes
     them to the command runbooks, so a passing health check proves the values the real
@@ -17,9 +21,11 @@
     This is what turns "the deployment succeeded" into "the deployment works". A green
     infrastructure deployment with a broken identity looks identical to a working one
     until the first real job fails.
+.PARAMETER TenantId
+    Entra tenant ID. Passed with ApplicationId, adds the Microsoft Graph check.
 .PARAMETER DomainController
-    Host name or IP address of a domain controller for the domain. Supplying it adds the
-    Active Directory check, which then also needs AdUserName.
+    Host name or IP address of a domain controller for the domain. Passed with AdUserName,
+    adds the Active Directory check.
 .PARAMETER AdSecretName
     Key Vault secret holding the AD service account's password. One per AD domain when an
     installation serves more than one.
@@ -29,6 +35,10 @@
 
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '',
     Justification = 'These parameters are used inside the Add-Check scriptblocks. PSScriptAnalyzer does not resolve variable use across a scriptblock closure.')]
+# Three parameter sets, so that which checks run is decided at binding: Entra, Active
+# Directory, or both. A parameter in two sets carries one attribute per set. Passing half
+# of a pair fails binding and names the missing half, rather than silently skipping the
+# check the caller evidently meant to run.
 [CmdletBinding(DefaultParameterSetName = 'Entra')]
 param(
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{32}$')]  [string] $DomainId,
@@ -36,18 +46,39 @@ param(
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()]            [string] $VaultName,
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F-]{36}$')][string] $ManagedIdentityClientId,
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()]            [string] $ServiceNowUserName,
-    [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F-]{36}$')][string] $TenantId,
-    [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F-]{36}$')][string] $ApplicationId,
 
-    [Parameter(Mandatory, ParameterSetName = 'ActiveDirectory')][ValidateNotNullOrEmpty()] [string] $DomainController,
-    [Parameter(Mandatory, ParameterSetName = 'ActiveDirectory')][ValidateNotNullOrEmpty()] [string] $AdUserName,
-    [Parameter(ParameterSetName = 'ActiveDirectory')][ValidateNotNullOrEmpty()]            [string] $AdSecretName = 'ad-service-account-password'
+    [Parameter(Mandatory, ParameterSetName = 'Entra')]
+    [Parameter(Mandatory, ParameterSetName = 'EntraAndActiveDirectory')]
+    [ValidatePattern('^[0-9a-fA-F-]{36}$')]
+    [string] $TenantId,
+
+    [Parameter(Mandatory, ParameterSetName = 'Entra')]
+    [Parameter(Mandatory, ParameterSetName = 'EntraAndActiveDirectory')]
+    [ValidatePattern('^[0-9a-fA-F-]{36}$')]
+    [string] $ApplicationId,
+
+    [Parameter(Mandatory, ParameterSetName = 'ActiveDirectory')]
+    [Parameter(Mandatory, ParameterSetName = 'EntraAndActiveDirectory')]
+    [ValidateNotNullOrEmpty()]
+    [string] $DomainController,
+
+    [Parameter(Mandatory, ParameterSetName = 'ActiveDirectory')]
+    [Parameter(Mandatory, ParameterSetName = 'EntraAndActiveDirectory')]
+    [ValidateNotNullOrEmpty()]
+    [string] $AdUserName,
+
+    [Parameter(ParameterSetName = 'ActiveDirectory')]
+    [Parameter(ParameterSetName = 'EntraAndActiveDirectory')]
+    [ValidateNotNullOrEmpty()]
+    [string] $AdSecretName = 'ad-service-account-password'
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $checks = [System.Collections.Generic.List[object]]::new()
+$checkEntra = $PSCmdlet.ParameterSetName -in 'Entra', 'EntraAndActiveDirectory'
+$checkActiveDirectory = $PSCmdlet.ParameterSetName -in 'ActiveDirectory', 'EntraAndActiveDirectory'
 
 function Add-Check {
     [CmdletBinding()]
@@ -65,7 +96,7 @@ function Add-Check {
     }
 }
 
-Write-RmaLog -Level Information -Message 'Health check started' -Data @{ instance = $Instance; domainId = $DomainId }
+Write-RmaLog -Level Information -Message 'Health check started' -Data @{ instance = $Instance; domainId = $DomainId; checks = $PSCmdlet.ParameterSetName }
 
 $context = $null
 
@@ -80,11 +111,13 @@ Add-Check 'Key Vault + ServiceNow' {
     "authenticated as $ServiceNowUserName"
 }
 
-Add-Check 'Microsoft Graph token exchange' {
-    $null = Get-RmaAccessToken -Federated -Resource 'https://graph.microsoft.com/.default' `
-        -ManagedIdentityClientId $ManagedIdentityClientId `
-        -ApplicationId $ApplicationId -TenantId $TenantId
-    "federated token acquired for tenant $TenantId"
+if ($checkEntra) {
+    Add-Check 'Microsoft Graph token exchange' {
+        $null = Get-RmaAccessToken -Federated -Resource 'https://graph.microsoft.com/.default' `
+            -ManagedIdentityClientId $ManagedIdentityClientId `
+            -ApplicationId $ApplicationId -TenantId $TenantId
+        "federated token acquired for tenant $TenantId"
+    }
 }
 
 Add-Check 'ServiceNow command queue readable' {
@@ -93,7 +126,7 @@ Add-Check 'ServiceNow command queue readable' {
     "queue reachable ($($jobs.Count) pending for this command)"
 }
 
-if ($PSCmdlet.ParameterSetName -eq 'ActiveDirectory') {
+if ($checkActiveDirectory) {
     Add-Check 'Active Directory reachable' {
         # Authenticated, so a wrong AD username or an expired password fails here rather
         # than in the first real job.

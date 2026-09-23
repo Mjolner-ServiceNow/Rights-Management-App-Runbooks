@@ -44,12 +44,17 @@ Subscription
 │         └── federated credential ──────┐
 │                                        │
 Microsoft Entra ID                       ▼
-└── App registration ─────────────▶ Microsoft Graph · Exchange Online
+├── App registration, runbooks ───▶ Microsoft Graph · Exchange Online
+└── App registration, ServiceNow ─▶ Automation Contributor on aa-rma-prod
 ```
 
-One identity does everything. `id-rma-prod` reads the two passwords from Key Vault and, through
-the federated credential, acts as the app registration towards Graph and Exchange Online.
-There is no client secret and no certificate anywhere.
+One identity does everything the runbooks do. `id-rma-prod` reads the two passwords from Key
+Vault and, through the federated credential, acts as the runbooks' app registration towards
+Graph and Exchange Online. The runbooks use no client secret and no certificate anywhere.
+
+The ServiceNow application has an app registration of its own, used to publish runbooks into
+the Automation Account and start jobs. It is the one credential in the design that lives
+outside Azure; see *App registration for ServiceNow*.
 
 ---
 
@@ -188,7 +193,7 @@ visible in the vault. The usernames are not secrets and are not stored here.
 
 ---
 
-## App registration
+## App registration for the runbooks
 
 **Where:** Microsoft Entra ID. It is not an Azure resource and has no resource group.
 
@@ -242,6 +247,42 @@ and grant far more than the runbooks need.
 
 ---
 
+## App registration for ServiceNow
+
+**Where:** Microsoft Entra ID, with a role assignment on `aa-rma-prod`.
+
+A second app registration, separate from the runbooks' one. The ServiceNow application
+signs in as it to import and publish runbooks, link them to the Runtime environment, start
+jobs and read their status. The runbooks never use it.
+
+| Setting | Value |
+|---|---|
+| Supported account types | Single tenant |
+| Credential | A client secret or a certificate, held by the ServiceNow application |
+| API permissions | None. It needs nothing in Microsoft Graph or Exchange Online. |
+| Federated credential | None |
+
+**Role assignment:**
+
+| Scope | Role | Role ID |
+|---|---|---|
+| `aa-rma-prod` | Automation Contributor | `f353d9bd-d4a6-484e-a77a-8050b599b867` |
+
+Assign it on the Automation Account itself, not on the resource group or the subscription.
+Automation Contributor grants every action on the account, so a wider scope would hand
+ServiceNow every other Automation Account in that scope too.
+
+> **Automation Contributor can also turn on a managed identity on the Automation Account.**
+> Doing so breaks every runbook, as described under *Automation Account* above. The
+> ServiceNow application must never change the account's identity settings.
+
+**Its credential expires.** A client secret created in the portal lasts at most two years; when it lapses,
+ServiceNow can no longer start jobs. Queue rows then accumulate at `status = 1` and nothing
+in Azure reports it. Record the expiry date and renew it before then, or use a certificate
+with a longer lifetime.
+
+---
+
 ## Build order
 
 Each step needs something the one before it created.
@@ -257,8 +298,10 @@ Each step needs something the one before it created.
 5. **Create `kv-rma-<suffix>-prod`** in `rg-rma-shared-prod` with the RBAC permission model, and
    assign the two roles.
 6. **Add the two secrets** to the Key Vault.
-7. **Create the app registration** with the federated credential and the permissions above,
-   then grant admin consent and assign Exchange Recipient Administrator.
+7. **Create the runbooks' app registration** with the federated credential and the
+   permissions above, then grant admin consent and assign Exchange Recipient Administrator.
+8. **Create ServiceNow's app registration**, assign it Automation Contributor on
+   `aa-rma-prod`, and hand its credential to whoever configures the ServiceNow application.
 
 After that, the worker itself is provisioned with `scripts/Initialize-RmaWorkerHost.ps1`
 and `scripts/Initialize-RmaWorker.ps1`. That step is software on the VM rather than an

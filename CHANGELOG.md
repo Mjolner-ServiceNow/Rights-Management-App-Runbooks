@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `docs/AZURE-RESOURCES.md` specifies ServiceNow's own app registration, which the
+  application uses to publish runbooks and start jobs: Automation Contributor on the
+  Automation Account only, no API permissions, and a credential that expires. The
+  runbooks' app registration is now named as such, and the checklist's "no client secret"
+  item says which of the two it means.
 - `docs/AZURE-RESOURCES.md`, the specification of what to build in Azure: three resource
   groups (`rg-rma-automation-prod`, `rg-rma-shared-prod`, `rg-rma-workloads-prod`), every
   resource in them, the settings each one requires, the app registration's federated

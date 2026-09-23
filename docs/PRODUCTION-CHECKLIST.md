@@ -60,7 +60,7 @@ repository ships.
 - [ ] It resolves from an AllUsers PowerShell 7 path (`C:\Program Files\PowerShell\Modules`), not a per-user one. Hybrid Worker jobs run as local SYSTEM **BLOCKER**
 - [ ] Confirmed that `RMA.Runbooks` was **not** imported into the Automation Account, which would give a false impression that the dependency is met
 - [ ] Every runbook shows as Published, not Draft
-- [ ] `Test-RmaHealth` passes on the real worker, with `-IncludeActiveDirectory` **BLOCKER**
+- [ ] `Test-RmaHealth` passes on the real worker, with the Active Directory parameters (`-DomainController`, `-AdUserName`) **BLOCKER**
 - [ ] One real job end to end in each direction: an Entra create and an AD create
 - [ ] **Duplicate-execution test:** queue one job, start the runbook twice concurrently. One must complete it; the other must log `Job claim lost to another worker`. **This is the defect the customer reported. Prove it is fixed.** **BLOCKER**
 - [ ] **Stranding test:** claim a job, kill the worker process, confirm the watchdog requeues it within `StaleAfterMinutes`

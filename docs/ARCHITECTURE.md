@@ -12,9 +12,9 @@ command_queue  ◀────────  │ Automation Acct  │
   status 3 Failed                  │ RunOn: hybrid worker group
   status 4 Completed               ▼
                           ┌──────────────────┐
-domain record  ◀────────  │ Hybrid Worker VM │
-  (config only,           │  + user-assigned │────── IMDS token ──┐
-   no credentials)        │    managed id    │                    │
+results        ◀────────  │ Hybrid Worker VM │
+  (write-back of what     │  + user-assigned │────── IMDS token ──┐
+   the job created)       │    managed id    │                    │
                           └────────┬─────────┘                    │
                                    │                              ▼
                                    │ Secrets User        ┌─────────────────┐
@@ -73,6 +73,45 @@ Two GUIDs are involved and they are not interchangeable:
 Record both when the identity is created, labelled, and keep them apart. Swapping them
 produces a federated credential that saves without error and fails later, at token
 exchange.
+
+## Runbook parameters
+
+Every value a runbook needs is a parameter, passed by the ServiceNow application when it
+starts the job. The runbooks read nothing else from ServiceNow: the command queue is the
+only table they query, and what they send back is job state and the results of the work.
+
+| Parameter | Runbooks | Value |
+|---|---|---|
+| `Instance` | All | ServiceNow instance name: `contoso` for `contoso.service-now.com` |
+| `DomainId` | All | `sys_id` of the domain record. Filters the command queue; nothing is read from the record itself. |
+| `ServiceNowUserName` | All | The integration account |
+| `VaultName` | All | The Key Vault |
+| `ManagedIdentityClientId` | All | The **client** ID of the user-assigned managed identity |
+| `TenantId` | Entra, Exchange | The Entra tenant ID |
+| `ApplicationId` | Entra, Exchange | The application (client) ID of the app registration |
+| `DomainController` | Active Directory | Host name or IP address of a domain controller |
+| `AdUserName` | Active Directory | The AD service account |
+| `AdSecretName` | Active Directory | Key Vault secret with that account's password. Defaults to `ad-service-account-password`. |
+
+`Test-RmaHealth` takes all of them; the Active Directory ones switch on its AD check. Every
+Active Directory command runbook uses the same names.
+
+Three rules follow from putting configuration here:
+
+- **Passwords are never parameters.** Azure Automation records every job's input in its
+  job history, readable by anyone with read access to the Automation Account. The two
+  passwords live in Key Vault and nowhere else.
+- **The ServiceNow secret has a fixed name**, `servicenow-api-password`, rather than a
+  parameter. An installation serves one ServiceNow instance through one integration
+  account, so there is nothing to choose. The AD secret has a parameter because one
+  installation can serve several AD domains, each with its own account.
+- **Values are fixed when the job starts.** A change in ServiceNow applies to the next job,
+  never to one already running.
+
+The domain record used to be fetched at the start of every run. That cost a REST call and
+a failure point, needed read access to one more table, and found a malformed tenant ID only
+at token exchange. As parameters, the GUIDs are validated when the job binds them, before
+any network call.
 
 ## Job lifecycle
 

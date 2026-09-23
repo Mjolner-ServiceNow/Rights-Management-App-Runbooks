@@ -1,5 +1,5 @@
 #Requires -Version 7.2
-#Requires -Modules @{ ModuleName = 'RMA.Runbooks'; RequiredVersion = '1.2.0' }
+#Requires -Modules @{ ModuleName = 'RMA.Runbooks'; RequiredVersion = '2.0.0' }
 
 <#
 .SYNOPSIS
@@ -7,28 +7,41 @@
     in ServiceNow; also runnable by hand when that view is what is unavailable.
 .DESCRIPTION
     Proves every dependency of the platform works end to end without mutating anything:
-    managed identity, Key Vault, ServiceNow, the domain record, Graph, and (optionally)
+    managed identity, Key Vault, ServiceNow, the command queue, Graph, and (optionally)
     Active Directory.
+
+    Every value is a parameter, passed by the ServiceNow application exactly as it passes
+    them to the command runbooks, so a passing health check proves the values the real
+    jobs will receive.
 
     This is what turns "the deployment succeeded" into "the deployment works". A green
     infrastructure deployment with a broken identity looks identical to a working one
     until the first real job fails.
+.PARAMETER DomainController
+    Host name or IP address of a domain controller for the domain. Supplying it adds the
+    Active Directory check, which then also needs AdUserName.
+.PARAMETER AdSecretName
+    Key Vault secret holding the AD service account's password. One per AD domain when an
+    installation serves more than one.
 .NOTES
     Safe to run at any time. Performs no writes.
 #>
 
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '',
     Justification = 'These parameters are used inside the Add-Check scriptblocks. PSScriptAnalyzer does not resolve variable use across a scriptblock closure.')]
-[CmdletBinding()]
+[CmdletBinding(DefaultParameterSetName = 'Entra')]
 param(
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{32}$')]  [string] $DomainId,
     [Parameter(Mandatory)][ValidatePattern('^[a-z0-9-]{2,40}$')][string] $Instance,
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()]            [string] $VaultName,
-    [Parameter(Mandatory)][ValidateNotNullOrEmpty()]            [string] $ManagedIdentityClientId,
+    [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F-]{36}$')][string] $ManagedIdentityClientId,
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()]            [string] $ServiceNowUserName,
-    [Parameter(Mandatory)][ValidateNotNullOrEmpty()]            [string] $ApplicationId,
+    [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F-]{36}$')][string] $TenantId,
+    [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F-]{36}$')][string] $ApplicationId,
 
-    [switch] $IncludeActiveDirectory
+    [Parameter(Mandatory, ParameterSetName = 'ActiveDirectory')][ValidateNotNullOrEmpty()] [string] $DomainController,
+    [Parameter(Mandatory, ParameterSetName = 'ActiveDirectory')][ValidateNotNullOrEmpty()] [string] $AdUserName,
+    [Parameter(ParameterSetName = 'ActiveDirectory')][ValidateNotNullOrEmpty()]            [string] $AdSecretName = 'ad-service-account-password'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -61,19 +74,17 @@ Add-Check 'Managed identity token' {
     'acquired'
 }
 
-Add-Check 'Key Vault + ServiceNow + domain record' {
-    $script:context = Test-RmaPrerequisite -Instance $Instance -DomainId $DomainId -VaultName $VaultName `
-        -ManagedIdentityClientId $ManagedIdentityClientId -ServiceNowUserName $ServiceNowUserName `
-        -RequireDomainField @('TenantId')
-    "tenant $($script:context.Domain.TenantId)"
+Add-Check 'Key Vault + ServiceNow' {
+    $script:context = Test-RmaPrerequisite -Instance $Instance -VaultName $VaultName `
+        -ManagedIdentityClientId $ManagedIdentityClientId -ServiceNowUserName $ServiceNowUserName
+    "authenticated as $ServiceNowUserName"
 }
 
 Add-Check 'Microsoft Graph token exchange' {
-    if (-not $script:context) { throw 'Skipped: prerequisite check did not complete.' }
     $null = Get-RmaAccessToken -Federated -Resource 'https://graph.microsoft.com/.default' `
         -ManagedIdentityClientId $ManagedIdentityClientId `
-        -ApplicationId $ApplicationId -TenantId $script:context.Domain.TenantId
-    'federated token acquired'
+        -ApplicationId $ApplicationId -TenantId $TenantId
+    "federated token acquired for tenant $TenantId"
 }
 
 Add-Check 'ServiceNow command queue readable' {
@@ -82,13 +93,14 @@ Add-Check 'ServiceNow command queue readable' {
     "queue reachable ($($jobs.Count) pending for this command)"
 }
 
-if ($IncludeActiveDirectory) {
+if ($PSCmdlet.ParameterSetName -eq 'ActiveDirectory') {
     Add-Check 'Active Directory reachable' {
-        if (-not $script:context) { throw 'Skipped: prerequisite check did not complete.' }
-        $dc = $script:context.Domain.DomainControllerIp
-        if (-not $dc) { throw 'domain_controller_ip is not set on the domain record.' }
-        $null = Get-ADRootDSE -Server $dc
-        "contacted $dc"
+        # Authenticated, so a wrong AD username or an expired password fails here rather
+        # than in the first real job.
+        $credential = Get-RmaSecret -VaultName $VaultName -Name $AdSecretName `
+            -ManagedIdentityClientId $ManagedIdentityClientId -AsCredential -UserName $AdUserName
+        $adDomain = Get-ADDomain -Server $DomainController -Credential $credential
+        "contacted $DomainController as $AdUserName ($($adDomain.DNSRoot))"
     }
 }
 

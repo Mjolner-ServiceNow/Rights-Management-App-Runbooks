@@ -110,7 +110,7 @@ Do not create schedules. Every job is started by the ServiceNow application.
 | Destination | Why |
 |---|---|
 | Your domain controllers | Active Directory runbooks. The `ActiveDirectory` module talks to Active Directory Web Services on TCP 9389. |
-| Your ServiceNow instance, HTTPS | The command queue and the domain record |
+| Your ServiceNow instance, HTTPS | The command queue, and writing results back |
 | Azure Automation, Microsoft Entra ID, Microsoft Graph, Exchange Online and Key Vault, HTTPS | Jobs, tokens and secrets |
 
 Reaching the domain controllers usually means a virtual network with a connection to the
@@ -266,11 +266,15 @@ Azure resource, and is covered in [`INSTALLATION.md`](INSTALLATION.md) step 3.
 
 ## Values the runbooks need
 
-The ServiceNow application passes these to every runbook. All of them come from the
-resources above, apart from the ServiceNow values, which come from the ServiceNow guide.
+The ServiceNow application passes these to the runbooks as parameters, so whoever
+configures it needs them. These are the ones the resources above produce; the full list,
+including the ServiceNow and Active Directory values, is under *Runbook parameters* in
+[`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 | Runbook parameter | Value |
 |---|---|
 | `VaultName` | `kv-rma-<suffix>-prod` |
 | `ManagedIdentityClientId` | The **client** ID of `id-rma-prod` |
+| `TenantId` | The ID of the Entra tenant the app registration is in |
 | `ApplicationId` | The application (client) ID of the app registration |
+| `AdSecretName` | `ad-service-account-password`, unless there is more than one AD domain |

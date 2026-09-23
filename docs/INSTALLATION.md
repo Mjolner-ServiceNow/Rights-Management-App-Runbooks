@@ -76,11 +76,19 @@ by another.
 | Managed identity **client** ID | Step 1 | Step 8 |
 | Managed identity **principal** ID | Step 1 | Step 4 |
 | Key Vault name | Step 1 | Steps 6, 8 |
+| Tenant ID | Your Entra tenant | Steps 4, 8 |
 | Application (client) ID | Step 4 | Step 8 |
+| AD service account username and a domain controller | Your AD | Steps 6, 8 |
 
 If you do not have the first three, stop and go back to the ServiceNow guide. Step 6 puts
 the integration account's password into Key Vault, and step 8 cannot verify anything
 without the other two.
+
+**Every value in this table except the principal ID ends up in the ServiceNow
+application**, which passes them to the runbooks as parameters when it starts a job. The
+runbooks read no configuration from ServiceNow. Hand them to whoever configures the
+application; the ServiceNow guide says where each one goes. The full list is under
+*Runbook parameters* in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 > **The two managed identity GUIDs are different and are not interchangeable.** The client
 > ID is what a runbook uses to request a token. The principal ID is what the federated
@@ -409,10 +417,16 @@ Start-AzAutomationRunbook `
         VaultName               = '<key vault name>'
         ManagedIdentityClientId = '<managed identity CLIENT id>'
         ServiceNowUserName      = '<integration account username>'
+        TenantId                = '<tenant id>'
         ApplicationId           = '<application client id>'
-        IncludeActiveDirectory  = $true
+        DomainController        = '<domain controller host name or IP>'
+        AdUserName              = '<AD service account username>'
     }
 ```
+
+`DomainController` and `AdUserName` add the Active Directory check, which reads the AD
+password from Key Vault and signs in with it. Leave both out to check only the Entra side.
+With more than one AD domain, pass `AdSecretName` as well.
 
 Expected output:
 
@@ -422,10 +436,10 @@ RMA health check
 Check                                       Status   Ms  Detail
 -----                                       ------   --  ------
 Managed identity token                      Pass    120  acquired
-Key Vault + ServiceNow + domain record      Pass    840  tenant <guid>
-Microsoft Graph token exchange              Pass    310  federated token acquired
-ServiceNow command queue readable           Pass    260  queue reachable (0 pending)
-Active Directory reachable                  Pass     90  contacted 10.0.0.4
+Key Vault + ServiceNow                      Pass    840  authenticated as <username>
+Microsoft Graph token exchange              Pass    310  federated token acquired for tenant <guid>
+ServiceNow command queue readable           Pass    260  queue reachable (0 pending for this command)
+Active Directory reachable                  Pass     90  contacted 10.0.0.4 as <username> (contoso.local)
 All checks passed.
 ```
 

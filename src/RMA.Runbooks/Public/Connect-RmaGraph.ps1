@@ -12,7 +12,8 @@ function Connect-RmaGraph {
     [OutputType([void])]
     param(
         [Parameter(Mandatory)] [PSTypeName('Rma.Context')] $Context,
-        [Parameter(Mandatory)][ValidateNotNullOrEmpty()] [string] $ApplicationId,
+        [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F-]{36}$')] [string] $TenantId,
+        [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F-]{36}$')] [string] $ApplicationId,
         [string] $Scope = 'https://graph.microsoft.com/.default'
     )
 
@@ -22,10 +23,10 @@ function Connect-RmaGraph {
 
     $token = Get-RmaAccessToken -Federated -Resource $Scope `
         -ManagedIdentityClientId $Context.ManagedIdentityClientId `
-        -ApplicationId $ApplicationId -TenantId $Context.Domain.TenantId
+        -ApplicationId $ApplicationId -TenantId $TenantId
 
     Connect-MgGraph -AccessToken ($token | ConvertTo-SecureString -AsPlainText -Force) -NoWelcome
     Write-RmaLog -Level Information -Message 'Connected to Microsoft Graph' -Data @{
-        applicationId = $ApplicationId; tenantId = $Context.Domain.TenantId
+        applicationId = $ApplicationId; tenantId = $TenantId
     }
 }

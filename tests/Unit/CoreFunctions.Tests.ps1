@@ -96,47 +96,6 @@ Describe 'Set-RmaJobState' -Tag 'Unit' {
     }
 }
 
-Describe 'Get-RmaDomainConfig' -Tag 'Unit' {
-    BeforeEach { Mock -ModuleName RMA.Runbooks Write-RmaLog {} }
-
-    It 'flattens display_value objects and trims' {
-        Mock -ModuleName RMA.Runbooks Invoke-RmaRestMethod {
-            [pscustomobject]@{ result = [pscustomobject]@{
-                    tenant_azure_active_directory = '  contoso-tenant-id  '
-                    applicationid                 = 'app-id'
-                    forest_name                   = [pscustomobject]@{ display_value = 'contoso.local' }
-                    domain_controller_ip          = '10.0.0.4'
-                } 
-            }
-        }
-        $config = Get-RmaDomainConfig -Context $script:Context -DomainId $script:DomainId
-        $config.TenantId   | Should -Be 'contoso-tenant-id'
-        $config.ForestName | Should -Be 'contoso.local'
-    }
-
-    It 'throws when the record does not exist' {
-        Mock -ModuleName RMA.Runbooks Invoke-RmaRestMethod { [pscustomobject]@{ result = $null } }
-        { Get-RmaDomainConfig -Context $script:Context -DomainId $script:DomainId } |
-        Should -Throw -ExpectedMessage '*was not found*'
-    }
-
-    It 'names every missing required field in one message' {
-        Mock -ModuleName RMA.Runbooks Invoke-RmaRestMethod {
-            [pscustomobject]@{ result = [pscustomobject]@{ forest_name = 'contoso.local' } }
-        }
-        { Get-RmaDomainConfig -Context $script:Context -DomainId $script:DomainId -Require @('TenantId', 'DomainControllerIp') } |
-        Should -Throw -ExpectedMessage '*TenantId, DomainControllerIp*'
-    }
-
-    It 'treats whitespace as missing' {
-        Mock -ModuleName RMA.Runbooks Invoke-RmaRestMethod {
-            [pscustomobject]@{ result = [pscustomobject]@{ tenant_azure_active_directory = '   ' } }
-        }
-        { Get-RmaDomainConfig -Context $script:Context -DomainId $script:DomainId -Require @('TenantId') } |
-        Should -Throw
-    }
-}
-
 Describe 'Get-RmaPendingJob' -Tag 'Unit' {
     It 'filters on the command and on status Pending' {
         Mock -ModuleName RMA.Runbooks Invoke-RmaRestMethod {

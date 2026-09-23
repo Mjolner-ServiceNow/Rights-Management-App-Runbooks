@@ -9,7 +9,10 @@ function Test-RmaPrerequisite {
           1. Managed identity reachable (local, no network beyond IMDS)
           2. Key Vault readable
           3. ServiceNow authenticated
-          4. Domain record present and complete
+
+        Every configuration value arrives as a runbook parameter from the ServiceNow
+        application, so nothing is read back from ServiceNow here beyond proving the
+        credential works. The command queue is the only ServiceNow table the runbooks read.
 
         Previously module installation ran before any of this, so a runbook with a bad
         credential still spent minutes writing modules to disk before failing. Module
@@ -21,17 +24,15 @@ function Test-RmaPrerequisite {
     [OutputType([pscustomobject])]
     param(
         [Parameter(Mandatory)][ValidatePattern('^[a-z0-9-]{2,40}$')] [string] $Instance,
-        [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{32}$')]    [string] $DomainId,
         [Parameter(Mandatory)][ValidateNotNullOrEmpty()]             [string] $VaultName,
         [Parameter(Mandatory)][ValidateNotNullOrEmpty()]             [string] $ManagedIdentityClientId,
         [Parameter(Mandatory)][ValidateNotNullOrEmpty()]             [string] $ServiceNowUserName,
 
-        [string]   $ServiceNowSecretName = 'servicenow-api-password',
-        [string[]] $RequireDomainField   = @()
+        [string] $ServiceNowSecretName = 'servicenow-api-password'
     )
 
     Write-RmaLog -Level Information -Message 'Prerequisite check started' -Data @{
-        instance = $Instance; domainId = $DomainId; vault = $VaultName
+        instance = $Instance; vault = $VaultName
     }
 
     # 1. Managed identity
@@ -48,15 +49,12 @@ function Test-RmaPrerequisite {
         -UserName $ServiceNowUserName -SecretName $ServiceNowSecretName `
         -ManagedIdentityClientId $ManagedIdentityClientId
 
-    # 4. Domain record
-    $config = Get-RmaDomainConfig -Context $context -DomainId $DomainId -Require $RequireDomainField
-
     Write-RmaLog -Level Information -Message 'Prerequisite check passed'
 
     # Two context shapes flow through this module under the same parameter name, and
     # passing the wrong one used to surface as a property-not-found somewhere far away.
-    # They are named now. This one is the full context: it carries the managed identity
-    # and the domain record, which is what Connect-RmaGraph and Connect-RmaExchange read.
+    # They are named now. This one is the full context: it carries the managed identity,
+    # which is what Connect-RmaGraph and Connect-RmaExchange read.
     # It also answers to Rma.ServiceNowContext, because it carries BaseUri and Headers and
     # the queue functions legitimately take it.
     $result = [pscustomobject]@{
@@ -64,10 +62,8 @@ function Test-RmaPrerequisite {
         Instance                = $Instance
         BaseUri                 = $context.BaseUri
         Headers                 = $context.Headers
-        DomainId                = $DomainId
         VaultName               = $VaultName
         ManagedIdentityClientId = $ManagedIdentityClientId
-        Domain                  = $config
     }
     $result.PSObject.TypeNames.Insert(1, 'Rma.ServiceNowContext')
     $result

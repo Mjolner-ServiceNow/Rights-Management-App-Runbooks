@@ -152,21 +152,17 @@ Describe 'Test-RmaPrerequisite' -Tag 'Unit' {
                 Headers    = @{ Authorization = 'Basic x' }
             }
         }
-        Mock -ModuleName RMA.Runbooks Get-RmaDomainConfig {
-            [pscustomobject]@{ DomainId = 'abcdef0123456789abcdef0123456789'; TenantId = '33333333-3333-3333-3333-333333333333' }
-        }
     }
 
     It 'returns the context Connect-RmaGraph and Connect-RmaExchange actually read' {
         # Two different context shapes flow through this module under the same parameter
         # name. This is the contract between them: the prerequisite context is the one
-        # that carries ManagedIdentityClientId and Domain.
-        $context = Test-RmaPrerequisite -Instance 'contoso' -DomainId $script:DomainId `
+        # that carries ManagedIdentityClientId.
+        $context = Test-RmaPrerequisite -Instance 'contoso' `
             -VaultName 'kv-rma-test' -ManagedIdentityClientId $script:MiClientId `
             -ServiceNowUserName 'svc-rma'
 
         $context.ManagedIdentityClientId | Should -Be $script:MiClientId
-        $context.Domain.TenantId         | Should -Be $script:TenantId
         $context.BaseUri                 | Should -Be 'https://contoso.service-now.com'
         $context.Headers                 | Should -Not -BeNullOrEmpty
     }
@@ -174,7 +170,7 @@ Describe 'Test-RmaPrerequisite' -Tag 'Unit' {
     It 'checks the managed identity before anything that needs the network' {
         # Cheapest check first: a bad identity should fail in under a second, not after
         # a Key Vault round trip.
-        Test-RmaPrerequisite -Instance 'contoso' -DomainId $script:DomainId `
+        Test-RmaPrerequisite -Instance 'contoso' `
             -VaultName 'kv-rma-test' -ManagedIdentityClientId $script:MiClientId `
             -ServiceNowUserName 'svc-rma' | Out-Null
 
@@ -184,7 +180,7 @@ Describe 'Test-RmaPrerequisite' -Tag 'Unit' {
     It 'points at the Automation Account identity when the managed identity check fails' {
         Mock -ModuleName RMA.Runbooks Get-RmaAccessToken { throw 'no identity endpoint' }
 
-        { Test-RmaPrerequisite -Instance 'contoso' -DomainId $script:DomainId `
+        { Test-RmaPrerequisite -Instance 'contoso' `
                 -VaultName 'kv-rma-test' -ManagedIdentityClientId $script:MiClientId `
                 -ServiceNowUserName 'svc-rma' } |
         Should -Throw '*Automation*managed identity enabled*'
@@ -192,14 +188,16 @@ Describe 'Test-RmaPrerequisite' -Tag 'Unit' {
         Should -Invoke -ModuleName RMA.Runbooks Connect-RmaServiceNow -Times 0 -Exactly
     }
 
-    It 'passes the required domain fields through to the domain check' {
-        Test-RmaPrerequisite -Instance 'contoso' -DomainId $script:DomainId `
-            -VaultName 'kv-rma-test' -ManagedIdentityClientId $script:MiClientId `
-            -ServiceNowUserName 'svc-rma' -RequireDomainField @('TenantId', 'ForestName') | Out-Null
+    It 'reads nothing from ServiceNow beyond the authentication check' {
+        # Every configuration value arrives as a runbook parameter. The domain record used
+        # to be fetched here; a REST call from this function now means that came back.
+        Mock -ModuleName RMA.Runbooks Invoke-RmaRestMethod { throw 'unexpected ServiceNow call' }
 
-        Should -Invoke -ModuleName RMA.Runbooks Get-RmaDomainConfig -Times 1 -Exactly -ParameterFilter {
-            $Require -contains 'TenantId' -and $Require -contains 'ForestName'
-        }
+        { Test-RmaPrerequisite -Instance 'contoso' `
+                -VaultName 'kv-rma-test' -ManagedIdentityClientId $script:MiClientId `
+                -ServiceNowUserName 'svc-rma' } | Should -Not -Throw
+
+        Should -Invoke -ModuleName RMA.Runbooks Invoke-RmaRestMethod -Times 0 -Exactly
     }
 }
 
@@ -220,13 +218,12 @@ Describe 'Context typing' -Tag 'Unit' {
             BaseUri                 = 'https://contoso.service-now.com'
             Headers                 = @{}
             ManagedIdentityClientId = $script:MiClientId
-            Domain                  = [pscustomobject]@{ TenantId = $script:TenantId }
         }
         $script:Full.PSObject.TypeNames.Insert(1, 'Rma.ServiceNowContext')
     }
 
     It 'refuses the ServiceNow context where the full context is required' {
-        { Connect-RmaGraph -Context $script:ServiceNowOnly -ApplicationId $script:AppId } |
+        { Connect-RmaGraph -Context $script:ServiceNowOnly -TenantId $script:TenantId -ApplicationId $script:AppId } |
         Should -Throw '*Rma.Context*'
     }
 
@@ -247,9 +244,8 @@ Describe 'Context typing' -Tag 'Unit' {
                 BaseUri = 'https://contoso.service-now.com'; Headers = @{}
             }
         }
-        Mock -ModuleName RMA.Runbooks Get-RmaDomainConfig { [pscustomobject]@{ TenantId = 'x' } }
 
-        $context = Test-RmaPrerequisite -Instance 'contoso' -DomainId $script:DomainId `
+        $context = Test-RmaPrerequisite -Instance 'contoso' `
             -VaultName 'kv-rma-test' -ManagedIdentityClientId $script:MiClientId `
             -ServiceNowUserName 'svc-rma'
 
@@ -264,12 +260,11 @@ Describe 'Connect-RmaGraph' -Tag 'Unit', 'Security' {
         $script:GraphContext = [pscustomobject]@{
             PSTypeName              = 'Rma.Context'
             ManagedIdentityClientId = $script:MiClientId
-            Domain                  = [pscustomobject]@{ TenantId = $script:TenantId }
         }
     }
 
     It 'tells you which module to declare when it is missing' -Skip:([bool](Get-Command Connect-MgGraph -ErrorAction SilentlyContinue)) {
-        { Connect-RmaGraph -Context $script:GraphContext -ApplicationId $script:AppId } |
+        { Connect-RmaGraph -Context $script:GraphContext -TenantId $script:TenantId -ApplicationId $script:AppId } |
         Should -Throw '*Microsoft.Graph.Authentication is not available*'
     }
 
@@ -291,8 +286,8 @@ Describe 'Connect-RmaGraph' -Tag 'Unit', 'Security' {
             Mock -ModuleName RMA.Runbooks Get-RmaAccessToken { 'federated-token' }
         }
 
-        It 'exchanges the managed identity token for an app token in the domain tenant' {
-            Connect-RmaGraph -Context $script:GraphContext -ApplicationId $script:AppId
+        It 'exchanges the managed identity token for an app token in the given tenant' {
+            Connect-RmaGraph -Context $script:GraphContext -TenantId $script:TenantId -ApplicationId $script:AppId
 
             Should -Invoke -ModuleName RMA.Runbooks Get-RmaAccessToken -Times 1 -Exactly -ParameterFilter {
                 $Federated -and
@@ -303,8 +298,17 @@ Describe 'Connect-RmaGraph' -Tag 'Unit', 'Security' {
             }
         }
 
+        It 'rejects a tenant id that is not a GUID before requesting any token' {
+            # The tenant used to be read from the domain record, where a display name in
+            # the field only failed at token exchange. As a parameter it fails at binding.
+            { Connect-RmaGraph -Context $script:GraphContext -TenantId 'contoso.onmicrosoft.com' -ApplicationId $script:AppId } |
+            Should -Throw
+
+            Should -Invoke -ModuleName RMA.Runbooks Get-RmaAccessToken -Times 0 -Exactly
+        }
+
         It 'hands Graph a SecureString, never the raw token' {
-            Connect-RmaGraph -Context $script:GraphContext -ApplicationId $script:AppId
+            Connect-RmaGraph -Context $script:GraphContext -TenantId $script:TenantId -ApplicationId $script:AppId
 
             Should -Invoke -ModuleName RMA.Runbooks Connect-MgGraph -Times 1 -Exactly -ParameterFilter {
                 $AccessToken -is [securestring]
@@ -319,12 +323,11 @@ Describe 'Connect-RmaExchange' -Tag 'Unit', 'Security' {
         $script:ExoContext = [pscustomobject]@{
             PSTypeName              = 'Rma.Context'
             ManagedIdentityClientId = $script:MiClientId
-            Domain                  = [pscustomobject]@{ TenantId = $script:TenantId }
         }
     }
 
     It 'tells you which module to declare when it is missing' -Skip:([bool](Get-Command Connect-ExchangeOnline -ErrorAction SilentlyContinue)) {
-        { Connect-RmaExchange -Context $script:ExoContext -ApplicationId $script:AppId -Organization 'contoso.onmicrosoft.com' } |
+        { Connect-RmaExchange -Context $script:ExoContext -TenantId $script:TenantId -ApplicationId $script:AppId -Organization 'contoso.onmicrosoft.com' } |
         Should -Throw '*ExchangeOnlineManagement is not available*'
     }
 
@@ -345,7 +348,7 @@ Describe 'Connect-RmaExchange' -Tag 'Unit', 'Security' {
         }
 
         It 'requests the Outlook scope, not the Graph one' {
-            Connect-RmaExchange -Context $script:ExoContext -ApplicationId $script:AppId `
+            Connect-RmaExchange -Context $script:ExoContext -TenantId $script:TenantId -ApplicationId $script:AppId `
                 -Organization 'contoso.onmicrosoft.com'
 
             Should -Invoke -ModuleName RMA.Runbooks Get-RmaAccessToken -Times 1 -Exactly -ParameterFilter {
@@ -354,7 +357,7 @@ Describe 'Connect-RmaExchange' -Tag 'Unit', 'Security' {
         }
 
         It 'rejects an organization that is not an onmicrosoft.com tenant name' {
-            { Connect-RmaExchange -Context $script:ExoContext -ApplicationId $script:AppId `
+            { Connect-RmaExchange -Context $script:ExoContext -TenantId $script:TenantId -ApplicationId $script:AppId `
                     -Organization 'contoso.com' } | Should -Throw
         }
     }

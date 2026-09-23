@@ -14,7 +14,8 @@ function Connect-RmaExchange {
     [OutputType([void])]
     param(
         [Parameter(Mandatory)] [PSTypeName('Rma.Context')] $Context,
-        [Parameter(Mandatory)][ValidateNotNullOrEmpty()] [string] $ApplicationId,
+        [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F-]{36}$')] [string] $TenantId,
+        [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F-]{36}$')] [string] $ApplicationId,
         [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9-]+\.onmicrosoft\.com$')] [string] $Organization
     )
 
@@ -24,7 +25,7 @@ function Connect-RmaExchange {
 
     $token = Get-RmaAccessToken -Federated -Resource 'https://outlook.office365.com/.default' `
         -ManagedIdentityClientId $Context.ManagedIdentityClientId `
-        -ApplicationId $ApplicationId -TenantId $Context.Domain.TenantId
+        -ApplicationId $ApplicationId -TenantId $TenantId
 
     Connect-ExchangeOnline -AccessToken $token -Organization $Organization -ShowBanner:$false
     Write-RmaLog -Level Information -Message 'Connected to Exchange Online' -Data @{ organization = $Organization }

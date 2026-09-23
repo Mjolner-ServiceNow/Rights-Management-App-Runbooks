@@ -143,7 +143,7 @@ It runs in CI, in the `module` job, alongside `build/Assert-ModuleVersionBump.ps
 
 Two context shapes travel through this module. `Connect-RmaServiceNow` returns an
 `Rma.ServiceNowContext`, carrying `Instance`, `BaseUri` and `Headers`; `Test-RmaPrerequisite`
-returns an `Rma.Context`, which adds `ManagedIdentityClientId` and `Domain` and also answers
+returns an `Rma.Context`, which adds `VaultName` and `ManagedIdentityClientId` and also answers
 to `Rma.ServiceNowContext` so the queue functions accept it. Declare the one you need with
 `[PSTypeName('Rma.Context')]` or `[PSTypeName('Rma.ServiceNowContext')]` rather than
 `[pscustomobject]`, so handing `Connect-RmaGraph` the wrong one fails at binding instead of

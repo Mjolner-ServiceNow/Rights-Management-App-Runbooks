@@ -14,7 +14,7 @@ resources are created and changed by hand, in the portal or with the CLI.
 | A runbook body | Nothing here. The ServiceNow app pulls runbooks from this repository into the Automation Account | — |
 | The shared module | `Initialize-RmaWorker.ps1` on **every** worker, then let the app re-publish the runbooks | Bump `ModuleVersion` and every `#Requires` that pins it |
 | A pinned third-party module | `Initialize-RmaWorker.ps1` on **every** worker | Update the `#Requires` in affected runbooks |
-| An Azure resource | By hand, in the portal or with the CLI | Keep the Automation Account identity at **None** |
+| An Azure resource | By hand, in the portal or with the CLI | Keep it matching [`AZURE-RESOURCES.md`](AZURE-RESOURCES.md), and the Automation Account identity at **None** |
 | A Key Vault secret | Update the secret. Runbooks read it at start of run | — |
 
 Rotating a password needs no redeployment. That is the point of it being in Key Vault.

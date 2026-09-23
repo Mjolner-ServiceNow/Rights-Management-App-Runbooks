@@ -64,7 +64,7 @@
     # From a workstation, with no inbound access to the VM and no checkout on it. Run
     # Command executes as local SYSTEM, which is the account the jobs themselves use.
     az vm run-command invoke `
-        --resource-group rg-rma-prod --name vm-rma-01 `
+        --resource-group rg-rma-workloads-prod --name vm-rma-hw1-prod `
         --command-id RunPowerShellScript `
         --scripts @scripts/Initialize-RmaWorkerHost.ps1
 .NOTES

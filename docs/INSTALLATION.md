@@ -11,7 +11,9 @@ Do the ServiceNow guide first. It produces three values this one consumes, liste
 *Values to record* below. The two guides will be merged into one end-to-end document once
 the solution is settled; until then they are read in that order.
 
-Follow the steps here in order: each one produces a value the next one needs.
+Follow the steps here in order: each one produces a value the next one needs. What the
+Azure resources are, and how each must be configured, is specified in
+[`AZURE-RESOURCES.md`](AZURE-RESOURCES.md); this guide is the procedure that builds it.
 
 For updating an existing installation, see [`DEPLOYMENT.md`](DEPLOYMENT.md). For day-to-day
 running, see [`RUNBOOK-OPERATIONS.md`](RUNBOOK-OPERATIONS.md).
@@ -28,8 +30,8 @@ most common reason this takes days instead of hours.
 
 | Step | Role required | Where |
 |---|---|---|
-| 1 | Contributor on the resource group, and rights to create it | Azure |
-| 2 | Contributor on the resource group | Azure |
+| 1 | Contributor on the subscription, or rights to create the three resource groups | Azure |
+| 2 | Contributor on `rg-rma-automation-prod` and `rg-rma-workloads-prod` | Azure |
 | 3 | Contributor on the VM (for Run Command), or local administrator on it | Azure or Windows |
 | 4 | Cloud Application Administrator | Microsoft Entra |
 | 5 | Privileged Role Administrator or Global Administrator | Microsoft Entra |
@@ -44,9 +46,9 @@ the scope note above.
 
 ### What you need
 
-- An Azure subscription, and a resource group to put the platform in.
-- A **Windows Server VM in Azure** that will run the jobs. Two cores and 4 GB RAM minimum.
-  It must reach your domain controllers and `service-now.com`.
+- An Azure subscription.
+- A network the worker VM can be placed in that reaches your domain controllers and your
+  ServiceNow instance. The VM itself is created in step 1.
 - **The ServiceNow guide already completed**, which leaves you with a working scoped
   application, a populated domain record and an integration account. You need the three
   values it produces, not access to change any of it.
@@ -74,11 +76,19 @@ by another.
 | Managed identity **client** ID | Step 1 | Step 8 |
 | Managed identity **principal** ID | Step 1 | Step 4 |
 | Key Vault name | Step 1 | Steps 6, 8 |
+| Tenant ID | Your Entra tenant | Steps 4, 8 |
 | Application (client) ID | Step 4 | Step 8 |
+| AD service account username and a domain controller | Your AD | Steps 6, 8 |
 
 If you do not have the first three, stop and go back to the ServiceNow guide. Step 6 puts
 the integration account's password into Key Vault, and step 8 cannot verify anything
 without the other two.
+
+**Every value in this table except the principal ID ends up in the ServiceNow
+application**, which passes them to the runbooks as parameters when it starts a job. The
+runbooks read no configuration from ServiceNow. Hand them to whoever configures the
+application; the ServiceNow guide says where each one goes. The full list is under
+*Runbook parameters* in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 > **The two managed identity GUIDs are different and are not interchangeable.** The client
 > ID is what a runbook uses to request a token. The principal ID is what the federated
@@ -90,45 +100,32 @@ without the other two.
 
 ## Step 1 — Create the Azure resources
 
-**Who:** Contributor on the resource group.
+**Who:** Contributor on the subscription.
 
-> **There is no infrastructure-as-code in this repository.** The Bicep templates were
-> removed because they did not meet the bar, and are deferred until the wider framework is
-> in place. Create these resources by hand, in the portal or with `az`. What follows is a
-> requirement, not a suggestion: the runbooks assume it.
+> **There is no infrastructure-as-code in this repository.** Create the resources by hand,
+> in the portal or with `az`.
 
-All of it goes in one resource group, per environment.
+Build what [`AZURE-RESOURCES.md`](AZURE-RESOURCES.md) specifies, from the resource groups
+through the Key Vault and its role assignments:
 
-| Resource | Required configuration |
+| Resource | Resource group |
 |---|---|
-| User-assigned managed identity | The only identity the platform uses. Record both its **client** ID and its **principal** ID. |
-| Automation Account | **No managed identity** — see the warning below. Create a Hybrid Worker Group in it for the worker VM. |
-| Key Vault | RBAC authorisation, not access policies. Soft delete on. In production also: purge protection, public access disabled, and a network rule for the worker VM's subnet only. |
-| Log Analytics workspace | Diagnostic settings on both the Automation Account and the Key Vault point at it. |
-| Action group and alert rules | Optional in dev and test. Production notifies on job failure and on the queue loop hitting its bounds. |
+| Automation Account `aa-rma-prod`, with Hybrid Worker Group `hwg-rma-prod` | `rg-rma-automation-prod` |
+| Virtual machine `vm-rma-hw1-prod` | `rg-rma-workloads-prod` |
+| User-assigned managed identity `id-rma-prod` | `rg-rma-shared-prod` |
+| Key Vault `kv-rma-<suffix>-prod` | `rg-rma-shared-prod` |
 
-Role assignments on the Key Vault, by built-in role ID:
-
-| Assignee | Role | Role ID |
-|---|---|---|
-| The user-assigned managed identity | Key Vault Secrets User | `4633458b-17de-408a-b874-0445c86b69e6` |
-| Your operations group | Key Vault Secrets Officer | `b86a8fe4-44ce-4948-aee5-eccb2c155cd7` |
-
-The subnet in the production Key Vault firewall rule is the one the Hybrid Worker VM sits
-in, and it needs the `Microsoft.KeyVault` service endpoint, or a private endpoint.
-
-Scheduled query rules over the Automation tables fail validation until Automation has sent
-data to the workspace, because the tables do not exist yet. Create them with query
-validation skipped, or wait until after the first job has run.
+The secrets and the app registration come later, in steps 4 to 6. That document is the
+requirement, not a suggestion: the runbooks assume every setting in it.
 
 **Record the Key Vault name, the managed identity client ID, and the managed identity
 principal ID.**
 
-> **The Automation Account must have no managed identity of its own.** Nothing enforces
-> this any more: no template sets it and no script checks it. If one is enabled at creation,
-> or by anyone later in the portal, the Hybrid Worker's identity is overridden and every
-> runbook stops authenticating. It is the first thing to check if authentication that worked
-> yesterday stops working.
+> **The Automation Account must have no managed identity of its own.** The portal enables a
+> system-assigned one by default, so turn it off when you create the account. Nothing checks
+> this afterwards. If one is enabled, at creation or later, the Hybrid Worker's identity is
+> overridden and every runbook stops authenticating. It is the first thing to check if
+> authentication that worked yesterday stops working.
 
 ---
 
@@ -143,8 +140,8 @@ principal ID.**
    Automation Account → Hybrid worker groups → `hwg-rma-prod` → Hybrid workers → Add →
    select the VM.
 
-The extension installs and enables a **system-assigned** identity on the VM as well. That is
-expected and harmless. It is also why every token request in this solution names the
+The VM also has a **system-assigned** identity, which the Hybrid Worker extension needs. That
+is expected and harmless. It is also why every token request in this solution names the
 user-assigned identity explicitly: a request that does not would silently get the
 system-assigned one, which has no permissions.
 
@@ -169,7 +166,7 @@ inbound network access, no repository checkout on the VM, and no credentials on 
 
 ```bash
 az vm run-command invoke \
-  --resource-group rg-rma-prod --name vm-rma-01 \
+  --resource-group rg-rma-workloads-prod --name vm-rma-hw1-prod \
   --command-id RunPowerShellScript \
   --scripts @scripts/Initialize-RmaWorkerHost.ps1
 ```
@@ -327,8 +324,9 @@ az keyvault secret set --vault-name <kv-name> \
   --expires "$(date -u -d '+1 year' '+%Y-%m-%dT%H:%M:%SZ')"
 ```
 
-Set the expiry dates. They are what makes the near-expiry notification fire, which is the
-only thing standing between you and a password lapsing unnoticed.
+Set the expiry dates to match the passwords' own lifetimes. Nothing in this solution warns
+you before a password lapses, so the expiry date on the secret is where the renewal date is
+written down.
 
 If the Key Vault firewall is on, run these from inside the allowed subnet, or temporarily
 add your own IP.
@@ -352,7 +350,7 @@ Automation account, for the application to link the runbooks to. Create it under
 
 ```bash
 az rest --method put \
-  --url "https://management.azure.com/subscriptions/<subId>/resourceGroups/rg-rma-prod/providers/Microsoft.Automation/automationAccounts/aa-rma-prod/runtimeEnvironments/Powershell_7-6?api-version=2024-10-23" \
+  --url "https://management.azure.com/subscriptions/<subId>/resourceGroups/rg-rma-automation-prod/providers/Microsoft.Automation/automationAccounts/aa-rma-prod/runtimeEnvironments/Powershell_7-6?api-version=2024-10-23" \
   --body '{"properties":{"runtime":{"language":"PowerShell","version":"7.6"}}}'
 ```
 
@@ -409,7 +407,7 @@ unavailable. It performs no writes, so it is safe to run at any time:
 
 ```powershell
 Start-AzAutomationRunbook `
-    -ResourceGroupName rg-rma-prod `
+    -ResourceGroupName rg-rma-automation-prod `
     -AutomationAccountName aa-rma-prod `
     -Name 'Test-RmaHealth' `
     -RunOn 'hwg-rma-prod' `
@@ -419,10 +417,18 @@ Start-AzAutomationRunbook `
         VaultName               = '<key vault name>'
         ManagedIdentityClientId = '<managed identity CLIENT id>'
         ServiceNowUserName      = '<integration account username>'
+        TenantId                = '<tenant id>'
         ApplicationId           = '<application client id>'
-        IncludeActiveDirectory  = $true
+        DomainController        = '<domain controller host name or IP>'
+        AdUserName              = '<AD service account username>'
     }
 ```
+
+Pass the values of every directory the domain uses. `TenantId` and `ApplicationId` add the
+Microsoft Graph check. `DomainController` and `AdUserName` add the Active Directory check,
+which reads the AD password from Key Vault and signs in with it. Leave out the pair for a
+directory the domain does not use; at least one pair is required. With more than one AD
+domain, pass `AdSecretName` as well.
 
 Expected output:
 
@@ -432,10 +438,10 @@ RMA health check
 Check                                       Status   Ms  Detail
 -----                                       ------   --  ------
 Managed identity token                      Pass    120  acquired
-Key Vault + ServiceNow + domain record      Pass    840  tenant <guid>
-Microsoft Graph token exchange              Pass    310  federated token acquired
-ServiceNow command queue readable           Pass    260  queue reachable (0 pending)
-Active Directory reachable                  Pass     90  contacted 10.0.0.4
+Key Vault + ServiceNow                      Pass    840  authenticated as <username>
+Microsoft Graph token exchange              Pass    310  federated token acquired for tenant <guid>
+ServiceNow command queue readable           Pass    260  queue reachable (0 pending for this command)
+Active Directory reachable                  Pass     90  contacted 10.0.0.4 as <username> (contoso.local)
 All checks passed.
 ```
 
@@ -494,7 +500,7 @@ Symptoms in the order you are likely to meet them.
 Almost always the Automation Account identity:
 
 ```bash
-az automation account show -g rg-rma-prod -n aa-rma-prod --query identity.type
+az automation account show -g rg-rma-automation-prod -n aa-rma-prod --query identity.type
 ```
 
 It must return `None`. Anything else overrides the VM's identity. Disable it under
@@ -535,7 +541,7 @@ The one matching the runbook's runtime version must return a path to an existing
 actually linked to, since that is what decides which variable is read:
 
 ```bash
-az rest --method get --url "https://management.azure.com/subscriptions/<subId>/resourceGroups/rg-rma-prod/providers/Microsoft.Automation/automationAccounts/aa-rma-prod/runbooks/Create-EntraUser?api-version=2024-10-23" \
+az rest --method get --url "https://management.azure.com/subscriptions/<subId>/resourceGroups/rg-rma-automation-prod/providers/Microsoft.Automation/automationAccounts/aa-rma-prod/runbooks/Create-EntraUser?api-version=2024-10-23" \
   --query "properties.runtimeEnvironment"
 ``` If it is empty, re-run
 `./scripts/Initialize-RmaWorkerHost.ps1`, which sets it and restarts the service. The
@@ -545,7 +551,7 @@ changes nothing.
 Then check the extension version, because PowerShell 7.4 runbooks need 1.3.63 or above:
 
 ```bash
-az vm extension show -g rg-rma-prod --vm-name vm-rma-01 \
+az vm extension show -g rg-rma-workloads-prod --vm-name vm-rma-hw1-prod \
   --name HybridWorkerExtension --query typeHandlerVersion
 ```
 

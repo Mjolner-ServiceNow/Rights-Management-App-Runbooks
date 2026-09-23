@@ -6,6 +6,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `docs/AZURE-RESOURCES.md`, the specification of what to build in Azure: three resource
+  groups (`rg-rma-automation-prod`, `rg-rma-shared-prod`, `rg-rma-workloads-prod`), every
+  resource in them, the settings each one requires, the app registration's federated
+  credential and API permissions, and the order to build them in. Every name ends in its
+  environment. `INSTALLATION.md` step 1 now points at it
+  instead of carrying its own shorter list, and the examples throughout use its names.
+
+### Changed
+- **Breaking: every configuration value is now a runbook parameter**, and the runbooks read
+  nothing from ServiceNow but the command queue. The ServiceNow application already holds
+  these values when it starts a job, so reading the domain record back at the start of
+  every run cost a REST call and a failure point, and needed read access to one more
+  table. The ServiceNow application and the workers must move to 2.0.0 together.
+  - `Create-EntraUser` takes a new mandatory `TenantId`. `TenantId`, `ApplicationId` and
+    `ManagedIdentityClientId` must be GUIDs, checked when the job binds its parameters
+    rather than at token exchange.
+  - `Test-RmaHealth` replaces `-IncludeActiveDirectory` with three parameter sets, one
+    per combination of directories: `TenantId` and `ApplicationId` run the Graph check,
+    `DomainController`, `AdUserName` and an optional `AdSecretName` run the AD check, and
+    at least one pair is required. A domain with Entra switched off can therefore still be
+    health-checked. The AD check now signs in with the AD service account from Key
+    Vault instead of reading the RootDSE anonymously, so a wrong username or an expired
+    password fails the health check rather than the first real job. The *Key Vault + ServiceNow + domain
+    record* check is now *Key Vault + ServiceNow*.
+  - `Test-RmaPrerequisite` loses `-DomainId` and `-RequireDomainField`, and its context no
+    longer carries `DomainId` or `Domain`.
+  - `Connect-RmaGraph` and `Connect-RmaExchange` take a mandatory `-TenantId` instead of
+    reading it from the context.
+  - `ARCHITECTURE.md` has a new *Runbook parameters* section listing every parameter, the
+    ServiceNow domain record field it comes from, and why passwords, and only passwords,
+    stay out of them.
+
+### Removed
+- `Get-RmaDomainConfig`. Nothing reads the domain record any more.
+- Log Analytics, diagnostic settings, action groups and alert rules from the documentation.
+  None of them is needed for the runbooks to run, and the ServiceNow application already
+  tracks the status of every runbook job and flags the ones that fail.
+  `RUNBOOK-OPERATIONS.md` now reads the job output in the Automation Account instead of
+  querying Log Analytics, and describes each non-clean outcome by the stop reason or
+  message a run logs rather than by an alert name. The checklist loses its Monitoring
+  section.
+
 ### Fixed
 - `docs/DEPLOYMENT.md` said to provision the workers before the runbooks, and why, but not
   what a mismatch looks like or what it costs. Both are now written down: `#Requires` is a

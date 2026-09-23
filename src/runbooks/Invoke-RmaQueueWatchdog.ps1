@@ -1,5 +1,5 @@
 #Requires -Version 7.2
-#Requires -Modules @{ ModuleName = 'RMA.Runbooks'; RequiredVersion = '1.2.0' }
+#Requires -Modules @{ ModuleName = 'RMA.Runbooks'; RequiredVersion = '2.0.0' }
 
 <#
 .SYNOPSIS
@@ -33,7 +33,7 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{32}$')]  [string] $DomainId,
     [Parameter(Mandatory)][ValidatePattern('^[a-z0-9-]{2,40}$')][string] $Instance,
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()]            [string] $VaultName,
-    [Parameter(Mandatory)][ValidateNotNullOrEmpty()]            [string] $ManagedIdentityClientId,
+    [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F-]{36}$')][string] $ManagedIdentityClientId,
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()]            [string] $ServiceNowUserName,
 
     [ValidateRange(5, 1440)] [int] $StaleAfterMinutes = 30,
@@ -43,7 +43,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$context = Test-RmaPrerequisite -Instance $Instance -DomainId $DomainId -VaultName $VaultName `
+$context = Test-RmaPrerequisite -Instance $Instance -VaultName $VaultName `
     -ManagedIdentityClientId $ManagedIdentityClientId -ServiceNowUserName $ServiceNowUserName
 
 $cutoff = (Get-Date).ToUniversalTime().AddMinutes(-$StaleAfterMinutes)

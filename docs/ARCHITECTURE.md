@@ -12,9 +12,9 @@ command_queue  ◀────────  │ Automation Acct  │
   status 3 Failed                  │ RunOn: hybrid worker group
   status 4 Completed               ▼
                           ┌──────────────────┐
-domain record  ◀────────  │ Hybrid Worker VM │
-  (config only,           │  + user-assigned │────── IMDS token ──┐
-   no credentials)        │    managed id    │                    │
+results        ◀────────  │ Hybrid Worker VM │
+  (write-back of what     │  + user-assigned │────── IMDS token ──┐
+   the job created)       │    managed id    │                    │
                           └────────┬─────────┘                    │
                                    │                              ▼
                                    │ Secrets User        ┌─────────────────┐
@@ -24,12 +24,8 @@ domain record  ◀────────  │ Hybrid Worker VM │
                           │ servicenow-pw    │           └────────┬────────┘
                           │ ad-service-pw    │                    │
                           └──────────────────┘                    ▼
-                                   │                     Graph · Exchange Online
-                                   ▼
-                          ┌──────────────────┐
-                          │ Log Analytics    │  ← job logs, job streams, KV audit
-                          │ + alert rules    │
-                          └──────────────────┘
+                                                         Graph · Exchange Online
+
                                                         Active Directory
                                                         (AD credential from Key Vault)
 ```
@@ -45,8 +41,8 @@ in the system. It does two things:
    Graph and Exchange Online without a client secret or certificate.
 
 Nothing expires and nothing is stored. The two passwords that cannot be federated —
-ServiceNow and the AD service account — live in Key Vault with expiry tracking and an audit
-trail.
+ServiceNow and the AD service account — live in Key Vault, each with an expiry date, and
+the managed identity can read them but not change them.
 
 ### The constraint that governs the whole design
 
@@ -64,7 +60,7 @@ authentication troubleshooting order, because it is the most likely explanation 
 authentication that worked yesterday and does not today.
 
 A VM running the Hybrid Worker extension also has a **system-assigned** identity, which the
-extension enables automatically. IMDS requests must therefore always pass `client_id`, or
+extension requires. IMDS requests must therefore always pass `client_id`, or
 they return the wrong identity. `Get-RmaImdsToken` does.
 
 Two GUIDs are involved and they are not interchangeable:
@@ -77,6 +73,73 @@ Two GUIDs are involved and they are not interchangeable:
 Record both when the identity is created, labelled, and keep them apart. Swapping them
 produces a federated credential that saves without error and fails later, at token
 exchange.
+
+## Runbook parameters
+
+Every value a runbook needs is a parameter, passed by the ServiceNow application when it
+starts the job. The runbooks read nothing else from ServiceNow: the command queue is the
+only table they query, and what they send back is job state and the results of the work.
+
+| Parameter | Runbooks | Value | ServiceNow domain record |
+|---|---|---|---|
+| `Instance` | All | ServiceNow instance name: `contoso` for `contoso.service-now.com` | No field. The application knows its own instance. |
+| `DomainId` | All | `sys_id` of the domain record. Filters the command queue; nothing is read from the record itself. | The record's own `sys_id` |
+| `ServiceNowUserName` | All | The integration account | Setup › ServiceNow username *(replaces ServiceNow Credentials)* |
+| `VaultName` | All | The Key Vault | Setup › Key Vault name *(new)* |
+| `ManagedIdentityClientId` | All | The **client** ID of the user-assigned managed identity | Setup › Managed Identity Client ID *(new)* |
+| `TenantId` | Entra, Exchange | The Entra tenant ID | Entra ID Setup › Tenant Azure Active Directory |
+| `ApplicationId` | Entra, Exchange | The application (client) ID of the app registration | Entra ID Setup › Application ID |
+| `DomainController` | Active Directory | Host name or IP address of a domain controller | Active Directory Setup › Domain Controller IP |
+| `AdUserName` | Active Directory | The AD service account | Active Directory Setup › AD username *(replaces Active Directory Credentials)* |
+| `AdSecretName` | Active Directory | Key Vault secret with that account's password. Defaults to `ad-service-account-password`. | Active Directory Setup › AD secret name *(replaces Active Directory Credentials)* |
+
+The last column is the ServiceNow application's domain record form, as *tab › field*.
+Fields marked *new* or *replaces* are changes the application needs for this release. The
+application is maintained outside this repository, so check its own guide for the final
+field names.
+
+Some fields on the form do not become parameters:
+
+- **Setup › Automation account** and **Setup › Hybrid worker group** tell the application
+  where to start the job, and become its `RunOn`.
+- **Enable Active Directory** and **Enable Azure Active Directory** decide which of the
+  directory-specific parameters the application passes at all.
+- **Entra ID Setup › Certificate Thumbprint**, **Entra ID Setup › Entra ID Client secret
+  Credentials**, **Setup › ServiceNow Credentials** and **Active Directory Setup ›
+  Active Directory Credentials** have no counterpart here and go. The workload
+  authenticates with the managed identity, and the two passwords live in Key Vault.
+
+> **The Managed Identity field takes the client ID, not the object ID.** The object
+> (principal) ID is set once, as the subject of the federated credential in Entra, and is
+> never passed to a runbook. The field sits under Setup rather than Entra ID Setup because
+> the identity belongs to the Hybrid Worker and reads Key Vault for every domain, including
+> one with Entra switched off.
+
+`Test-RmaHealth` takes all of them. A domain can use Entra ID, Active Directory or both, so
+it has a parameter set for each: pass `TenantId` and `ApplicationId` for the Graph check,
+`DomainController` and `AdUserName` for the AD check, or all four. At least one pair is
+required, and a pair with one half missing fails at binding rather than skipping the check.
+Every Active Directory command runbook uses the same names.
+
+The ServiceNow application must **leave out** the parameters of a directory the domain
+does not use, not pass them as empty strings. An empty value fails validation.
+
+Three rules follow from putting configuration here:
+
+- **Passwords are never parameters.** Azure Automation records every job's input in its
+  job history, readable by anyone with read access to the Automation Account. The two
+  passwords live in Key Vault and nowhere else.
+- **The ServiceNow secret has a fixed name**, `servicenow-api-password`, rather than a
+  parameter. An installation serves one ServiceNow instance through one integration
+  account, so there is nothing to choose. The AD secret has a parameter because one
+  installation can serve several AD domains, each with its own account.
+- **Values are fixed when the job starts.** A change in ServiceNow applies to the next job,
+  never to one already running.
+
+The domain record used to be fetched at the start of every run. That cost a REST call and
+a failure point, needed read access to one more table, and found a malformed tenant ID only
+at token exchange. As parameters, the GUIDs are validated when the job binds them, before
+any network call.
 
 ## Job lifecycle
 
@@ -188,7 +251,7 @@ so adding workers buys wasted `PATCH` calls rather than throughput.
 fleet. Contention falls as the window widens, because two workers entering a 20-row window
 at random offsets rarely start on the same row.
 
-The `job-claim-contention` alert no longer means simply "too many workers" — see
+A run that stops with `claim-contention` does not simply mean "too many workers" — see
 [RUNBOOK-OPERATIONS.md](RUNBOOK-OPERATIONS.md).
 
 Both safety limits are deliberate. Azure Automation applies a three-hour fair-share limit
@@ -206,22 +269,26 @@ queue intact and the next run continues.
 | ServiceNow transient 5xx | `Invoke-RmaRestMethod` retry with backoff and jitter |
 | Token expires mid-run | `Get-RmaAccessToken` re-mints inside a five-minute margin |
 | Payload action mismatch | Job explicitly Failed, never silently skipped |
-| Runaway loop | `MaxJobs` and `MaxMinutes`, with an alert when hit |
+| Runaway loop | `MaxJobs` and `MaxMinutes`; the run ends with a Warning naming the limit |
 | Mass stranding | Watchdog refuses to act above `MaxRequeue` and raises |
 | Secret in a log | `Write-RmaLog` redacts; `RmaAvoidUnredactedObjectLogging` blocks the pattern |
 | Worker disk exhaustion | Pinned modules, no runtime install, analyzer rule, prune sweep |
 
 ## Infrastructure
 
-There is none in this repository. The Bicep that used to define the Automation Account,
-Key Vault, managed identity and monitoring was removed because it did not meet the bar,
-and infrastructure-as-code is deferred until the wider framework is settled. Until then
-the resources are created by hand per environment; `docs/INSTALLATION.md` lists what they
-are and how they must be configured.
+There is no infrastructure-as-code in this repository. The Bicep that used to define it was
+removed because it did not meet the bar, and infrastructure-as-code is deferred until the
+wider framework is settled. Until then the resources are created by hand;
+[`AZURE-RESOURCES.md`](AZURE-RESOURCES.md) specifies what they are, which resource group
+each belongs in, and how each must be configured.
+
+There is no monitoring infrastructure either: no Log Analytics workspace and no alert
+rules. The ServiceNow application tracks the status of every runbook job and flags the
+ones that fail, so failures surface where the request was made.
 
 ## Environments
 
-`dev`, `test`, `prod` are the same resources, provisioned separately per environment.
-Production additionally gets: Key Vault public access disabled with a subnet rule, purge
-protection, 90-day soft delete, 90-day log retention, and alert action groups wired up.
-Lower environments record alerts but do not notify.
+`dev`, `test`, `prod` are the same resources, provisioned separately per environment, each
+with the environment as the last part of every name: `aa-rma-test`, `aa-rma-prod`.
+Production additionally gets: Key Vault public access disabled with a subnet rule, and
+purge protection.

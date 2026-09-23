@@ -1,5 +1,5 @@
 #Requires -Version 7.2
-#Requires -Modules @{ ModuleName = 'RMA.Runbooks';                        RequiredVersion = '1.2.0'  }
+#Requires -Modules @{ ModuleName = 'RMA.Runbooks';                        RequiredVersion = '2.0.0'  }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Authentication';      RequiredVersion = '2.39.0' }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Users';               RequiredVersion = '2.39.0' }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Identity.DirectoryManagement'; RequiredVersion = '2.39.0' }
@@ -27,19 +27,19 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{32}$')]  [string] $DomainId,
     [Parameter(Mandatory)][ValidatePattern('^[a-z0-9-]{2,40}$')][string] $Instance,
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()]            [string] $VaultName,
-    [Parameter(Mandatory)][ValidateNotNullOrEmpty()]            [string] $ManagedIdentityClientId,
+    [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F-]{36}$')][string] $ManagedIdentityClientId,
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()]            [string] $ServiceNowUserName,
-    [Parameter(Mandatory)][ValidateNotNullOrEmpty()]            [string] $ApplicationId
+    [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F-]{36}$')][string] $TenantId,
+    [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F-]{36}$')][string] $ApplicationId
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$context = Test-RmaPrerequisite -Instance $Instance -DomainId $DomainId -VaultName $VaultName `
-    -ManagedIdentityClientId $ManagedIdentityClientId -ServiceNowUserName $ServiceNowUserName `
-    -RequireDomainField @('TenantId')
+$context = Test-RmaPrerequisite -Instance $Instance -VaultName $VaultName `
+    -ManagedIdentityClientId $ManagedIdentityClientId -ServiceNowUserName $ServiceNowUserName
 
-Connect-RmaGraph -Context $context -ApplicationId $ApplicationId
+Connect-RmaGraph -Context $context -TenantId $TenantId -ApplicationId $ApplicationId
 
 $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'Create-EntraUser' -Body {
     param($job, $p)

@@ -35,8 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     longer carries `DomainId` or `Domain`.
   - `Connect-RmaGraph` and `Connect-RmaExchange` take a mandatory `-TenantId` instead of
     reading it from the context.
-  - `ARCHITECTURE.md` has a new *Runbook parameters* section listing every parameter and
-    why passwords, and only passwords, stay out of them.
+  - `ARCHITECTURE.md` has a new *Runbook parameters* section listing every parameter, the
+    ServiceNow domain record field it comes from, and why passwords, and only passwords,
+    stay out of them.
 
 ### Removed
 - `Get-RmaDomainConfig`. Nothing reads the domain record any more.

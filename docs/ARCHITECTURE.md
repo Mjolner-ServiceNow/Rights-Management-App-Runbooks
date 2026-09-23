@@ -80,18 +80,40 @@ Every value a runbook needs is a parameter, passed by the ServiceNow application
 starts the job. The runbooks read nothing else from ServiceNow: the command queue is the
 only table they query, and what they send back is job state and the results of the work.
 
-| Parameter | Runbooks | Value |
-|---|---|---|
-| `Instance` | All | ServiceNow instance name: `contoso` for `contoso.service-now.com` |
-| `DomainId` | All | `sys_id` of the domain record. Filters the command queue; nothing is read from the record itself. |
-| `ServiceNowUserName` | All | The integration account |
-| `VaultName` | All | The Key Vault |
-| `ManagedIdentityClientId` | All | The **client** ID of the user-assigned managed identity |
-| `TenantId` | Entra, Exchange | The Entra tenant ID |
-| `ApplicationId` | Entra, Exchange | The application (client) ID of the app registration |
-| `DomainController` | Active Directory | Host name or IP address of a domain controller |
-| `AdUserName` | Active Directory | The AD service account |
-| `AdSecretName` | Active Directory | Key Vault secret with that account's password. Defaults to `ad-service-account-password`. |
+| Parameter | Runbooks | Value | ServiceNow domain record |
+|---|---|---|---|
+| `Instance` | All | ServiceNow instance name: `contoso` for `contoso.service-now.com` | No field. The application knows its own instance. |
+| `DomainId` | All | `sys_id` of the domain record. Filters the command queue; nothing is read from the record itself. | The record's own `sys_id` |
+| `ServiceNowUserName` | All | The integration account | Setup › ServiceNow username *(replaces ServiceNow Credentials)* |
+| `VaultName` | All | The Key Vault | Setup › Key Vault name *(new)* |
+| `ManagedIdentityClientId` | All | The **client** ID of the user-assigned managed identity | Setup › Managed Identity Client ID *(new)* |
+| `TenantId` | Entra, Exchange | The Entra tenant ID | Entra ID Setup › Tenant Azure Active Directory |
+| `ApplicationId` | Entra, Exchange | The application (client) ID of the app registration | Entra ID Setup › Application ID |
+| `DomainController` | Active Directory | Host name or IP address of a domain controller | Active Directory Setup › Domain Controller IP |
+| `AdUserName` | Active Directory | The AD service account | Active Directory Setup › AD username *(replaces Active Directory Credentials)* |
+| `AdSecretName` | Active Directory | Key Vault secret with that account's password. Defaults to `ad-service-account-password`. | Active Directory Setup › AD secret name *(replaces Active Directory Credentials)* |
+
+The last column is the ServiceNow application's domain record form, as *tab › field*.
+Fields marked *new* or *replaces* are changes the application needs for this release. The
+application is maintained outside this repository, so check its own guide for the final
+field names.
+
+Some fields on the form do not become parameters:
+
+- **Setup › Automation account** and **Setup › Hybrid worker group** tell the application
+  where to start the job, and become its `RunOn`.
+- **Enable Active Directory** and **Enable Azure Active Directory** decide which of the
+  directory-specific parameters the application passes at all.
+- **Entra ID Setup › Certificate Thumbprint**, **Entra ID Setup › Entra ID Client secret
+  Credentials**, **Setup › ServiceNow Credentials** and **Active Directory Setup ›
+  Active Directory Credentials** have no counterpart here and go. The workload
+  authenticates with the managed identity, and the two passwords live in Key Vault.
+
+> **The Managed Identity field takes the client ID, not the object ID.** The object
+> (principal) ID is set once, as the subject of the federated credential in Entra, and is
+> never passed to a runbook. The field sits under Setup rather than Entra ID Setup because
+> the identity belongs to the Hybrid Worker and reads Key Vault for every domain, including
+> one with Entra switched off.
 
 `Test-RmaHealth` takes all of them. A domain can use Entra ID, Active Directory or both, so
 it has a parameter set for each: pass `TenantId` and `ApplicationId` for the Graph check,

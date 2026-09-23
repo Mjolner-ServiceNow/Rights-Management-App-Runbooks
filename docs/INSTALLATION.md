@@ -115,8 +115,13 @@ through the Key Vault and its role assignments:
 | User-assigned managed identity `id-rma-prod` | `rg-rma-shared-prod` |
 | Key Vault `kv-rma-<suffix>-prod` | `rg-rma-shared-prod` |
 
-The secrets and the app registration come later, in steps 4 to 6. That document is the
-requirement, not a suggestion: the runbooks assume every setting in it.
+The secrets and the runbooks' app registration come later, in steps 4 to 6. That document is
+the requirement, not a suggestion: the runbooks assume every setting in it.
+
+It also specifies a second app registration, **ServiceNow's**, which the application uses to
+publish runbooks and start jobs. Create it now or alongside step 4: it needs Automation
+Contributor on the Automation Account and nothing else, and its credential goes into the
+ServiceNow application rather than into Key Vault.
 
 **Record the Key Vault name, the managed identity client ID, and the managed identity
 principal ID.**

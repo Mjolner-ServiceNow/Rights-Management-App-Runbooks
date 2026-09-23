@@ -21,7 +21,9 @@ Work top to bottom. Anything marked **BLOCKER** stops the release.
 - [ ] Federated credential issuer is `https://login.microsoftonline.com/{tenant}/v2.0`, audience `api://AzureADTokenExchange`
 - [ ] App registration has exactly the API permissions listed in [`AZURE-RESOURCES.md`](AZURE-RESOURCES.md), **admin consent granted** **BLOCKER**
 - [ ] Directory role assigned is **Exchange Recipient Administrator**, not Exchange Administrator or Global Administrator
-- [ ] App registration has **no client secret and no certificate**. If one exists, delete it — a live secret is a live bypass of everything above
+- [ ] The runbooks' app registration has **no client secret and no certificate**. If one exists, delete it — a live secret is a live bypass of everything above. ServiceNow's own app registration is the one that does have a credential; do not confuse the two
+- [ ] ServiceNow's app registration holds **Automation Contributor on `aa-rma-prod` only** — not on the resource group or subscription — and no API permissions
+- [ ] The expiry date of ServiceNow's credential is recorded, and someone owns renewing it
 - [ ] Managed identity has `Key Vault Secrets User` and nothing more. Confirm it does **not** hold Secrets Officer
 
 ## 3. Key Vault

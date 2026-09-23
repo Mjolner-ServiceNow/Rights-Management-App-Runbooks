@@ -6,6 +6,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `docs/AZURE-RESOURCES.md`, the specification of what to build in Azure: three resource
+  groups (`rg-rma-automation-prod`, `rg-rma-shared-prod`, `rg-rma-workloads-prod`), every
+  resource in them, the settings each one requires, the app registration's federated
+  credential and API permissions, and the order to build them in. Every name ends in its
+  environment. `INSTALLATION.md` step 1 now points at it
+  instead of carrying its own shorter list, and the examples throughout use its names.
+
+### Removed
+- Log Analytics, diagnostic settings, action groups and alert rules from the documentation.
+  None of them is needed for the runbooks to run, and the ServiceNow application already
+  tracks the status of every runbook job and flags the ones that fail.
+  `RUNBOOK-OPERATIONS.md` now reads the job output in the Automation Account instead of
+  querying Log Analytics, and describes each non-clean outcome by the stop reason or
+  message a run logs rather than by an alert name. The checklist loses its Monitoring
+  section.
+
 ### Fixed
 - `docs/DEPLOYMENT.md` said to provision the workers before the runbooks, and why, but not
   what a mismatch looks like or what it costs. Both are now written down: `#Requires` is a

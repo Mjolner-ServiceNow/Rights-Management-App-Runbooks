@@ -1,70 +1,65 @@
 # Operations
 
+Failed runbook jobs are flagged in ServiceNow, which tracks the status of every job it
+starts. There is no Log Analytics workspace and there are no Azure alert rules; everything
+below is read from the job output in the Automation Account.
+
 ## Reading the logs
 
-Every log line is one JSON object. In Log Analytics:
+Automation Account → **Jobs** → select the job → **All logs**. Every log line is one JSON
+object:
 
-```kusto
-// All structured output for one ServiceNow ticket, end to end.
-AutomationJobStreams
-| where TimeGenerated > ago(24h)
-| extend L = parse_json(ResultDescription)
-| where tostring(L.correlationId) == "<job sys_id>"
-| project TimeGenerated, level = L.level, message = L.message, data = L.data, worker = L.worker
-| order by TimeGenerated asc
-```
+| Field | Meaning |
+|---|---|
+| `timestamp` | UTC, ISO 8601 |
+| `level` | `Debug`, `Information`, `Warning` or `Error` |
+| `message` | What happened |
+| `runbook` | Which runbook logged it |
+| `correlationId` | The ServiceNow job `sys_id` the line belongs to. Empty outside a job. |
+| `worker` | Which Hybrid Worker ran it |
+| `data` | Named fields, already redacted |
 
-```kusto
-// Throughput and success rate per runbook, hourly.
-AutomationJobStreams
-| where TimeGenerated > ago(7d)
-| extend L = parse_json(ResultDescription)
-| where tostring(L.message) startswith "Queue loop finished"
-| extend d = L.data
-| summarize processed = sum(toint(d.processed)),
-            succeeded = sum(toint(d.succeeded)),
-            failed    = sum(toint(d.failed))
-          by bin(TimeGenerated, 1h), runbook = tostring(L.runbook)
-| extend successRate = round(100.0 * succeeded / iff(processed == 0, 1, processed), 1)
-```
+Debug lines, including `Job claim lost to another worker`, are written to the Verbose
+stream, which a job keeps only when **Log verbose records** is on in the runbook's logging
+settings. Leave it off normally and turn it on while diagnosing contention.
 
-```kusto
-// Claim contention. Sustained non-zero with an empty queue means runs are overlapping
-// more than the queue justifies, not that more workers are needed.
-AutomationJobStreams
-| where TimeGenerated > ago(24h)
-| extend L = parse_json(ResultDescription)
-| where tostring(L.message) == "Job claim lost to another worker"
-| summarize lost = count() by bin(TimeGenerated, 15m), worker = tostring(L.worker)
-```
+To follow one ServiceNow ticket, find the runbook job that ran at the time and search its
+output for the ticket's `sys_id`.
 
-## Alert response
+Every run ends with one summary line, `Queue loop finished (<stopReason>)`, carrying
+`processed`, `succeeded`, `failed`, `skipped` and `durationSeconds`. It is logged at
+Information when the queue drained and at Warning otherwise.
 
-### `jobs-stranded-in-progress`
-Jobs claimed but never finished. The watchdog should clear them within
-`StaleAfterMinutes`. If it fires repeatedly the watchdog itself is failing — check its own
-job history first. If the count is large, do **not** requeue manually: the watchdog refuses
-above `MaxRequeue` precisely because mass stranding means something systemic.
+## When something goes wrong
 
-### `runbook-failure-rate`
+### Jobs flagged as failed in ServiceNow
 Group the failures by `exception` in ServiceNow. A single repeated message is usually one
 bad payload or one missing directory object. Many different messages point at the platform:
 check identity first with `Test-RmaHealth`.
 
-### `queue-loop-hit-safety-limit`
+### Jobs stuck in Work in Progress
+Jobs claimed but never finished. The watchdog should clear them within
+`StaleAfterMinutes`, logging `Stranded job requeued` for each. If they keep coming back the
+watchdog itself is failing — check its own job history first. If the count is large, do
+**not** requeue manually: the watchdog refuses above `MaxRequeue`, logging `Stranded job
+count exceeds MaxRequeue; refusing to requeue`, precisely because mass stranding means
+something systemic.
+
+### A run stops at a safety limit: `max-jobs` or `max-minutes`
 Runs are ending with work still queued. Not urgent once, a capacity problem if sustained.
 In order of preference: raise `MaxJobs`, raise `BatchSize`, add a worker. There is no
 schedule frequency to increase — runs are started by the ServiceNow application per
 request, so the queue is refilled by user demand rather than drained on a clock.
 
-Check `stopReason` before treating it as a fault. `max-minutes` means jobs are slow;
+The run itself completes normally, so ServiceNow does not flag it. Check the stop reason
+before treating it as a fault. `max-minutes` means jobs are slow;
 `max-jobs` means there were simply more of them than the cap allows. `MaxJobs` defaults to
 500, which was chosen against a low-volume test instance — on a busy queue `max-jobs` is the
 *expected* outcome of a healthy run, not a runaway. Tune the default to the installation
-rather than leaving this alert to fire on normal operation, because an alert that always
-fires is one nobody reads.
+rather than leaving every busy run to end on a Warning, because a warning that is always
+there is one nobody reads.
 
-### `job-claim-contention`
+### A run stops with `claim-contention`
 The loop gave up after `MaxConsecutiveSkips` consecutive batches in which it attempted
 claims and won none. It counts batches, not individual lost claims.
 
@@ -78,14 +73,10 @@ Three causes, in order of likelihood:
    section in [ARCHITECTURE.md](ARCHITECTURE.md).
 3. **ServiceNow is failing every `PATCH`.** Check for claim failures in the logs:
    `Job claim request failed` is logged at Warning by `Request-RmaJobClaim`. This one is
-   not harmless, and it looks identical to contention from the summary alone.
+   not harmless, and it looks identical to contention from the summary line alone.
 
 A run that reports `claim-contention` with `Processed = 0` on a queue that is not empty is
 cause 2 or 3, never cause 1.
-
-### `module-install-attempted`
-An unreviewed runbook reached production, or a rollback restored an old one. Find it, remove
-it, and check how it bypassed the analyzer gate.
 
 ## Common tasks
 

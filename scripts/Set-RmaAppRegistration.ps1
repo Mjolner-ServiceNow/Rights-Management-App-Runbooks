@@ -22,7 +22,7 @@
       - Create any secret or certificate. That is the entire point of the design.
 .EXAMPLE
     ./Set-RmaAppRegistration.ps1 -DisplayName 'RMA Runbooks (prod)' `
-        -ManagedIdentityPrincipalId (az identity show -g rg-rma-prod -n id-rma-prod --query principalId -o tsv) `
+        -ManagedIdentityPrincipalId (az identity show -g rg-rma-shared-prod -n id-rma-prod --query principalId -o tsv) `
         -TenantId $env:AZURE_TENANT_ID
 #>
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingPlainTextForPassword', 'FederatedCredentialName',

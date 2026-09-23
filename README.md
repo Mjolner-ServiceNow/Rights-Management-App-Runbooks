@@ -5,7 +5,7 @@ and the shared PowerShell module they run on.
 
 This repository holds no credentials and deploys nothing itself. The Azure resources the
 runbooks need are provisioned by hand for now — there is no infrastructure-as-code here.
-See [`docs/INSTALLATION.md`](docs/INSTALLATION.md) for what to create.
+See [`docs/AZURE-RESOURCES.md`](docs/AZURE-RESOURCES.md) for what to create.
 
 | | |
 |---|---|
@@ -15,6 +15,7 @@ See [`docs/INSTALLATION.md`](docs/INSTALLATION.md) for what to create.
 | **CI** | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — validation only, no Azure access |
 | **Release** | [`.github/workflows/release.yml`](.github/workflows/release.yml) — packages the module for worker installation |
 | **Architecture** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| **Azure resources** | [`docs/AZURE-RESOURCES.md`](docs/AZURE-RESOURCES.md) — what to build in Azure |
 | **Installation** | [`docs/INSTALLATION.md`](docs/INSTALLATION.md) — start here |
 | **Updating** | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) |
 | **Go-live checklist** | [`docs/PRODUCTION-CHECKLIST.md`](docs/PRODUCTION-CHECKLIST.md) |

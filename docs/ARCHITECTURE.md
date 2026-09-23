@@ -24,12 +24,8 @@ domain record  ◀────────  │ Hybrid Worker VM │
                           │ servicenow-pw    │           └────────┬────────┘
                           │ ad-service-pw    │                    │
                           └──────────────────┘                    ▼
-                                   │                     Graph · Exchange Online
-                                   ▼
-                          ┌──────────────────┐
-                          │ Log Analytics    │  ← job logs, job streams, KV audit
-                          │ + alert rules    │
-                          └──────────────────┘
+                                                         Graph · Exchange Online
+
                                                         Active Directory
                                                         (AD credential from Key Vault)
 ```
@@ -45,8 +41,8 @@ in the system. It does two things:
    Graph and Exchange Online without a client secret or certificate.
 
 Nothing expires and nothing is stored. The two passwords that cannot be federated —
-ServiceNow and the AD service account — live in Key Vault with expiry tracking and an audit
-trail.
+ServiceNow and the AD service account — live in Key Vault, each with an expiry date, and
+the managed identity can read them but not change them.
 
 ### The constraint that governs the whole design
 
@@ -64,7 +60,7 @@ authentication troubleshooting order, because it is the most likely explanation 
 authentication that worked yesterday and does not today.
 
 A VM running the Hybrid Worker extension also has a **system-assigned** identity, which the
-extension enables automatically. IMDS requests must therefore always pass `client_id`, or
+extension requires. IMDS requests must therefore always pass `client_id`, or
 they return the wrong identity. `Get-RmaImdsToken` does.
 
 Two GUIDs are involved and they are not interchangeable:
@@ -188,7 +184,7 @@ so adding workers buys wasted `PATCH` calls rather than throughput.
 fleet. Contention falls as the window widens, because two workers entering a 20-row window
 at random offsets rarely start on the same row.
 
-The `job-claim-contention` alert no longer means simply "too many workers" — see
+A run that stops with `claim-contention` does not simply mean "too many workers" — see
 [RUNBOOK-OPERATIONS.md](RUNBOOK-OPERATIONS.md).
 
 Both safety limits are deliberate. Azure Automation applies a three-hour fair-share limit
@@ -206,22 +202,26 @@ queue intact and the next run continues.
 | ServiceNow transient 5xx | `Invoke-RmaRestMethod` retry with backoff and jitter |
 | Token expires mid-run | `Get-RmaAccessToken` re-mints inside a five-minute margin |
 | Payload action mismatch | Job explicitly Failed, never silently skipped |
-| Runaway loop | `MaxJobs` and `MaxMinutes`, with an alert when hit |
+| Runaway loop | `MaxJobs` and `MaxMinutes`; the run ends with a Warning naming the limit |
 | Mass stranding | Watchdog refuses to act above `MaxRequeue` and raises |
 | Secret in a log | `Write-RmaLog` redacts; `RmaAvoidUnredactedObjectLogging` blocks the pattern |
 | Worker disk exhaustion | Pinned modules, no runtime install, analyzer rule, prune sweep |
 
 ## Infrastructure
 
-There is none in this repository. The Bicep that used to define the Automation Account,
-Key Vault, managed identity and monitoring was removed because it did not meet the bar,
-and infrastructure-as-code is deferred until the wider framework is settled. Until then
-the resources are created by hand per environment; `docs/INSTALLATION.md` lists what they
-are and how they must be configured.
+There is no infrastructure-as-code in this repository. The Bicep that used to define it was
+removed because it did not meet the bar, and infrastructure-as-code is deferred until the
+wider framework is settled. Until then the resources are created by hand;
+[`AZURE-RESOURCES.md`](AZURE-RESOURCES.md) specifies what they are, which resource group
+each belongs in, and how each must be configured.
+
+There is no monitoring infrastructure either: no Log Analytics workspace and no alert
+rules. The ServiceNow application tracks the status of every runbook job and flags the
+ones that fail, so failures surface where the request was made.
 
 ## Environments
 
-`dev`, `test`, `prod` are the same resources, provisioned separately per environment.
-Production additionally gets: Key Vault public access disabled with a subnet rule, purge
-protection, 90-day soft delete, 90-day log retention, and alert action groups wired up.
-Lower environments record alerts but do not notify.
+`dev`, `test`, `prod` are the same resources, provisioned separately per environment, each
+with the environment as the last part of every name: `aa-rma-test`, `aa-rma-prod`.
+Production additionally gets: Key Vault public access disabled with a subnet rule, and
+purge protection.

@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `scripts/Invoke-RmaWorkerRun.ps1` runs a runbook, or a script block, from the working
+  tree on a test Hybrid Worker. The connection is PowerShell SSH remoting through an Azure
+  Bastion tunnel. The module under test is loaded beside the installed one, not over it.
+  `docs/CONTRIBUTING.md` describes the one-time setup and what such a run does not prove.
+  Its connection details and runbook parameters live in a gitignored
+  `rma-worker.local.json`, and `rma-worker.example.json` shows the shape.
+
 ### Fixed
 - **Every module function that logged at Information and then returned a value returned
   the log line as well.** `Write-RmaLog` wrote Information records with `Write-Output`,
@@ -69,12 +77,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.0.0] - 2026-09-24
 
 ### Added
-- `scripts/Invoke-RmaWorkerRun.ps1` runs a runbook, or a script block, from the working
-  tree on a test Hybrid Worker. The connection is PowerShell SSH remoting through an Azure
-  Bastion tunnel. The module under test is loaded beside the installed one, not over it.
-  `docs/CONTRIBUTING.md` describes the one-time setup and what such a run does not prove.
-  Its connection details and runbook parameters live in a gitignored
-  `rma-worker.local.json`, and `rma-worker.example.json` shows the shape.
 - `docs/AZURE-RESOURCES.md` specifies ServiceNow's own app registration, which the
   application uses to publish runbooks and start jobs: Automation Contributor on the
   Automation Account only, no API permissions, and a credential that expires. The

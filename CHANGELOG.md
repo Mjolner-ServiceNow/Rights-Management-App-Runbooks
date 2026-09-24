@@ -6,6 +6,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Publishing a draft release no longer rebuilds its assets.** Clicking Publish creates the
+  tag, the tag push ran the release workflow again, and it packaged the module afresh and
+  replaced both the zip and the notes. `Compress-Archive` stores each file's modification
+  time, which on a runner is the moment of checkout, so the new zip had a new hash: v2.0.0,
+  installed from notes copied off the draft, failed its hash check with nothing installed.
+  The first change below prevents it; the second would have made the rebuild harmless;
+  the third closes a neighbouring gap:
+  - `Get-RmaReleasePlan.ps1` tells published releases, drafts and bare tags apart. A tag
+    push for a published release does nothing, and one that meets a draft fails with
+    instructions. It also fails when `gh` cannot list releases, rather than reading that
+    as "none exist".
+  - `New-RmaModulePackage.ps1` writes the zip itself: entries in ordinal order, a fixed
+    timestamp, contents only. The same module source gives the same SHA256.
+  - Drafts are created with `target_commitish` set to the commit they were built from, so
+    Publish tags that commit rather than whatever `main` has moved on to.
+
+## [2.0.0] - 2026-09-24
+
 ### Added
 - `docs/AZURE-RESOURCES.md` specifies ServiceNow's own app registration, which the
   application uses to publish runbooks and start jobs: Automation Contributor on the

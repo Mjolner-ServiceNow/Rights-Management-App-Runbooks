@@ -6,7 +6,10 @@ name: Release
 #
 # Two ways in, and build/Get-RmaReleasePlan.ps1 is what tells them apart:
 #
-#   push of a v* tag   somebody typed the version. Publishes.
+#   push of a v* tag   somebody typed the version. Publishes, unless a release for
+#                      that tag already exists: publishing a draft from the Releases
+#                      page creates its tag and lands here, and rebuilding then would
+#                      replace assets whose hashes people have already copied.
 #   push to main       ModuleVersion changed and has no release yet. Drafts, so the
 #                      package, the hash and the notes are ready and a person decides
 #                      when it ships. A release here is the artefact somebody installs
@@ -51,6 +54,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.plan.outputs.tag }}
+          # The commit the assets were built from. Without it, publishing a draft creates
+          # the tag at whatever main is by then, and the tag names code the package was
+          # not built from. Ignored when the tag already exists.
+          target_commitish: ${{ github.sha }}
           draft: ${{ steps.plan.outputs.draft }}
           files: |
             ./out/RMA.Runbooks-*.zip

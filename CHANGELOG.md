@@ -6,6 +6,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Every module function that logged at Information and then returned a value returned
+  the log line as well.** `Write-RmaLog` wrote Information records with `Write-Output`,
+  which is the success stream, so `Connect-RmaServiceNow` handed back
+  `@($line, $context)` and `Test-RmaPrerequisite` failed on `$context.BaseUri` under
+  StrictMode. `Test-RmaPrerequisite`, `Connect-RmaGraph`, `Connect-RmaExchange`,
+  `Set-RmaJobState` and `Invoke-RmaQueueLoop` all log before they return, so every
+  runbook was affected, not only the health check. Information now goes to the
+  information stream. The unit tests had mocked `Write-RmaLog` away wherever a return
+  value was checked, which is why none of them saw it; `tests/Unit/Logging.Tests.ps1` now
+  runs `Connect-RmaServiceNow` against the real logger.
+- `Test-RmaHealth` could not be started: Azure Automation rejects a runbook that declares
+  parameter sets (*"Parameter sets in runbooks are not supported in this release"*), and
+  2.0.0 gave it three. The Entra ID pair and the Active Directory pair are now ordinary
+  optional parameters, and the script body enforces what the sets did: at least one
+  whole pair, half a pair fails the job naming the missing half, and `AdSecretName`
+  without the AD pair is refused. `tests/Unit/RunbookDefinition.Tests.ps1` fails any
+  runbook in `src/runbooks` that declares a parameter set.
+- `Test-RmaHealth` could never pass. Under `Set-StrictMode -Version Latest`, reading a
+  property through an empty collection throws, and it did so twice: the queue check read
+  `.Count` of `Get-RmaPendingJob`'s result, which is nothing at all when the queue is empty
+  (the normal state, since nothing queues `Test-RmaHealth` jobs), and the summary read
+  `.Check` of the failed checks, which is empty when every check passes. Both are in 1.2.0
+  and 2.0.0.
+  `tests/Unit/Test-RmaHealth.Tests.ps1` now runs the script against mocks instead of
+  reading its metadata, which is how both surfaced.
+- A failed `Test-RmaHealth` was close to unreadable in the Automation job pane, which
+  hid the one line that mattered. `Format-Table` cut each check's detail at the pane's
+  width, so a Key Vault failure stopped at `(HTT.` before its status code. The failed
+  summary was logged at Error as well as thrown, so the pane interleaved two error records
+  with the table. And the pane prints ANSI escape codes literally, so both were wrapped in
+  colour sequences. Each check is now one line with its full detail below it, the summary
+  is logged at Information, and every runbook sets `$PSStyle.OutputRendering` to
+  `PlainText`, which `tests/Unit/RunbookDefinition.Tests.ps1` requires.
+- An array in a log record's `data` changed JSON type with its length. The redactor
+  returned arrays unwrapped, so PowerShell unrolled them: an empty array was logged as
+  `null` and a one-element array as a bare value. `Test-RmaHealth`'s `checks` was a string
+  for a domain with one directory and an array for a domain with both, so a KQL
+  `mv-expand` over it gave different results by domain. Arrays are now always logged as
+  arrays.
+- **Publishing a draft release no longer rebuilds its assets.** Clicking Publish creates the
+  tag, the tag push ran the release workflow again, and it packaged the module afresh and
+  replaced both the zip and the notes. `Compress-Archive` stores each file's modification
+  time, which on a runner is the moment of checkout, so the new zip had a new hash: v2.0.0,
+  installed from notes copied off the draft, failed its hash check with nothing installed.
+  The first change below prevents it; the second would have made the rebuild harmless;
+  the third closes a neighbouring gap:
+  - `Get-RmaReleasePlan.ps1` tells published releases, drafts and bare tags apart. A tag
+    push for a published release does nothing, and one that meets a draft fails with
+    instructions. It also fails when `gh` cannot list releases, rather than reading that
+    as "none exist".
+  - `New-RmaModulePackage.ps1` writes the zip itself: entries in ordinal order, a fixed
+    timestamp, contents only. The same module source gives the same SHA256.
+  - Drafts are created with `target_commitish` set to the commit they were built from, so
+    Publish tags that commit rather than whatever `main` has moved on to.
+
+### Changed
+- The runbooks require `RMA.Runbooks` 2.0.1. Install it on every Hybrid Worker before
+  republishing them.
+
+## [2.0.0] - 2026-09-24
+
 ### Added
 - `scripts/Invoke-RmaWorkerRun.ps1` runs a runbook, or a script block, from the working
   tree on a test Hybrid Worker. The connection is PowerShell SSH remoting through an Azure

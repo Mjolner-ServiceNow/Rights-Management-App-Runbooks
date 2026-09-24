@@ -23,20 +23,38 @@
 
     The zip contains a single top-level folder named RMA.Runbooks, so it expands directly
     into a module directory.
+
+    The zip is reproducible: packaging the same module source twice yields the same bytes,
+    and so the same SHA256. Compress-Archive stores each file's modification time, which
+    on a CI runner is the moment of checkout, so every run used to produce a new hash for
+    unchanged code. That is how v2.0.0 shipped a package whose hash no longer matched the
+    notes it was drafted with. Entries are therefore written in ordinal order with a fixed
+    timestamp, and hold file contents only. The guarantee covers the same platform and
+    PowerShell version: .NET records the platform in each entry header, and the deflate
+    output belongs to the zlib it ships with.
+.PARAMETER OutputDirectory
+    Where the zip and the copy of Initialize-RmaWorker.ps1 are written.
+.PARAMETER ModulePath
+    The module directory to package. Defaults to src/RMA.Runbooks; the tests point it at a
+    copy whose timestamps they can change.
 .EXAMPLE
     ./build/New-RmaModulePackage.ps1 -OutputDirectory ./out
 #>
 [CmdletBinding()]
 param(
-    [string] $OutputDirectory = "$PSScriptRoot/../out"
+    [ValidateNotNullOrEmpty()]
+    [string] $OutputDirectory = "$PSScriptRoot/../out",
+
+    [ValidateScript({ Test-Path -LiteralPath $_ -PathType Container })]
+    [string] $ModulePath = "$PSScriptRoot/../src/RMA.Runbooks"
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$repoRoot    = Split-Path $PSScriptRoot -Parent
-$modulePath  = Join-Path $repoRoot 'src/RMA.Runbooks'
-$manifest    = Join-Path $modulePath 'RMA.Runbooks.psd1'
+$repoRoot     = Split-Path $PSScriptRoot -Parent
+$modulePath   = (Resolve-Path -LiteralPath $ModulePath).Path
+$manifest     = Join-Path $modulePath 'RMA.Runbooks.psd1'
 $workerSource = Join-Path $repoRoot 'scripts/Initialize-RmaWorker.ps1'
 
 $null = Test-ModuleManifest -Path $manifest -ErrorAction Stop
@@ -45,7 +63,40 @@ $version = (Import-PowerShellDataFile $manifest).ModuleVersion
 $null = New-Item -ItemType Directory -Path $OutputDirectory -Force
 $zip = Join-Path (Resolve-Path $OutputDirectory) "RMA.Runbooks-$version.zip"
 
-Compress-Archive -Path $modulePath -DestinationPath $zip -Force
+# Any fixed value will do; this one is inside the range a zip's DOS timestamp can hold.
+$entryTime = [DateTimeOffset]::new(2000, 1, 1, 0, 0, 0, [TimeSpan]::Zero)
+
+[string[]] $entries = Get-ChildItem -LiteralPath $modulePath -File -Recurse -ErrorAction Stop |
+ForEach-Object {
+    [IO.Path]::GetRelativePath($modulePath, $_.FullName).Replace([IO.Path]::DirectorySeparatorChar, '/')
+}
+# Ordinal, because Sort-Object compares by culture and enumeration order is up to the
+# file system: either could reorder the entries, and the order is part of the bytes.
+[Array]::Sort($entries, [StringComparer]::Ordinal)
+
+Add-Type -AssemblyName System.IO.Compression
+if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force -ErrorAction Stop }
+$stream = [IO.File]::Open($zip, [IO.FileMode]::CreateNew)
+try {
+    $archive = [IO.Compression.ZipArchive]::new($stream, [IO.Compression.ZipArchiveMode]::Create)
+    try {
+        foreach ($relative in $entries) {
+            $entry = $archive.CreateEntry("RMA.Runbooks/$relative", [IO.Compression.CompressionLevel]::Optimal)
+            $entry.LastWriteTime = $entryTime
+            $target = $entry.Open()
+            try {
+                $source = [IO.File]::OpenRead((Join-Path $modulePath $relative))
+                try { $source.CopyTo($target) } finally { $source.Dispose() }
+            } finally {
+                $target.Dispose()
+            }
+        }
+    } finally {
+        $archive.Dispose()
+    }
+} finally {
+    $stream.Dispose()
+}
 $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
 
 # The provisioning script ships beside the module it installs, from the same tag, so a

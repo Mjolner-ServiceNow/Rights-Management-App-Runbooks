@@ -9,8 +9,10 @@ function Write-RmaLog {
         Values are passed through ConvertTo-RmaSafeLogValue, so anything that looks like a
         secret is redacted before it reaches the log.
     .PARAMETER Level
-        Severity. Error and Warning are additionally written to their native streams so
-        Automation surfaces them on the job summary. Debug goes to the verbose stream,
+        Severity. Information goes to the information stream, never the success stream:
+        a record written with Write-Output became part of the return value of every
+        function that logged before returning. Error and Warning go to their native
+        streams so Automation surfaces them on the job summary. Debug goes to the verbose stream,
         which Automation captures when 'Log verbose records' is enabled on the runbook;
         it does not use Write-Debug, because Automation does not capture that stream.
     .PARAMETER CorrelationId
@@ -50,6 +52,10 @@ function Write-RmaLog {
 
     $line = $record | ConvertTo-Json -Depth 10 -Compress
 
+    # Information is not written with Write-Output. Connect-RmaServiceNow logged and then
+    # returned its context, so the caller received @($line, $context), and under StrictMode
+    # $context.BaseUri threw. Every function that logs and returns had the same defect.
+    #
     # Debug is routed to Write-Verbose without -Verbose:$false. Suppressing it there made
     # every Debug record unreachable, including 'Job claim lost to another worker', which
     # is the one line that makes claim contention visible.
@@ -57,6 +63,6 @@ function Write-RmaLog {
         'Error'       { Write-Error   $line -ErrorAction Continue }
         'Warning'     { Write-Warning $line }
         'Debug'       { Write-Verbose $line }
-        default       { Write-Output  $line }
+        default       { Write-Information $line -InformationAction Continue }
     }
 }

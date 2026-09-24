@@ -1,5 +1,5 @@
 #Requires -Version 7.2
-#Requires -Modules @{ ModuleName = 'RMA.Runbooks'; RequiredVersion = '2.0.0' }
+#Requires -Modules @{ ModuleName = 'RMA.Runbooks'; RequiredVersion = '2.0.1' }
 
 <#
 .SYNOPSIS
@@ -42,6 +42,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+# The Automation job pane prints ANSI escape codes literally, which buries the text of
+# every error record under colour sequences.
+$PSStyle.OutputRendering = 'PlainText'
 
 $context = Test-RmaPrerequisite -Instance $Instance -VaultName $VaultName `
     -ManagedIdentityClientId $ManagedIdentityClientId -ServiceNowUserName $ServiceNowUserName

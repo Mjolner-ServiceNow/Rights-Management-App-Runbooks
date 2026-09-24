@@ -116,10 +116,15 @@ Some fields on the form do not become parameters:
 > one with Entra switched off.
 
 `Test-RmaHealth` takes all of them. A domain can use Entra ID, Active Directory or both, so
-it has a parameter set for each: pass `TenantId` and `ApplicationId` for the Graph check,
+both pairs are optional: pass `TenantId` and `ApplicationId` for the Graph check,
 `DomainController` and `AdUserName` for the AD check, or all four. At least one pair is
-required, and a pair with one half missing fails at binding rather than skipping the check.
+required, and a pair with one half missing fails the job rather than skipping the check.
 Every Active Directory command runbook uses the same names.
+
+No runbook may declare parameter sets. Azure Automation refuses to start one that does
+(*"Parameter sets in runbooks are not supported in this release"*), so a rule like "this
+pair or that one" is checked in the script body instead.
+`tests/Unit/RunbookDefinition.Tests.ps1` enforces it.
 
 The ServiceNow application must **leave out** the parameters of a directory the domain
 does not use, not pass them as empty strings. An empty value fails validation.

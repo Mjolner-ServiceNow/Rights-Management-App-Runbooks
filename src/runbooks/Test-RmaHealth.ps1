@@ -1,5 +1,5 @@
 #Requires -Version 7.2
-#Requires -Modules @{ ModuleName = 'RMA.Runbooks'; RequiredVersion = '2.0.0' }
+#Requires -Modules @{ ModuleName = 'RMA.Runbooks'; RequiredVersion = '2.0.1' }
 
 <#
 .SYNOPSIS
@@ -35,11 +35,7 @@
 
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '',
     Justification = 'These parameters are used inside the Add-Check scriptblocks. PSScriptAnalyzer does not resolve variable use across a scriptblock closure.')]
-# Three parameter sets, so that which checks run is decided at binding: Entra, Active
-# Directory, or both. A parameter in two sets carries one attribute per set. Passing half
-# of a pair fails binding and names the missing half, rather than silently skipping the
-# check the caller evidently meant to run.
-[CmdletBinding(DefaultParameterSetName = 'Entra')]
+[CmdletBinding()]
 param(
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{32}$')]  [string] $DomainId,
     [Parameter(Mandatory)][ValidatePattern('^[a-z0-9-]{2,40}$')][string] $Instance,
@@ -47,38 +43,51 @@ param(
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F-]{36}$')][string] $ManagedIdentityClientId,
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()]            [string] $ServiceNowUserName,
 
-    [Parameter(Mandatory, ParameterSetName = 'Entra')]
-    [Parameter(Mandatory, ParameterSetName = 'EntraAndActiveDirectory')]
-    [ValidatePattern('^[0-9a-fA-F-]{36}$')]
-    [string] $TenantId,
-
-    [Parameter(Mandatory, ParameterSetName = 'Entra')]
-    [Parameter(Mandatory, ParameterSetName = 'EntraAndActiveDirectory')]
-    [ValidatePattern('^[0-9a-fA-F-]{36}$')]
-    [string] $ApplicationId,
-
-    [Parameter(Mandatory, ParameterSetName = 'ActiveDirectory')]
-    [Parameter(Mandatory, ParameterSetName = 'EntraAndActiveDirectory')]
-    [ValidateNotNullOrEmpty()]
-    [string] $DomainController,
-
-    [Parameter(Mandatory, ParameterSetName = 'ActiveDirectory')]
-    [Parameter(Mandatory, ParameterSetName = 'EntraAndActiveDirectory')]
-    [ValidateNotNullOrEmpty()]
-    [string] $AdUserName,
-
-    [Parameter(ParameterSetName = 'ActiveDirectory')]
-    [Parameter(ParameterSetName = 'EntraAndActiveDirectory')]
-    [ValidateNotNullOrEmpty()]
-    [string] $AdSecretName = 'ad-service-account-password'
+    [ValidatePattern('^[0-9a-fA-F-]{36}$')] [string] $TenantId,
+    [ValidatePattern('^[0-9a-fA-F-]{36}$')] [string] $ApplicationId,
+    [ValidateNotNullOrEmpty()]              [string] $DomainController,
+    [ValidateNotNullOrEmpty()]              [string] $AdUserName,
+    [ValidateNotNullOrEmpty()]              [string] $AdSecretName = 'ad-service-account-password'
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+# The Automation job pane prints ANSI escape codes literally, which buries the text of
+# every error record under colour sequences.
+$PSStyle.OutputRendering = 'PlainText'
+
+# Which checks run is decided here, not by parameter sets: Azure Automation refuses to
+# start a runbook that declares any ("Parameter sets in runbooks are not supported").
+# Half of a pair fails and names the missing half, rather than silently skipping the
+# check the caller evidently meant to run. $PSBoundParameters is captured because inside
+# the Where-Object scriptblock it would be that scriptblock's own, which is empty.
+$bound = $PSBoundParameters
+$directories = [ordered]@{
+    'Entra ID'         = @('TenantId', 'ApplicationId')
+    'Active Directory' = @('DomainController', 'AdUserName')
+}
+$checked = @(
+    foreach ($directory in $directories.Keys) {
+        $pair = $directories[$directory]
+        $passed = @($pair | Where-Object { $bound.ContainsKey($_) })
+        if ($passed.Count -eq $pair.Count) {
+            $directory
+        } elseif ($passed.Count -gt 0) {
+            $missing = @($pair | Where-Object { $_ -notin $passed })
+            throw "The $directory check needs $($missing -join ', ') as well as $($passed -join ', '). Pass the whole pair, or none of it to skip the check."
+        }
+    }
+)
+if (-not $checked) {
+    throw 'Pass TenantId and ApplicationId for the Entra ID check, DomainController and AdUserName for the Active Directory check, or all four. A health check that proves neither directory proves nothing a job depends on.'
+}
+if ($bound.ContainsKey('AdSecretName') -and 'Active Directory' -notin $checked) {
+    throw 'AdSecretName is used only by the Active Directory check. Pass DomainController and AdUserName with it.'
+}
+$checkEntra = 'Entra ID' -in $checked
+$checkActiveDirectory = 'Active Directory' -in $checked
 
 $checks = [System.Collections.Generic.List[object]]::new()
-$checkEntra = $PSCmdlet.ParameterSetName -in 'Entra', 'EntraAndActiveDirectory'
-$checkActiveDirectory = $PSCmdlet.ParameterSetName -in 'ActiveDirectory', 'EntraAndActiveDirectory'
 
 function Add-Check {
     [CmdletBinding()]
@@ -96,7 +105,7 @@ function Add-Check {
     }
 }
 
-Write-RmaLog -Level Information -Message 'Health check started' -Data @{ instance = $Instance; domainId = $DomainId; checks = $PSCmdlet.ParameterSetName }
+Write-RmaLog -Level Information -Message 'Health check started' -Data @{ instance = $Instance; domainId = $DomainId; checks = $checked }
 
 $context = $null
 
@@ -122,7 +131,7 @@ if ($checkEntra) {
 
 Add-Check 'ServiceNow command queue readable' {
     if (-not $script:context) { throw 'Skipped: prerequisite check did not complete.' }
-    $jobs = Get-RmaPendingJob -Context $script:context -DomainId $DomainId -Command 'Test-RmaHealth' -Limit 1
+    $jobs = @(Get-RmaPendingJob -Context $script:context -DomainId $DomainId -Command 'Test-RmaHealth' -Limit 1)
     "queue reachable ($($jobs.Count) pending for this command)"
 }
 
@@ -137,17 +146,28 @@ if ($checkActiveDirectory) {
     }
 }
 
+$failed = @($checks | Where-Object Status -EQ 'FAIL')
+
+# One line per check with its detail on the next, never a table: Format-Table cuts the
+# detail at the width of the pane, and the detail of a failed check is the error message,
+# which is the one thing the reader came for.
 Write-Output ''
 Write-Output 'RMA health check'
 Write-Output '================'
-$checks | Format-Table -AutoSize | Out-String -Width 160 | Write-Output
+foreach ($check in $checks) {
+    Write-Output ('{0,-4}  {1} ({2} ms)' -f $check.Status, $check.Check, $check.Ms)
+    Write-Output "      $($check.Detail)"
+}
+Write-Output ''
 
-$failed = @($checks | Where-Object Status -EQ 'FAIL')
-Write-RmaLog -Level $(if ($failed) { 'Error' } else { 'Information' }) `
+# Information even when a check failed. The throw below is the error record a failed run
+# produces; logging the same summary at Error as well wrote a second one, which the job
+# pane interleaves with the output above.
+Write-RmaLog -Level Information `
     -Message "Health check finished: $($checks.Count - $failed.Count)/$($checks.Count) passed" `
-    -Data @{ failed = @($failed.Check) }
+    -Data @{ failed = @($failed | ForEach-Object Check) }
 
 if ($failed) {
-    throw "Health check failed: $($failed.Check -join ', ')"
+    throw "Health check failed: $(@($failed | ForEach-Object Check) -join ', '). The reason for each is in the output above."
 }
 Write-Output 'All checks passed.'

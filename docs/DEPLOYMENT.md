@@ -87,7 +87,15 @@ first) when you want the disk back; the release notes carry the command. It matt
 for the Graph and Exchange modules, which are hundreds of megabytes rather than kilobytes.
 
 Pushing a `v*` tag by hand still publishes immediately, without the draft step. Use it to
-re-cut a release that was deleted, not as the normal path.
+re-cut a release that was deleted, not as the normal path. It builds only when no release
+for that tag exists: a published release is left alone, and a draft makes the run fail
+and say what to do, because the draft's package was built from the commit it was drafted
+at and the tag may name another.
+
+A published release's assets are never rebuilt. The package is reproducible — the same
+module source gives the same SHA256 on the CI runner — but the hashes in the notes are what
+every worker checks, so nothing after publishing is allowed to change them. v2.0.0 was
+rebuilt when its draft was published and failed its own hash check on the first worker.
 
 ## Changing infrastructure
 

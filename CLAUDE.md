@@ -160,6 +160,12 @@ request and let release cadence follow merge tempo rather than whether the fleet
 A draft holds its `tag_name` without creating the tag, so nothing is public until someone
 clicks Publish.
 
+Clicking Publish creates the tag, and that tag push runs `release.yml` again. The plan
+therefore never rebuilds a release that exists: v2.0.0's zip was rebuilt at that moment,
+and since `Compress-Archive` stores checkout timestamps, its hash no longer matched the
+notes people had copied. `New-RmaModulePackage.ps1` now writes the zip itself, in ordinal
+order with a fixed timestamp. Do not put `Compress-Archive` back.
+
 ## This repository is public
 
 Nothing may identify a customer: ServiceNow instance names, tenant or subscription IDs,

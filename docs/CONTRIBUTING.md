@@ -53,8 +53,24 @@ It is not a real job, in two ways:
 ### One-time setup
 
 The connection is PowerShell remoting over SSH, through an Azure Bastion tunnel. The VM
-needs no public IP and no open port. You need a Standard or Premium Bastion with native
-client support switched on:
+needs no public IP and no open port, but Bastion must be set up for it before anything
+else works:
+
+- **SKU Standard or Premium.** Basic and Developer do not support native client
+  connections, and `az network bastion tunnel` fails against them.
+- **Native client support switched on.** In the portal, that is a checkbox on the Bastion
+  resource's *Configuration* page. The resource property is `enableTunneling`. Switching it
+  on takes 5 to 10 minutes.
+- **Reader on the VM, on its NIC and on the Bastion resource** for everyone who opens the
+  tunnel.
+- **Port 22 on the VM reachable from `AzureBastionSubnet`.** The default NSG rules allow
+  it unless a custom rule denies it.
+
+Check the first two, then switch native client support on if needed:
+
+```bash
+az network bastion show -g <rg> -n <bastion> --query "{sku:sku.name, tunneling:enableTunneling}" -o json
+```
 
 ```bash
 az network bastion update -g <rg> -n <bastion> --enable-tunneling true

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- The `test-on-hybrid-worker` skill in `.claude/skills/` tells an AI agent how to use
+  `scripts/Invoke-RmaWorkerRun.ps1`: the prerequisites in the order they fail, what it
+  must not do, how to read a run and the traps found so far. `CLAUDE.md` points to it.
+  `docs/CONTRIBUTING.md` now spells out what Bastion needs: Standard or Premium, native
+  client support, Reader on the VM, NIC and Bastion, and port 22 from
+  `AzureBastionSubnet`.
 - `scripts/Invoke-RmaWorkerRun.ps1` runs a runbook, or a script block, from the working
   tree on a test Hybrid Worker. The connection is PowerShell SSH remoting through an Azure
   Bastion tunnel. The module under test is loaded beside the installed one, not over it.

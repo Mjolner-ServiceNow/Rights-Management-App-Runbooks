@@ -182,3 +182,12 @@ The `powershell-7-expert` skill in `.claude/skills/` carries the house rules for
 PowerShell 7 — error handling, function design, parallelism, REST integration, testability
 and secret handling — with `references/house-rules.md` holding this repository's specifics.
 Invoke it when writing or reviewing PowerShell.
+
+## Trying a change on a real worker
+
+`scripts/Invoke-RmaWorkerRun.ps1` runs a runbook or a script block from the working tree on
+a test Hybrid Worker, through an Azure Bastion tunnel, before anything is pushed. Its
+connection details and runbook parameters live in the gitignored `rma-worker.local.json`.
+It needs Bastion on Standard or Premium with native client support switched on. Invoke the
+`test-on-hybrid-worker` skill before using it. The skill has the prerequisites, the rules
+(never guess a ServiceNow value, test environments only) and the traps.

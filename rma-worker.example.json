@@ -1,0 +1,21 @@
+{
+  "Worker": {
+    "ResourceGroup": "rg-rma-workloads-test",
+    "BastionName": "bas-rma-test",
+    "VmName": "vm-rma-hw-test01",
+    "UserName": "rmaadmin",
+    "KeyFilePath": "~/.ssh/rma-worker",
+    "KnownHostsFile": "~/.ssh/known_hosts_rma",
+    "Port": 2224
+  },
+  "DomainId": "0123456789abcdef0123456789abcdef",
+  "Instance": "contoso",
+  "ServiceNowUserName": "svc-rma",
+  "VaultName": "kv-rma-contoso-test",
+  "ManagedIdentityClientId": "00000000-0000-0000-0000-000000000001",
+  "TenantId": "00000000-0000-0000-0000-000000000002",
+  "ApplicationId": "00000000-0000-0000-0000-000000000003",
+  "DomainController": "dc01.contoso.test",
+  "AdUserName": "svc-rma",
+  "AdSecretName": "ad-service-account-password"
+}

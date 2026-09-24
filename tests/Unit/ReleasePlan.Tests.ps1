@@ -17,7 +17,7 @@ Describe 'Get-RmaReleasePlan' -Tag 'Unit', 'Release' {
         It 'drafts when the version has no release yet' {
             # Drafting, not publishing: a release here is the artefact somebody installs
             # on every worker by hand, so a merge must not be what ships it.
-            $plan = & $script:Plan -RefType branch -RefName main -ExistingRelease @('v0.9.0') `
+            $plan = & $script:Plan -RefType branch -RefName main -PublishedRelease @('v0.9.0') `
                 -ManifestPath $script:Manifest
 
             $plan.Proceed | Should -BeTrue
@@ -25,49 +25,59 @@ Describe 'Get-RmaReleasePlan' -Tag 'Unit', 'Release' {
             $plan.Tag     | Should -Be "v$script:Version"
         }
 
-        It 'does nothing when a release for that version already exists' {
-            # Otherwise every subsequent push to main piles up another draft.
-            $plan = & $script:Plan -RefType branch -RefName main `
-                -ExistingRelease @("v$script:Version") -ManifestPath $script:Manifest
+        It 'does nothing when a <Kind> for that version already exists' -ForEach @(
+            # Otherwise every subsequent push to main piles up another draft. A draft holds
+            # its tag_name without creating the tag, and a tag can outlive a deleted
+            # release, so any one of the three counts.
+            @{ Kind = 'published release'; Parameter = 'PublishedRelease' }
+            @{ Kind = 'draft release'; Parameter = 'DraftRelease' }
+            @{ Kind = 'bare tag'; Parameter = 'ExistingTag' }
+        ) {
+            $existing = @{ $Parameter = @("v$script:Version") }
+            $plan = & $script:Plan -RefType branch -RefName main @existing `
+                -ManifestPath $script:Manifest
 
             $plan.Proceed | Should -BeFalse
             $plan.Reason  | Should -Match 'already exists'
-        }
-
-        It 'does nothing when only a bare tag exists, with no release' {
-            # A draft holds its tag_name without creating the tag, and a tag can outlive a
-            # deleted release, so the caller passes both and either one counts.
-            $plan = & $script:Plan -RefType branch -RefName main `
-                -ExistingRelease @("v$script:Version") -ManifestPath $script:Manifest
-
-            $plan.Proceed | Should -BeFalse
         }
     }
 
     Context 'a v* tag push' {
 
-        It 'publishes when the tag agrees with the manifest' {
+        It 'publishes when the tag agrees with the manifest and has no release' {
+            # How a deleted release is recreated, and the hand-pushed path with no draft.
             $plan = & $script:Plan -RefType tag -RefName "v$script:Version" `
-                -ExistingRelease @() -ManifestPath $script:Manifest
+                -ExistingTag @("v$script:Version") -ManifestPath $script:Manifest
 
             $plan.Proceed | Should -BeTrue
             $plan.Draft   | Should -BeFalse
         }
 
-        It 'publishes even when a release for that version exists, because the tag is deliberate' {
-            # This is how a draft gets promoted, and how a deleted release is recreated.
+        It 'rebuilds nothing when the release is already published' {
+            # Publishing a draft from the Releases page creates the tag, and that push lands
+            # here. Rebuilding replaced the zip, whose bytes carry file timestamps, under
+            # notes people had already copied: v2.0.0 failed its own hash check this way.
             $plan = & $script:Plan -RefType tag -RefName "v$script:Version" `
-                -ExistingRelease @("v$script:Version") -ManifestPath $script:Manifest
+                -PublishedRelease @("v$script:Version") -ExistingTag @("v$script:Version") `
+                -ManifestPath $script:Manifest
 
-            $plan.Proceed | Should -BeTrue
-            $plan.Draft   | Should -BeFalse
+            $plan.Proceed | Should -BeFalse
+            $plan.Reason  | Should -Match 'already published'
+        }
+
+        It 'refuses a hand-pushed tag while a draft for it exists' {
+            # The draft's package was built from the commit it was drafted at. Publishing
+            # it under a tag on another commit, or rebuilding over it, would each leave the
+            # hash in the notes describing something other than what the tag names.
+            { & $script:Plan -RefType tag -RefName "v$script:Version" `
+                    -DraftRelease @("v$script:Version") -ManifestPath $script:Manifest } |
+            Should -Throw '*draft release*exists*'
         }
 
         It 'refuses a tag that disagrees with the manifest' {
             # A release whose asset version disagrees with its tag is how a worker ends up
             # running a module the runbooks are not pinned to.
-            { & $script:Plan -RefType tag -RefName 'v9.9.9' -ExistingRelease @() `
-                    -ManifestPath $script:Manifest } |
+            { & $script:Plan -RefType tag -RefName 'v9.9.9' -ManifestPath $script:Manifest } |
             Should -Throw "*does not match ModuleVersion $script:Version*"
         }
     }
@@ -80,7 +90,7 @@ Describe 'Get-RmaReleasePlan' -Tag 'Unit', 'Release' {
             $file = Join-Path ([IO.Path]::GetTempPath()) "gh-output-$([guid]::NewGuid().ToString('N'))"
             $env:GITHUB_OUTPUT = $file
             try {
-                $null = & $script:Plan -RefType branch -RefName main -ExistingRelease @() `
+                $null = & $script:Plan -RefType branch -RefName main -PublishedRelease @() `
                     -ManifestPath $script:Manifest
                 $written = Get-Content $file -Raw
             } finally {

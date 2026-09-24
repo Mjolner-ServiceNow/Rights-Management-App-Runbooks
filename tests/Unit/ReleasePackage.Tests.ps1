@@ -62,4 +62,51 @@ Describe 'New-RmaModulePackage' -Tag 'Unit', 'Release' {
         }
         $roots | Should -Be @('RMA.Runbooks')
     }
+
+    Context 'reproducibility' {
+
+        BeforeAll {
+            # A copy, so the tests can change timestamps and contents without touching src/.
+            $script:Scratch = Join-Path ([IO.Path]::GetTempPath()) "rma-repro-$([guid]::NewGuid().ToString('N'))"
+            $script:Copy    = Join-Path $script:Scratch 'RMA.Runbooks'
+            $null = New-Item -ItemType Directory -Path $script:Scratch -Force
+            Copy-Item -Path (Join-Path $script:RepoRoot 'src/RMA.Runbooks') -Destination $script:Copy -Recurse
+
+            function New-TestPackage {
+                param([string] $Name)
+                & $script:Packager -ModulePath $script:Copy -OutputDirectory (Join-Path $script:Scratch $Name)
+            }
+        }
+
+        AfterAll {
+            if ($script:Scratch -and (Test-Path $script:Scratch)) {
+                Remove-Item $script:Scratch -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'yields the same hash for the same source, whatever the file timestamps' {
+            # Every CI run checks out afresh, so timestamps always differ between the run
+            # that drafts a release and any later one. v2.0.0's zip was rebuilt at publish
+            # and its hash no longer matched the notes the draft had been created with.
+            Get-ChildItem $script:Copy -File -Recurse | ForEach-Object { $_.LastWriteTime = [datetime]'2011-03-04 05:06:07' }
+            $first = New-TestPackage -Name 'first'
+            Get-ChildItem $script:Copy -File -Recurse | ForEach-Object { $_.LastWriteTime = [datetime]'2024-11-12 13:14:15' }
+            $second = New-TestPackage -Name 'second'
+
+            $second.Sha256 | Should -Be $first.Sha256
+            # And the same as the package built from src/ itself, whose timestamps are
+            # whatever the checkout left.
+            $first.Sha256 | Should -Be $script:Result.Sha256
+        }
+
+        It 'yields a different hash when a file changes' {
+            # Without this, the test above would also pass for a packager that ignored
+            # the files altogether.
+            $before = New-TestPackage -Name 'before'
+            Add-Content -Path (Join-Path $script:Copy 'RMA.Runbooks.psm1') -Value '# changed'
+            $after = New-TestPackage -Name 'after'
+
+            $after.Sha256 | Should -Not -Be $before.Sha256
+        }
+    }
 }

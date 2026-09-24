@@ -77,7 +77,7 @@ Describe 'Get-RmaReleasePlan' -Tag 'Unit', 'Release' {
         It 'refuses a tag that disagrees with the manifest' {
             # A release whose asset version disagrees with its tag is how a worker ends up
             # running a module the runbooks are not pinned to.
-            { & $script:Plan -RefType tag -RefName 'v9.9.9' -ManifestPath $script:Manifest } |
+            { & $script:Plan -RefType tag -RefName 'v9.9.9' -PublishedRelease @() -ManifestPath $script:Manifest } |
             Should -Throw "*does not match ModuleVersion $script:Version*"
         }
     }

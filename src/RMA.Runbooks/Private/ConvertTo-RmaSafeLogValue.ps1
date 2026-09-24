@@ -38,8 +38,11 @@ function ConvertTo-RmaSafeLogValue {
         return $out
     }
 
+    # The comma keeps the array whole. A returned array is unrolled into the pipeline, so an
+    # empty one reached the log as null and a one-element one as a bare scalar: a field's JSON
+    # type depended on how many items it held, and a KQL mv-expand on it broke at one.
     if ($InputObject -is [System.Collections.IEnumerable]) {
-        return @(foreach ($item in $InputObject) { ConvertTo-RmaSafeLogValue -InputObject $item -Depth ($Depth + 1) })
+        return , @(foreach ($item in $InputObject) { ConvertTo-RmaSafeLogValue -InputObject $item -Depth ($Depth + 1) })
     }
 
     $out = @{}

@@ -270,6 +270,7 @@ queue intact and the next run continues.
 |---|---|
 | Two runs claim the same job | Conditional claim; verified by unit test |
 | Worker dies mid-job | `try/finally` pre-set to Failed, then the watchdog |
+| Long job outlives the watchdog threshold | Heartbeat thread renews `claimed_at` every `HeartbeatMinutes` |
 | Terminal state write fails | Logged as Error, loop continues, watchdog requeues |
 | ServiceNow transient 5xx | `Invoke-RmaRestMethod` retry with backoff and jitter |
 | Token expires mid-run | `Get-RmaAccessToken` re-mints inside a five-minute margin |

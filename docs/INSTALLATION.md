@@ -482,9 +482,11 @@ rather than in response to a request. It cannot be request-driven: it requeues j
 worker died before finishing, and **there is no event for "a worker died"** — it is a sweep,
 and something has to run it periodically.
 
-`StaleAfterMinutes` must be comfortably above the longest expected job, or the watchdog will
-requeue work that is still running. With `MaxMinutes` at its default of 45, a
-`StaleAfterMinutes` of 60 is a sensible floor.
+A running job renews its claim every `HeartbeatMinutes` (5 by default, a parameter of
+`Invoke-RmaQueueLoop`), so `StaleAfterMinutes` is measured against that interval, not
+against how long a job takes. A full directory import that runs for hours is not requeued
+while it is still running. Keep `StaleAfterMinutes` at three heartbeats or more, so two
+failed renewals in a row do not requeue a live job; the default of 30 leaves six.
 
 ### If you find schedules in an existing installation
 

@@ -1,6 +1,6 @@
 ﻿@{
     RootModule        = 'RMA.Runbooks.psm1'
-    ModuleVersion     = '2.0.1'
+    ModuleVersion     = '2.1.0'
     GUID              = 'c2f6b1e4-9a3d-4f7b-8c15-2e6d4a9b7c30'
     Author            = 'Cloud Operations Department'
     CompanyName       = 'Mjølner Informatics A/S'
@@ -23,6 +23,7 @@
         'Connect-RmaExchange'
         'Get-RmaPendingJob'
         'Request-RmaJobClaim'
+        'Update-RmaJobHeartbeat'
         'Set-RmaJobState'
         'Invoke-RmaQueueLoop'
     )

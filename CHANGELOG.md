@@ -35,6 +35,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `rma-worker.local.json`, and `rma-worker.example.json` shows the shape.
 
 ### Fixed
+- **Every job on a worker had the same worker id, so the claim could not tell two
+  concurrent jobs apart.** `Get-RmaWorkerId` combined the machine name with the job id from
+  `$PSPrivateMetadata`, and fell back to `local`. A Hybrid Worker job on a runtime
+  environment (PowerShell 7.x) has no such variable; the environment variable of that name
+  holds the literal text `System.Collections.Hashtable`. Every real job was therefore
+  `<machine>/local`, found by running one in Azure Automation. Two jobs running at once on
+  one worker would both read back their own id after the claim, both believe they had won,
+  and both run the job; the heartbeat's worker filter was equally blind. The id now uses the
+  job id where it exists, then `AUTOMATION_ASSET_SANDBOX_ID`, which is unique per job, then
+  the process id and start time. It never falls back to a shared constant.
 - **Every module function that logged at Information and then returned a value returned
   the log line as well.** `Write-RmaLog` wrote Information records with `Write-Output`,
   which is the success stream, so `Connect-RmaServiceNow` handed back

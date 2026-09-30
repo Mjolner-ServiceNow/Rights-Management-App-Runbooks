@@ -35,6 +35,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `rma-worker.local.json`, and `rma-worker.example.json` shows the shape.
 
 ### Fixed
+- **`claimed_at` was stored as midnight, so the heartbeat renewed nothing and the watchdog
+  would have requeued every running job.** The claim and the heartbeat wrote it as ISO 8601
+  (`2026-09-30T12:24:25.8533277Z`). The Table API does not reject that for a Date/Time
+  field: it keeps the date and stores `00:00:00`. Found on a real instance, where three
+  successful renewals left the value unchanged. From half past midnight UTC every job in
+  progress would have looked older than `StaleAfterMinutes`. Both now write the internal
+  format, UTC `yyyy-MM-dd HH:mm:ss`, through the new private `Get-RmaGlideDateTime`.
 - **Every job on a worker had the same worker id, so the claim could not tell two
   concurrent jobs apart.** `Get-RmaWorkerId` combined the machine name with the job id from
   `$PSPrivateMetadata`, and fell back to `local`. A Hybrid Worker job on a runtime

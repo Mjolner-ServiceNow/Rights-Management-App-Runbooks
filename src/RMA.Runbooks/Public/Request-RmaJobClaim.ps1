@@ -43,7 +43,7 @@ function Request-RmaJobClaim {
     $body = @{
         status     = '2'
         worker_id  = $WorkerId
-        claimed_at = (Get-Date).ToUniversalTime().ToString('o')
+        claimed_at = Get-RmaGlideDateTime
     } | ConvertTo-Json -Compress
 
     try {

@@ -30,6 +30,19 @@ Describe 'Request-RmaJobClaim' -Tag 'Unit', 'Concurrency' {
                 $Uri -like '*sysparm_query=status%3D1*' -and $Method -eq 'PATCH'
             }
         }
+
+        It 'writes claimed_at in the format ServiceNow stores with its time' {
+            Mock -ModuleName RMA.Runbooks Invoke-RmaRestMethod {
+                [pscustomobject]@{ result = [pscustomobject]@{ worker_id = 'WORKER-A/job-1'; status = '2' } }
+            }
+
+            $null = Request-RmaJobClaim -Context $script:Context -SysId $script:SysId -WorkerId 'WORKER-A/job-1'
+
+            # ISO 8601 was stored as midnight, which the watchdog reads as stale.
+            Should -Invoke -ModuleName RMA.Runbooks Invoke-RmaRestMethod -Times 1 -ParameterFilter {
+                ($Body | ConvertFrom-Json -DateKind String).claimed_at -match '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$'
+            }
+        }
     }
 
     Context 'when another worker already claimed the job' {

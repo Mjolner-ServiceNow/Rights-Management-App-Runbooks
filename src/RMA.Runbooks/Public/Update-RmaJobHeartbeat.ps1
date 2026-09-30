@@ -39,7 +39,7 @@ function Update-RmaJobHeartbeat {
     $uri = "$($Context.BaseUri)/api/now/table/x_autps_active_dir_command_queue/$SysId" +
     "?sysparm_query=$query&sysparm_fields=status,worker_id,claimed_at"
 
-    $body = @{ claimed_at = (Get-Date).ToUniversalTime().ToString('o') } | ConvertTo-Json -Compress
+    $body = @{ claimed_at = Get-RmaGlideDateTime } | ConvertTo-Json -Compress
 
     if (-not $PSCmdlet.ShouldProcess("ServiceNow job $SysId", 'Renew claim')) { return $false }
 

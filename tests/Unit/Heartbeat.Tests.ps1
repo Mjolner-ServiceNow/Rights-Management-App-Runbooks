@@ -53,7 +53,9 @@ Describe 'Update-RmaJobHeartbeat' -Tag 'Unit' {
             $query -eq "status=2^worker_id=$($script:WorkerId)" -and
             # A renewal that also wrote status could resurrect a job that has already
             # reached a terminal state.
-            ($fields -join ',') -eq 'claimed_at'
+            ($fields -join ',') -eq 'claimed_at' -and
+            # ISO 8601 was stored as midnight, so a renewal renewed nothing.
+            ($Body | ConvertFrom-Json -DateKind String).claimed_at -match '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$'
         }
     }
 

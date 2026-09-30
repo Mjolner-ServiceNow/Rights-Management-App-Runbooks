@@ -46,3 +46,28 @@ Describe 'Runbook <Name> is accepted by Azure Automation' -Tag 'Unit' -ForEach $
         @($set).Count | Should -Be 1
     }
 }
+
+Describe 'Runbook <Name> calls only functions it can reach' -Tag 'Unit' -ForEach $script:Runbooks {
+
+    # A runbook sees only what RMA.Runbooks exports. The watchdog called the private
+    # Get-RmaProperty and threw the first time a real stranded job was found; the path had
+    # never run, and no test ran the runbook. This reads the calls from the AST instead.
+
+    BeforeAll {
+        $manifest = Import-PowerShellDataFile "$PSScriptRoot/../../src/RMA.Runbooks/RMA.Runbooks.psd1"
+        $tokens = $errors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref] $tokens, [ref] $errors)
+
+        $defined = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true).Name)
+        $script:Unreachable = @(
+            $ast.FindAll({ $args[0] -is [System.Management.Automation.Language.CommandAst] }, $true) |
+            ForEach-Object { $_.GetCommandName() } |
+            Where-Object { $_ -match '^[A-Za-z]+-Rma' -and $_ -notin $defined -and $_ -notin $manifest.FunctionsToExport } |
+            Sort-Object -Unique
+        )
+    }
+
+    It 'calls no RMA function that the module does not export' {
+        $script:Unreachable | Should -BeNullOrEmpty -Because 'a private module function is not visible to a runbook'
+    }
+}

@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `rma-worker.local.json`, and `rma-worker.example.json` shows the shape.
 
 ### Fixed
+- **The watchdog threw the first time it found a stranded job.** `Invoke-RmaQueueWatchdog`
+  read the previous worker id with `Get-RmaProperty`, which is private to the module and
+  not visible to a runbook. A scan that found nothing never reached the call, and no test
+  ran the runbook. Found on a test worker; the watchdog now requeues a stale job, leaves a
+  fresh one alone, and the queue loop runs the requeued job again. A new test reads every
+  runbook's AST and fails on any call to an `Rma` function the module does not export.
 - **`claimed_at` was stored as midnight, so the heartbeat renewed nothing and the watchdog
   would have requeued every running job.** The claim and the heartbeat wrote it as ISO 8601
   (`2026-09-30T12:24:25.8533277Z`). The Table API does not reject that for a Date/Time

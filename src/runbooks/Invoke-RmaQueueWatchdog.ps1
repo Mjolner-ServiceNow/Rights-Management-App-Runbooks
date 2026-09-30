@@ -68,7 +68,11 @@ function Invoke-RmaRequeue {
 
     $requeued = 0
     foreach ($job in $StaleJobs) {
-        $worker = Get-RmaProperty -InputObject $job -Name 'worker_id'
+        # Not Get-RmaProperty: that is private to the module, and calling it from here threw
+        # the first time a real stranded job was found. Read guarded, because a direct read
+        # of a missing property throws under StrictMode.
+        $workerProperty = $job.PSObject.Properties['worker_id']
+        $worker = if ($workerProperty) { $workerProperty.Value }
         $reason = "Requeued by watchdog: no terminal state from '$worker' within $StaleAfterMinutes minutes."
 
         if (-not $PSCmdlet.ShouldProcess($job.sys_id, 'Requeue to Pending')) { continue }

@@ -56,9 +56,9 @@ Every runbook is the same eight lines of setup plus a body. Copy
 [`src/runbooks/Create-EntraUser.ps1`](src/runbooks/Create-EntraUser.ps1).
 
 ```powershell
-#Requires -Modules @{ ModuleName = 'RMA.Runbooks'; RequiredVersion = '2.0.1' }
+#Requires -Modules @{ ModuleName = 'RMA.Runbooks'; RequiredVersion = '2.1.0' }
 
-$context = Test-RmaPrerequisite -Instance $Instance -DomainId $DomainId -VaultName $VaultName `
+$context = Test-RmaPrerequisite -Instance $Instance -VaultName $VaultName `
     -ManagedIdentityClientId $ManagedIdentityClientId -ServiceNowUserName $ServiceNowUserName
 
 Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'Your-Command' -Body {

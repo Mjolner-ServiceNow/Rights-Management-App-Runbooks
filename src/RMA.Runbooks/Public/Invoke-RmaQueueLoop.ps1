@@ -39,6 +39,13 @@ function Invoke-RmaQueueLoop {
                           for the whole MaxMinutes window, and MaxJobs never applies
                           because nothing was processed.
 
+        Heartbeat         A background thread renews the claim of a job that is still
+                          running, every HeartbeatMinutes. Without it the watchdog requeues
+                          any job older than its StaleAfterMinutes, so a full directory
+                          import running for hours would be started a second time by
+                          another worker. A job that ends within one interval is never
+                          renewed and costs nothing extra.
+
         Why the batch matters. Polling one row at a time makes every worker contend for the
         same head of the queue: one wins and the rest lose, every time, so adding workers
         raises the wasted-PATCH rate without raising throughput. Worse, a worker that keeps
@@ -60,6 +67,9 @@ function Invoke-RmaQueueLoop {
         loop gives up. Counting batches rather than individual lost claims is what makes
         this meaningful under batching: losing most of a batch and winning the rest is a
         healthy outcome, and would otherwise exhaust the budget within one poll.
+    .PARAMETER HeartbeatMinutes
+        Interval between claim renewals for a job that is still running. The watchdog's
+        StaleAfterMinutes must be comfortably above it; the defaults are 5 and 30.
     .EXAMPLE
         Invoke-RmaQueueLoop -Context $ctx -DomainId $id -Command 'Create-EntraUser' -Body {
             param($job, $p)
@@ -98,7 +108,12 @@ function Invoke-RmaQueueLoop {
         # batch yields at least one win, so a long run of them means either heavy
         # contention or a ServiceNow that is failing every PATCH.
         [ValidateRange(1, 1000)]
-        [int] $MaxConsecutiveSkips = 5
+        [int] $MaxConsecutiveSkips = 5,
+
+        # How often a running job's claim is renewed. Keep it well below the watchdog's
+        # StaleAfterMinutes: a third of it or less leaves room for two failed renewals.
+        [ValidateRange(1, 60)]
+        [int] $HeartbeatMinutes = 5
     )
 
     $sw        = [Diagnostics.Stopwatch]::StartNew()
@@ -118,118 +133,149 @@ function Invoke-RmaQueueLoop {
         maxJobs = $MaxJobs; maxMinutes = $MaxMinutes; batchSize = $BatchSize
     }
 
-    :queue while ($true) {
-        if ($processed -ge $MaxJobs)                  { $stopReason = 'max-jobs'; break }
-        if ($sw.Elapsed.TotalMinutes -ge $MaxMinutes) { $stopReason = 'max-minutes'; break }
+    # The heartbeat thread is started on the first claim, so a run that finds the queue
+    # empty never pays for it. The finally is what guarantees it is stopped on every exit,
+    # including a throw out of the poll.
+    $heartbeat = $null
+    try {
+        :queue while ($true) {
+            if ($processed -ge $MaxJobs)                  { $stopReason = 'max-jobs'; break }
+            if ($sw.Elapsed.TotalMinutes -ge $MaxMinutes) { $stopReason = 'max-minutes'; break }
 
-        # @() is required: a single returned object is a scalar, and PSCustomObject
-        # has no synthetic .Count under Set-StrictMode -Version Latest.
-        $jobs = @(Get-RmaPendingJob -Context $Context -DomainId $DomainId -Command $Command -Limit $BatchSize)
-        if ($jobs.Count -eq 0) {
-            $emptyPolls++
-            if ($emptyPolls -ge $EmptyPollsBeforeExit) { $stopReason = 'drained'; break }
-            Start-Sleep -Seconds 2
-            continue
-        }
-        $emptyPolls = 0
-
-        # The whole point of the batch. Without a random entry point every worker walks the
-        # same batch in the same order and they collide on row 0 exactly as they did when
-        # the poll fetched one row.
-        $offset = if ($jobs.Count -gt 1) { Get-Random -Maximum $jobs.Count } else { 0 }
-        $claimsAttempted = 0
-        $claimsWon       = 0
-
-        for ($i = 0; $i -lt $jobs.Count; $i++) {
-            # Checked per row, not per batch: a batch of 100 must not run 99 jobs past
-            # MaxJobs, and must not run past MaxMinutes into the fair-share limit.
-            if ($processed -ge $MaxJobs)                  { $stopReason = 'max-jobs'; break queue }
-            if ($sw.Elapsed.TotalMinutes -ge $MaxMinutes) { $stopReason = 'max-minutes'; break queue }
-
-            $job = $jobs[($offset + $i) % $jobs.Count]
-
-            # Read before anything else and outside the try below. A row without sys_id
-            # cannot be claimed, executed or reported on, and reading it unguarded threw
-            # out of the whole loop under StrictMode - one malformed row abandoning the
-            # rest of the queue.
-            $sysId = Get-RmaProperty -InputObject $job -Name 'sys_id'
-            if ([string]::IsNullOrWhiteSpace($sysId)) {
-                $skipped++
-                Write-RmaLog -Level Error -Message 'Queue row has no sys_id; skipping it' -Data @{ command = $Command }
+            # @() is required: a single returned object is a scalar, and PSCustomObject
+            # has no synthetic .Count under Set-StrictMode -Version Latest.
+            $jobs = @(Get-RmaPendingJob -Context $Context -DomainId $DomainId -Command $Command -Limit $BatchSize)
+            if ($jobs.Count -eq 0) {
+                $emptyPolls++
+                if ($emptyPolls -ge $EmptyPollsBeforeExit) { $stopReason = 'drained'; break }
+                Start-Sleep -Seconds 2
                 continue
             }
+            $emptyPolls = 0
 
-            $claimsAttempted++
-            if (-not (Request-RmaJobClaim -Context $Context -SysId $sysId -WorkerId $workerId)) {
-                # No sleep here. There are other rows in this batch, and walking on to one
-                # of them is both faster and less contended than waiting for this one.
-                $skipped++
-                continue
-            }
-            $claimsWon++
+            # The whole point of the batch. Without a random entry point every worker walks the
+            # same batch in the same order and they collide on row 0 exactly as they did when
+            # the poll fetched one row.
+            $offset = if ($jobs.Count -gt 1) { Get-Random -Maximum $jobs.Count } else { 0 }
+            $claimsAttempted = 0
+            $claimsWon       = 0
 
-            $processed++
-            $script:RmaCorrelationId = $sysId
+            for ($i = 0; $i -lt $jobs.Count; $i++) {
+                # Checked per row, not per batch: a batch of 100 must not run 99 jobs past
+                # MaxJobs, and must not run past MaxMinutes into the fair-share limit.
+                if ($processed -ge $MaxJobs)                  { $stopReason = 'max-jobs'; break queue }
+                if ($sw.Elapsed.TotalMinutes -ge $MaxMinutes) { $stopReason = 'max-minutes'; break queue }
 
-            # Pre-set to Failed so an abrupt termination still reports a terminal state.
-            $state = 'Failed'
-            $err   = 'Runbook terminated before the job completed. Requeue or investigate the worker.'
+                $job = $jobs[($offset + $i) % $jobs.Count]
 
-            try {
-                # Guarded so a malformed row fails the job with a message an operator can
-                # act on, rather than with a StrictMode property-not-found from deep
-                # inside here.
-                $encoded = Get-RmaProperty -InputObject $job -Name 'input'
-                if ([string]::IsNullOrWhiteSpace($encoded)) {
-                    throw "Queue row has no 'input' payload. Check the ServiceNow business rule that populates it."
+                # Read before anything else and outside the try below. A row without sys_id
+                # cannot be claimed, executed or reported on, and reading it unguarded threw
+                # out of the whole loop under StrictMode - one malformed row abandoning the
+                # rest of the queue.
+                $sysId = Get-RmaProperty -InputObject $job -Name 'sys_id'
+                if ([string]::IsNullOrWhiteSpace($sysId)) {
+                    $skipped++
+                    Write-RmaLog -Level Error -Message 'Queue row has no sys_id; skipping it' -Data @{ command = $Command }
+                    continue
                 }
 
-                $json = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encoded))
-                $parameters = $json | ConvertFrom-Json
-
-                $action = Get-RmaProperty -InputObject $parameters -Name 'action'
-                if ($action -ne $Command) {
-                    throw "Action mismatch: the queue returned '$action' for a '$Command' runbook. " +
-                    'Check the ServiceNow command mapping.'
+                $claimsAttempted++
+                if (-not (Request-RmaJobClaim -Context $Context -SysId $sysId -WorkerId $workerId)) {
+                    # No sleep here. There are other rows in this batch, and walking on to one
+                    # of them is both faster and less contended than waiting for this one.
+                    $skipped++
+                    continue
                 }
+                $claimsWon++
 
-                Write-RmaLog -Level Information -Message 'Processing job' -Data @{ sysId = $sysId; action = $action }
+                $processed++
+                $script:RmaCorrelationId = $sysId
 
-                $null = & $Body $job $parameters
+                if (-not $heartbeat) {
+                    $heartbeat = Start-RmaHeartbeat -Context $Context -WorkerId $workerId -IntervalSeconds ($HeartbeatMinutes * 60)
+                }
+                Set-RmaHeartbeatJob -Heartbeat $heartbeat -SysId $sysId
 
-                $state = 'Completed'; $err = $null
-                $succeeded++
-            } catch {
-                $err = '{0} (at line {1})' -f $_.Exception.Message, $_.InvocationInfo.ScriptLineNumber
-                $failed++
-                Write-RmaLog -Level Error -Message 'Job failed' -Data @{ sysId = $sysId; error = $err }
-            } finally {
+                # Pre-set to Failed so an abrupt termination still reports a terminal state.
+                $state = 'Failed'
+                $err   = 'Runbook terminated before the job completed. Requeue or investigate the worker.'
+
                 try {
-                    Set-RmaJobState -Context $Context -SysId $sysId -State $state -ExceptionMessage $err
+                    # Guarded so a malformed row fails the job with a message an operator can
+                    # act on, rather than with a StrictMode property-not-found from deep
+                    # inside here.
+                    $encoded = Get-RmaProperty -InputObject $job -Name 'input'
+                    if ([string]::IsNullOrWhiteSpace($encoded)) {
+                        throw "Queue row has no 'input' payload. Check the ServiceNow business rule that populates it."
+                    }
+
+                    $json = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encoded))
+                    $parameters = $json | ConvertFrom-Json
+
+                    $action = Get-RmaProperty -InputObject $parameters -Name 'action'
+                    if ($action -ne $Command) {
+                        throw "Action mismatch: the queue returned '$action' for a '$Command' runbook. " +
+                        'Check the ServiceNow command mapping.'
+                    }
+
+                    Write-RmaLog -Level Information -Message 'Processing job' -Data @{ sysId = $sysId; action = $action }
+
+                    $null = & $Body $job $parameters
+
+                    $state = 'Completed'; $err = $null
+                    $succeeded++
                 } catch {
-                    # The job is now stranded in Work in Progress. The watchdog runbook will
-                    # requeue it. Log loudly, but do not abandon the rest of the queue.
-                    Write-RmaLog -Level Error -Message 'Could not write terminal state; job will be requeued by the watchdog' `
-                        -Data @{ sysId = $sysId; intendedState = $state; error = $_.Exception.Message }
+                    $err = '{0} (at line {1})' -f $_.Exception.Message, $_.InvocationInfo.ScriptLineNumber
+                    $failed++
+                    Write-RmaLog -Level Error -Message 'Job failed' -Data @{ sysId = $sysId; error = $err }
+                } finally {
+                    # Cleared before the terminal state is written, so a renewal still in
+                    # flight is discarded rather than reported as a lost claim.
+                    $beat = Clear-RmaHeartbeatJob -Heartbeat $heartbeat
+                    if ($beat.Lost) {
+                        # The watchdog requeued the job while it ran, so another worker may
+                        # have run it too. The state is still written: the work was done.
+                        Write-RmaLog -Level Error -Message 'Claim was lost while the job ran; another worker may have run it as well' `
+                            -Data @{ sysId = $sysId; renewals = $beat.Renewals; state = $state }
+                    } elseif ($beat.Failures -gt 0) {
+                        Write-RmaLog -Level Warning -Message 'Some claim renewals failed' -Data @{
+                            sysId = $sysId; renewals = $beat.Renewals; failures = $beat.Failures; lastError = $beat.LastError
+                        }
+                    } elseif ($beat.Renewals -gt 0) {
+                        Write-RmaLog -Level Information -Message 'Claim renewed while the job ran' -Data @{
+                            sysId = $sysId; renewals = $beat.Renewals
+                        }
+                    }
+
+                    try {
+                        Set-RmaJobState -Context $Context -SysId $sysId -State $state -ExceptionMessage $err
+                    } catch {
+                        # The job is now stranded in Work in Progress. The watchdog runbook will
+                        # requeue it. Log loudly, but do not abandon the rest of the queue.
+                        Write-RmaLog -Level Error -Message 'Could not write terminal state; job will be requeued by the watchdog' `
+                            -Data @{ sysId = $sysId; intendedState = $state; error = $_.Exception.Message }
+                    }
+                    $script:RmaCorrelationId = $null
                 }
-                $script:RmaCorrelationId = $null
             }
-        }
 
-        if ($claimsWon -gt 0) {
-            $idleBatches = 0; $contentionBatches = 0
-            continue
-        }
+            if ($claimsWon -gt 0) {
+                $idleBatches = 0; $contentionBatches = 0
+                continue
+            }
 
-        $idleBatches++
-        if ($claimsAttempted -gt 0) {
-            $contentionBatches++
-            if ($contentionBatches -ge $MaxConsecutiveSkips) { $stopReason = 'claim-contention'; break }
-        }
+            $idleBatches++
+            if ($claimsAttempted -gt 0) {
+                $contentionBatches++
+                if ($contentionBatches -ge $MaxConsecutiveSkips) { $stopReason = 'claim-contention'; break }
+            }
 
-        # The rows are still Pending, so the next poll returns them again. Back off before
-        # asking, or a persistently failing batch polls as fast as the network allows.
-        Start-Sleep -Milliseconds ([math]::Min(2000, 100 * $idleBatches))
+            # The rows are still Pending, so the next poll returns them again. Back off before
+            # asking, or a persistently failing batch polls as fast as the network allows.
+            Start-Sleep -Milliseconds ([math]::Min(2000, 100 * $idleBatches))
+        }
+    } finally {
+        if ($heartbeat) { Stop-RmaHeartbeat -Heartbeat $heartbeat }
     }
 
     $sw.Stop()

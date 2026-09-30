@@ -35,6 +35,29 @@ Describe 'Get-RmaProperty' -Tag 'Unit' {
     }
 }
 
+Describe 'Get-RmaGlideDateTime' -Tag 'Unit' {
+    It 'formats a moment as UTC in the ServiceNow internal Date/Time format' {
+        InModuleScope RMA.Runbooks {
+            # No 'T', no offset, no fractions: ServiceNow stored ISO 8601 as midnight.
+            $utc = [datetime]::new(2026, 9, 30, 12, 5, 9, 123, [DateTimeKind]::Utc)
+            Get-RmaGlideDateTime -Date $utc | Should -Be '2026-09-30 12:05:09'
+        }
+    }
+    It 'defaults to now' {
+        InModuleScope RMA.Runbooks {
+            $value = [datetime]::ParseExact((Get-RmaGlideDateTime), 'yyyy-MM-dd HH:mm:ss',
+                [Globalization.CultureInfo]::InvariantCulture)
+            ([datetime]::UtcNow - $value).TotalSeconds | Should -BeLessThan 5
+        }
+    }
+    It 'converts a local time to UTC first' {
+        InModuleScope RMA.Runbooks {
+            $utc = [datetime]::SpecifyKind([datetime]'2026-09-30 12:05:09', 'Utc')
+            Get-RmaGlideDateTime -Date $utc.ToLocalTime() | Should -Be '2026-09-30 12:05:09'
+        }
+    }
+}
+
 Describe 'ConvertTo-RmaSafeLogValue' -Tag 'Unit', 'Security' {
     It 'redacts at depth and preserves non-secrets' {
         InModuleScope RMA.Runbooks {

@@ -1,5 +1,5 @@
 #Requires -Version 7.2
-#Requires -Modules @{ ModuleName = 'RMA.Runbooks'; RequiredVersion = '2.0.1' }
+#Requires -Modules @{ ModuleName = 'RMA.Runbooks'; RequiredVersion = '2.1.0' }
 
 <#
 .SYNOPSIS
@@ -18,9 +18,10 @@
     "a worker died", so this one has to be a periodic sweep. Running several instances
     concurrently is safe.
 
-    StaleAfterMinutes must exceed the longest expected job by a comfortable margin, or a
-    slow job will be requeued while it is still running. Keep it above Invoke-RmaQueueLoop's
-    MaxMinutes.
+    A running job renews claimed_at every HeartbeatMinutes (Invoke-RmaQueueLoop, 5 by
+    default), so StaleAfterMinutes is measured against that interval rather than against
+    the longest job. Keep it at three heartbeats or more, so two failed renewals in a row
+    do not requeue a job that is still running.
 .PARAMETER StaleAfterMinutes
     How long a claim may be held before it is presumed dead.
 .PARAMETER MaxRequeue

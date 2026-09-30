@@ -19,8 +19,9 @@ function Request-RmaJobClaim {
         that performs the compare-and-set server side; the signature of this function does
         not change.
     .PARAMETER WorkerId
-        Unique per execution. Defaults to machine plus Automation job id, which
-        distinguishes two runs on the same worker.
+        Unique per execution. Defaults to the machine plus the Automation job id, the
+        sandbox id when the job id is unavailable, or the process otherwise, which
+        distinguishes two runs on the same worker. See Get-RmaWorkerId.
     .EXAMPLE
         if (-not (Request-RmaJobClaim -Context $ctx -SysId $job.sys_id)) { continue }
     #>
@@ -42,7 +43,7 @@ function Request-RmaJobClaim {
     $body = @{
         status     = '2'
         worker_id  = $WorkerId
-        claimed_at = (Get-Date).ToUniversalTime().ToString('o')
+        claimed_at = Get-RmaGlideDateTime
     } | ConvertTo-Json -Compress
 
     try {

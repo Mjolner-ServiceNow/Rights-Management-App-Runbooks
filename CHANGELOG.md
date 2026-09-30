@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Long jobs renew their claim, so the watchdog no longer requeues them while they run.**
+  The watchdog requeues any job whose `claimed_at` is older than `StaleAfterMinutes` (30
+  by default). A full directory import at the 500,000-user scale runs for hours, and
+  would have been requeued and started a second time by another worker. `Invoke-RmaQueueLoop`
+  now runs a background thread that renews the current job's claim every
+  `HeartbeatMinutes` (new parameter, 5 by default) through the new public function
+  `Update-RmaJobHeartbeat`. A thread, because one blocking call such as `Get-ADUser -Filter *`
+  can outlast the threshold by itself. The renewal is filtered on `status=2` and this
+  worker's id and checked against the record returned, so it never extends a job that has
+  finished or passed to another worker. A job that ends within one interval is never
+  renewed, and a run that finds the queue empty never starts the thread. When a job ends,
+  a lost claim is logged as Error, failed renewals as Warning, and a thread that could not
+  start as Error when the job starts. Like the claim, this needs the `worker_id` and
+  `claimed_at` columns in ServiceNow.
 - The `test-on-hybrid-worker` skill in `.claude/skills/` tells an AI agent how to use
   `scripts/Invoke-RmaWorkerRun.ps1`: the prerequisites in the order they fail, what it
   must not do, how to read a run and the traps found so far. `CLAUDE.md` points to it.
@@ -21,6 +35,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `rma-worker.local.json`, and `rma-worker.example.json` shows the shape.
 
 ### Fixed
+- **`claimed_at` was stored as midnight, so the heartbeat renewed nothing and the watchdog
+  would have requeued every running job.** The claim and the heartbeat wrote it as ISO 8601
+  (`2026-09-30T12:24:25.8533277Z`). The Table API does not reject that for a Date/Time
+  field: it keeps the date and stores `00:00:00`. Found on a real instance, where three
+  successful renewals left the value unchanged. From half past midnight UTC every job in
+  progress would have looked older than `StaleAfterMinutes`. Both now write the internal
+  format, UTC `yyyy-MM-dd HH:mm:ss`, through the new private `Get-RmaGlideDateTime`.
+- **Every job on a worker had the same worker id, so the claim could not tell two
+  concurrent jobs apart.** `Get-RmaWorkerId` combined the machine name with the job id from
+  `$PSPrivateMetadata`, and fell back to `local`. A Hybrid Worker job on a runtime
+  environment (PowerShell 7.x) has no such variable; the environment variable of that name
+  holds the literal text `System.Collections.Hashtable`. Every real job was therefore
+  `<machine>/local`, found by running one in Azure Automation. Two jobs running at once on
+  one worker would both read back their own id after the claim, both believe they had won,
+  and both run the job; the heartbeat's worker filter was equally blind. The id now uses the
+  job id where it exists, then `AUTOMATION_ASSET_SANDBOX_ID`, which is unique per job, then
+  the process id and start time. It never falls back to a shared constant.
 - **Every module function that logged at Information and then returned a value returned
   the log line as well.** `Write-RmaLog` wrote Information records with `Write-Output`,
   which is the success stream, so `Connect-RmaServiceNow` handed back
@@ -77,8 +108,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     Publish tags that commit rather than whatever `main` has moved on to.
 
 ### Changed
-- The runbooks require `RMA.Runbooks` 2.0.1. Install it on every Hybrid Worker before
+- The runbooks require `RMA.Runbooks` 2.1.0. Install it on every Hybrid Worker before
   republishing them.
+- `StaleAfterMinutes` is now measured against the heartbeat interval, not against the
+  longest job. `docs/INSTALLATION.md` and the watchdog's help say to keep it at three
+  heartbeats or more; the defaults leave six.
+- The README's runbook example no longer passes `-DomainId` to `Test-RmaPrerequisite`,
+  which has not taken it since 2.0.0.
 
 ## [2.0.0] - 2026-09-24
 

@@ -40,11 +40,19 @@ see that it is happening, and nobody can take it over.
 | **Backlog** | Known and wanted, but not ready to start: unclear, waiting for a decision, or later. |
 | **Ready** | Clear enough that anyone could pick it up now. |
 | **In progress** | Its owner is working on it. Keep this short: one or two per person. |
-| **Blocked: ServiceNow** | Waiting on the ServiceNow team. It also carries the `servicenow` label, and a comment says exactly what is asked of them. [#35](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/35) is their checklist. |
 | **Done** | Closed. Set by the board when the issue closes. |
 
-Anything else that blocks an issue keeps its status, and a comment on the issue names the
-blocker.
+There is no *Blocked* status. An issue that cannot move until another one is done gets a
+**Blocked by** relation to it (in the issue's sidebar, under *Relationships*) and keeps its
+own status. The relation names the blocker and clears itself when the blocker closes. A
+blocker that is not an issue, such as a person or a decision, is named in a comment.
+
+Work for the ServiceNow team is an issue of its own: owned by them, labelled `servicenow`,
+and a sub-issue of
+[#35](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/35), which
+lists them all. It says exactly what is asked of them. Issues here that wait on it are
+*Blocked by* it and do not carry the label. The board's **ServiceNow** view, filtered on
+`label:servicenow`, is the ServiceNow team's list, for them and for us.
 
 | Priority | Meaning |
 |---|---|
@@ -52,8 +60,8 @@ blocker.
 | **P2** | Needed before go-live. |
 | **P3** | An improvement that can wait. |
 
-Labels: `bug`, `enhancement`, `documentation`, `servicenow` (needs the ServiceNow team to
-act) and `question`.
+Labels: `bug`, `enhancement`, `documentation`, `servicenow` (work the ServiceNow team does
+itself; see above) and `question`.
 
 ### Branches, commits and pull requests
 

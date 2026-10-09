@@ -393,9 +393,10 @@ The shared module is **not** published to the Automation Account. It lives on th
 **Who:** nobody, in the normal case.
 
 **The customer does not trigger the health check.** The ServiceNow application runs
-`Test-RmaHealth` and surfaces the result in ServiceNow, where the status of each check is
-visible without leaving the platform. That is the intended way to read it, during
-installation and afterwards.
+`Test-RmaHealth`, and the runbook sends its result back to the domain's health endpoint,
+where the status of each check is visible without leaving the platform. That is the
+intended way to read it, during installation and afterwards. The shape of the result is in
+[Architecture › The health result](ARCHITECTURE.md#the-health-result).
 
 **Do not continue until every check passes.** A green deployment with a broken identity
 looks exactly like a working one until the first real job fails.
@@ -408,7 +409,8 @@ confirming secrets never reach the logs.
 
 Only needed when the application cannot reach Azure at all, or when you are diagnosing why
 the automatic run is failing — at which point the ServiceNow-side view is exactly what is
-unavailable. It performs no writes, so it is safe to run at any time:
+unavailable. Its one write is its own result, sent to ServiceNow as an automatic run's
+would be, so it is safe to run at any time:
 
 ```powershell
 Start-AzAutomationRunbook `
@@ -440,15 +442,24 @@ Expected output:
 ```
 RMA health check
 ================
-Check                                       Status   Ms  Detail
------                                       ------   --  ------
-Managed identity token                      Pass    120  acquired
-Key Vault + ServiceNow                      Pass    840  authenticated as <username>
-Microsoft Graph token exchange              Pass    310  federated token acquired for tenant <guid>
-ServiceNow command queue readable           Pass    260  queue reachable (0 pending for this command)
-Active Directory reachable                  Pass     90  contacted 10.0.0.4 as <username> (contoso.local)
+Pass  Managed identity token (120 ms)
+      acquired
+Pass  Key Vault + ServiceNow (840 ms)
+      authenticated as <username>
+Pass  Microsoft Graph token exchange (310 ms)
+      federated token acquired for tenant <guid>
+Pass  ServiceNow command queue readable (260 ms)
+      queue reachable (0 pending for this command)
+Pass  Active Directory reachable (90 ms)
+      contacted 10.0.0.4 as <username> (contoso.local)
+
+Reported to ServiceNow.
+
 All checks passed.
 ```
+
+`Not reported to ServiceNow` in place of the line above it means the domain still shows
+an older result. The reason follows on the same line, and the job fails.
 
 ---
 

@@ -146,6 +146,46 @@ a failure point, needed read access to one more table, and found a malformed ten
 at token exchange. As parameters, the GUIDs are validated when the job binds them, before
 any network call.
 
+## The health result
+
+`Test-RmaHealth` sends its result to the ServiceNow application, which displays it on the
+domain:
+
+```
+PATCH /api/x_autps_active_dir/domain/{DomainId}/health
+Content-Type: application/json; charset=utf-8
+```
+
+```json
+{
+  "status": "fail",
+  "checked_at": "2026-10-09 08:15:02",
+  "worker": "HW-01",
+  "passed": 4,
+  "total": 5,
+  "checks": [
+    { "name": "Managed identity token", "status": "pass", "duration_ms": 118, "detail": "acquired" },
+    { "name": "Active Directory reachable", "status": "fail", "duration_ms": 2104, "detail": "<the error message>" }
+  ]
+}
+```
+
+- `status` is `pass` only when every check passed. Each check's `status` is `pass` or
+  `fail`.
+- `checked_at` is UTC in ServiceNow's internal Date/Time format, `yyyy-MM-dd HH:mm:ss`,
+  which `GlideDateTime` reads as UTC. ISO 8601 would be stored as midnight of its date.
+- `worker` is the machine name of the Hybrid Worker that ran the check.
+- `checks` lists only the checks that ran, in the order they ran. The Graph check is
+  present only for a domain using Entra ID, the AD check only for one using Active
+  Directory. `detail` is capped at 4000 characters.
+
+The result is sent whether the checks passed or failed, with the integration account's
+credentials. It cannot be sent when the *Key Vault + ServiceNow* check failed, since
+that check is where the connection comes from; the job output is then the only record, and
+ServiceNow goes on showing the last result it received. A result that could not be sent
+fails the job, as a failed check does, so the Automation job's own status always says
+whether the ServiceNow view is current.
+
 ## Job lifecycle
 
 ```

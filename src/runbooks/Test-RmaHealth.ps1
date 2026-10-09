@@ -3,12 +3,19 @@
 
 <#
 .SYNOPSIS
-    Read-only health check. Run by the ServiceNow application, which surfaces the result
-    in ServiceNow; also runnable by hand when that view is what is unavailable.
+    Health check. Run by the ServiceNow application, which displays the result it posts
+    back; also runnable by hand when that view is what is unavailable.
 .DESCRIPTION
     Proves every dependency of the platform works end to end without mutating anything:
     managed identity, Key Vault, ServiceNow and the command queue always, then Graph and
     Active Directory for whichever of the two the domain uses.
+
+    The result goes to ServiceNow as JSON, sent with PATCH to the domain's health endpoint
+    (/api/x_autps_active_dir/domain/{DomainId}/health), and is printed to the job output
+    as well. It is sent whether the checks passed or failed, since a failure is what the
+    ServiceNow view is for. It cannot be sent when the Key Vault + ServiceNow check
+    itself failed, because that check is what yields the connection; the job output is
+    then the only record. A result that could not be sent fails the job.
 
     A domain can use Entra ID, Active Directory or both, so each of those checks runs when
     its parameters are passed and is left out otherwise. At least one of them is required:
@@ -30,7 +37,7 @@
     Key Vault secret holding the AD service account's password. One per AD domain when an
     installation serves more than one.
 .NOTES
-    Safe to run at any time. Performs no writes.
+    Safe to run at any time. Its one write is the result itself, to the health endpoint.
 #>
 
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '',
@@ -148,6 +155,45 @@ if ($checkActiveDirectory) {
 
 $failed = @($checks | Where-Object Status -EQ 'FAIL')
 
+# The time is UTC in the format ServiceNow keeps a Date/Time in. GlideDateTime given ISO
+# 8601 keeps the date and stores midnight, which is how claimed_at once lost its time.
+$report = [ordered]@{
+    status     = $failed ? 'fail' : 'pass'
+    checked_at = [datetime]::UtcNow.ToString('yyyy-MM-dd HH:mm:ss', [Globalization.CultureInfo]::InvariantCulture)
+    worker     = [Environment]::MachineName
+    passed     = $checks.Count - $failed.Count
+    total      = $checks.Count
+    checks     = @(
+        foreach ($check in $checks) {
+            # Capped as Set-RmaJobState caps an exception: a long error is the detail most
+            # likely to be wanted, and the one most likely to overrun a field and fail the request.
+            $detail = $check.Detail.Length -gt 4000 ? $check.Detail.Substring(0, 3997) + '...' : $check.Detail
+            [ordered]@{
+                name        = $check.Check
+                status      = $check.Status -eq 'Pass' ? 'pass' : 'fail'
+                duration_ms = $check.Ms
+                detail      = $detail
+            }
+        }
+    )
+}
+
+$reportError = $null
+if ($context) {
+    try {
+        # charset named explicitly: a detail can carry an AD or Graph error in Danish, and
+        # without it PowerShell before 7.4 encodes a string body as ISO-8859-1.
+        $null = Invoke-RmaRestMethod -Method PATCH -Headers $context.Headers `
+            -Uri "$($context.BaseUri)/api/x_autps_active_dir/domain/$DomainId/health" `
+            -ContentType 'application/json; charset=utf-8' `
+            -Body ($report | ConvertTo-Json -Depth 4 -Compress)
+    } catch {
+        $reportError = $_.Exception.Message
+    }
+} else {
+    $reportError = 'there is no ServiceNow connection, because the Key Vault + ServiceNow check failed'
+}
+
 # One line per check with its detail on the next, never a table: Format-Table cuts the
 # detail at the width of the pane, and the detail of a failed check is the error message,
 # which is the one thing the reader came for.
@@ -159,15 +205,23 @@ foreach ($check in $checks) {
     Write-Output "      $($check.Detail)"
 }
 Write-Output ''
+Write-Output ($reportError ? "Not reported to ServiceNow: $reportError" : 'Reported to ServiceNow.')
+Write-Output ''
 
 # Information even when a check failed. The throw below is the error record a failed run
 # produces; logging the same summary at Error as well wrote a second one, which the job
 # pane interleaves with the output above.
 Write-RmaLog -Level Information `
     -Message "Health check finished: $($checks.Count - $failed.Count)/$($checks.Count) passed" `
-    -Data @{ failed = @($failed | ForEach-Object Check) }
+    -Data @{ failed = @($failed | ForEach-Object Check); reported = -not $reportError }
 
 if ($failed) {
-    throw "Health check failed: $(@($failed | ForEach-Object Check) -join ', '). The reason for each is in the output above."
+    $unreported = $reportError ? ' The result was not reported to ServiceNow.' : ''
+    throw "Health check failed: $(@($failed | ForEach-Object Check) -join ', '). The reason for each is in the output above.$unreported"
+}
+if ($reportError) {
+    # Every check passed, but ServiceNow still shows the last result it received, which
+    # may be a failure, or nothing at all.
+    throw "All checks passed, but the result could not be reported to ServiceNow: $reportError"
 }
 Write-Output 'All checks passed.'

@@ -175,7 +175,8 @@ Keep `StaleAfterMinutes` at three heartbeats or more.
 - API naming in the ServiceNow application: `user` and `group` are Active Directory;
   `aduser` and `adgroup` are Entra ID. In 1.0, Initial-Import-ADGroups called the
   `adgroup` cleanup and Initial-Import-EntraUsers called the `user` cleanup. Both were
-  wrong.
+  wrong. *Superseded by D14: the resources are being renamed so the name says which
+  directory it is.*
 
 ### D13. Test-RmaHealth chooses its checks in its body
 
@@ -184,6 +185,42 @@ Keep `StaleAfterMinutes` at three heartbeats or more.
 Azure Automation rejects a runbook that declares parameter sets. The Entra ID pair and the
 Active Directory pair are ordinary optional parameters, and the body enforces at least one
 whole pair. A test fails any runbook that declares a parameter set.
+
+### D14. ServiceNow REST resources are named for their directory
+
+*2026-10-09. Agreed with the ServiceNow application developer; the renames are theirs to
+make ([#35](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/35)).*
+
+In 1.0 the `ad` prefix meant Entra ID (`aduser`, `adgroup`) and no prefix meant Active
+Directory (`user`, `group`). That caught 1.0 twice (D12) and 2.0's Create-EntraUser once
+([#40](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/40)).
+Every resource under `/api/x_autps_active_dir/domain/{DomainId}/` is now named
+`entraId<Resource>` or `ad<Resource>`, and the operations under it are the same for each:
+`/insertMultiple` for writing records (D12) and `/cleanup`.
+
+Users are settled: `/entraIdUser/insertMultiple` and `/adUser/insertMultiple`. The rest
+follow the same rule; the ServiceNow team confirms the final spelling.
+
+| 1.0 resource | Directory | 2.0 resource |
+|---|---|---|
+| `user` | Active Directory | `adUser` |
+| `aduser` | Entra ID | `entraIdUser` |
+| `group` | Active Directory | `adGroup` |
+| `adgroup` | Entra ID | `entraIdGroup` |
+| `groupmember` | Active Directory | `adGroupMember` |
+| `adgroupmember` | Entra ID | `entraIdGroupMember` |
+| `ou` | Active Directory | `adOrganizationalUnit` |
+| `aadou` | Entra ID (administrative unit) | `entraIdAdministrativeUnit` |
+| `adoumember` | Entra ID (administrative unit member) | `entraIdAdministrativeUnitMember` |
+| `usermanager` | Active Directory | `adUserManager` |
+| `useradmanager` | Entra ID | `entraIdUserManager` |
+| `useradsponsors` | Entra ID | `entraIdUserSponsor` |
+
+`health` and `syncstate` belong to the domain, not to a directory, and keep their names.
+Still open in
+[#35](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/35):
+whether single-record writes from the Create and Update runbooks also go through
+`/insertMultiple`, and the endpoint's path, body and response.
 
 ## Findings
 

@@ -38,10 +38,11 @@ Every place that needed help is a gap; record it.
   `Create-EntraUser`.
 - **Released:** 2.0.1 is the latest published release. 2.1.0 is a **draft**. The runbooks
   on `main` already require 2.1.0, so publish it and install it on every worker before the
-  ServiceNow application next takes the runbooks from `main`.
+  ServiceNow application next takes the runbooks from `main` ([#34](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/34)).
 - **Not started:** migrating the remaining 1.0 runbooks, including the live Import-Entra*
   commands and the four Initial-Import runbooks, whose rebuild is decided in
-  [DECISIONS.md D12](docs/DECISIONS.md#d12-how-the-four-initial-import-runbooks-are-to-be-rebuilt).
+  [DECISIONS.md D12](docs/DECISIONS.md#d12-how-the-four-initial-import-runbooks-are-to-be-rebuilt)
+  ([#36](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/36)).
 - **Never run end to end:** a job created by the ServiceNow application, claimed and
   completed by a runbook on a worker. The queue columns `worker_id` and `claimed_at` exist
   on the test instance since 2026-09-30.
@@ -49,11 +50,13 @@ Every place that needed help is a gap; record it.
 ## Waiting on the ServiceNow team
 
 The ServiceNow application is maintained outside this repository. These items stop work
-here until they are done:
+here until they are done.
+[#35](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/35) tracks them, with the open questions below, as one
+checklist for the ServiceNow team.
 
 | What | Why it matters | Reference |
 |---|---|---|
-| A server-side compare-and-set for the job claim (Scripted REST) | Without it two executions can run the same job | [DECISIONS.md F1](docs/DECISIONS.md#f1-the-job-claim-is-not-atomic-on-the-instance-it-was-tested-on) |
+| A server-side compare-and-set for the job claim (Scripted REST) | Without it two executions can run the same job | [#27](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/27), [DECISIONS.md F1](docs/DECISIONS.md#f1-the-job-claim-is-not-atomic-on-the-instance-it-was-tested-on) |
 | Fix the health endpoint's resource script | Every `Test-RmaHealth` job fails | [#23](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/23) |
 | The domain record field changes | ServiceNow cannot supply the runbook parameters | [DECISIONS.md D9](docs/DECISIONS.md#d9-changes-to-the-servicenow-domain-record) |
 | The `/insertMultiple` contract: URL, body, upsert semantics, response | The Initial-Import runbooks cannot be written | [DECISIONS.md D12](docs/DECISIONS.md#d12-how-the-four-initial-import-runbooks-are-to-be-rebuilt) |
@@ -62,30 +65,23 @@ here until they are done:
 
 ## Open work in this repository
 
-Each of these should become a GitHub issue; when it has one, replace the line with the
-link.
+Tracked as GitHub issues, most urgent first:
 
-- Retry in `Invoke-RmaRestMethod` has never worked
-  ([#24](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/24)).
-- `RmaAvoidUnredactedObjectLogging` does not match `$ParameterObject`, the variable from
-  the original password leak.
-- Log redaction is an exact list of property names; `access_token`, `client_secret` and
-  similar names pass through, and `-Message` text is never redacted.
-- Graph and Exchange connect once with a static token and never reconnect, so a run that
-  outlives the token fails part-way.
-- `Test-RmaHealth` does not check Exchange consent or the Exchange role.
-- The `main` ruleset requires no status checks and no approvals, so a red CI does not
-  block a merge.
-- The worker provisioning route through Run Command, including the `rma-provision.ps1`
-  wrapper in [INSTALLATION.md](docs/INSTALLATION.md) step 3, has not been tested end to
-  end.
-- The outbound hosts for provisioning (GitHub release downloads, the PowerShell Gallery,
-  the NuGet provider) in [AZURE-RESOURCES.md](docs/AZURE-RESOURCES.md) are not named by the
-  scripts and have not been confirmed against a locked-down network.
+- [#27](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/27) The job claim is not atomic; the call into the ServiceNow endpoint is ours.
+- [#24](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/24) Retry in `Invoke-RmaRestMethod` has never worked.
+- [#28](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/28) `RmaAvoidUnredactedObjectLogging` does not match `$ParameterObject`.
+- [#29](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/29) Log redaction misses common secret names and never redacts `-Message`.
+- [#30](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/30) Graph and Exchange sessions are never refreshed during a run.
+- [#34](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/34) Publish 2.1.0 and install it on every worker before the runbooks move.
+- [#36](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/36) Migrate the remaining 1.0 runbooks.
+- [#31](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/31) `Test-RmaHealth` does not verify Exchange.
+- [#33](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/33) Run the Run Command provisioning route and the outbound hosts on a real worker.
+- [#32](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/32) Require CI to pass before merging to `main`.
 
 ## Open questions
 
-Each needs an answer from someone, not more code:
+Each needs an answer from the ServiceNow team, not more code. All are on
+[#35](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/35):
 
 - How and when does the ServiceNow application take the runbooks from `main`, and how is
   it held back while a new module version is installed on the workers?

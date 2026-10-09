@@ -1,5 +1,80 @@
 # Contributing
 
+## Tracking work
+
+All work on this repository is tracked as a GitHub issue, and all project tracking goes
+through the [RMA 2.0 project board](https://github.com/orgs/Mjolner-ServiceNow/projects/1).
+That covers code, documentation, an investigation, a release and a question for the
+ServiceNow team. If it takes time, it has an issue. If it is not on the board, nobody can
+see that it is happening, and nobody can take it over.
+
+### Rules
+
+1. **The issue exists before the work starts.** If you find you are working without one,
+   open it now.
+2. **Every issue has exactly one owner: its assignee.** The owner answers for the issue
+   moving, whether or not they do every part of it. An unassigned issue is not being
+   worked on. When ownership changes, reassign it and say so in a comment.
+3. **Every issue is on the board, with Status and Priority set.** *Auto-add* puts each
+   new issue on the board, but leaves both fields empty.
+4. **The board is the truth.** Move a card when its state changes, not at the end of the
+   week. State that lives in chat, in someone's notes or in an assistant's memory is lost
+   when that person leaves.
+5. **One pull request closes one issue,** with `Closes #<n>` at the top of its
+   description. Merging closes the issue, and the board moves it to Done. A pull request
+   that only does part of it says `Part of #<n>`.
+6. **Something you find out of scope gets its own issue.** It does not widen the pull
+   request you are working on.
+7. **Write the issue for someone who was not there.** It should say what is wrong or
+   wanted, which files are involved and what *done* means. Findings, decisions and where
+   you stopped go in comments. A decision that outlives the issue also goes into
+   [DECISIONS.md](DECISIONS.md).
+8. **Issues are public.** The repository is public, so they are too. Never name a
+   customer, and never paste an instance name, tenant or subscription id, hostname or real
+   `sys_id`.
+
+### The board
+
+| Status | Meaning |
+|---|---|
+| **Backlog** | Known and wanted, but not ready to start: unclear, waiting for a decision, or later. |
+| **Ready** | Clear enough that anyone could pick it up now. |
+| **In progress** | Its owner is working on it. Keep this short: one or two per person. |
+| **Blocked: ServiceNow** | Waiting on the ServiceNow team. It also carries the `servicenow` label, and a comment says exactly what is asked of them. [#35](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/35) is their checklist. |
+| **Done** | Closed. Set by the board when the issue closes. |
+
+Anything else that blocks an issue keeps its status, and a comment on the issue names the
+blocker.
+
+| Priority | Meaning |
+|---|---|
+| **P1** | Blocks production use, or blocks other work. |
+| **P2** | Needed before go-live. |
+| **P3** | An improvement that can wait. |
+
+Labels: `bug`, `enhancement`, `documentation`, `servicenow` (needs the ServiceNow team to
+act) and `question`.
+
+### Branches, commits and pull requests
+
+- **Branch:** `<type>/<issue>-<short-slug>`, where type is `feat`, `fix`, `docs`, `chore`
+  or `test`. For example, `fix/24-retry-headers`.
+- **Commits:** in the imperative, prefixed as in the history: `fix: ...`, `feat: ...`,
+  `docs: ...`.
+- **Pull request:** start the description with `Closes #<n>`, and fill in the template in
+  [`.github/pull_request_template.md`](../.github/pull_request_template.md).
+
+### With Claude Code
+
+[CLAUDE.md](../CLAUDE.md) binds every Claude Code session to these rules. The
+`track-work` skill in `.claude/skills/` gives it the exact `gh` commands. By default an
+issue it creates is assigned to whoever `gh` is signed in as. It needs the `project`
+scope, which it cannot grant itself:
+
+```bash
+gh auth refresh -h github.com -s project
+```
+
 ## Before you open a pull request
 
 ```powershell

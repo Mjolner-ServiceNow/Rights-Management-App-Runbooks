@@ -1,6 +1,6 @@
 ---
 name: track-work
-description: Use at the start of every task in this repository, and whenever the work changes state - finding or creating the GitHub issue for it, assigning its owner, putting it on the RMA 2.0 project board with Status and Priority, naming the branch, linking the pull request, marking it Blocked on the ServiceNow team, recording progress on the issue, and opening a new issue for something found out of scope.
+description: Use at the start of every task in this repository, and whenever the work changes state - finding or creating the GitHub issue for it, assigning its owner, putting it on the RMA 2.0 project board with Status and Priority, naming the branch, linking the pull request, recording what blocks it (a Blocked by relation, or an issue for the ServiceNow team under #35), recording progress on the issue, and opening a new issue for something found out of scope.
 ---
 
 # Tracking work through issues and the board

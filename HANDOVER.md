@@ -6,7 +6,8 @@ waiting on someone else and what is decided but not yet built. The maintainer ch
 
 This file is the index. Detail lives where it is maintained: open work in
 [GitHub issues](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues),
-the reasons behind the design in [docs/DECISIONS.md](docs/DECISIONS.md), and how the system
+laid out by status and priority on the
+[RMA 2.0 project board](https://github.com/orgs/Mjolner-ServiceNow/projects/1), the reasons behind the design in [docs/DECISIONS.md](docs/DECISIONS.md), and how the system
 works in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). When something here is done, delete
 the line instead of ticking it.
 
@@ -65,7 +66,10 @@ checklist for the ServiceNow team.
 
 ## Open work in this repository
 
-Tracked as GitHub issues, most urgent first:
+Tracked as GitHub issues, most urgent first. The
+[project board](https://github.com/orgs/Mjolner-ServiceNow/projects/1) shows the same issues
+by status (Backlog, Ready, In progress, Blocked: ServiceNow, Done) and priority (P1 blocks
+production use). Add every new issue to it, and move a card when its state changes:
 
 - [#27](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/27) The job claim is not atomic; the call into the ServiceNow endpoint is ours.
 - [#24](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/24) Retry in `Invoke-RmaRestMethod` has never worked.

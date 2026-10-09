@@ -1,6 +1,6 @@
 ---
 name: track-work
-description: Use at the start of every task in this repository, and whenever the work changes state - finding or creating the GitHub issue for it, assigning its owner, putting it on the RMA 2.0 project board with Status and Priority, naming the branch, linking the pull request, marking it Blocked on the ServiceNow team, recording progress on the issue, and opening a new issue for something found out of scope.
+description: Use at the start of every task in this repository, and whenever the work changes state - finding or creating the GitHub issue for it, assigning its owner, putting it on the RMA 2.0 project board with Status and Priority, naming the branch, linking the pull request, recording what blocks it (a Blocked by relation, or an issue for the ServiceNow team under #35), recording progress on the issue, and opening a new issue for something found out of scope.
 ---
 
 # Tracking work through issues and the board
@@ -40,7 +40,7 @@ they will need.
 |---|---|
 | Repository | `Mjolner-ServiceNow/Rights-Management-App-Runbooks` |
 | Project | number `1`, owner `Mjolner-ServiceNow`, <https://github.com/orgs/Mjolner-ServiceNow/projects/1> |
-| Status | `Backlog`, `Ready`, `In progress`, `Blocked: ServiceNow`, `Done` |
+| Status | `Backlog`, `Ready`, `In progress`, `Done` |
 | Priority | `P1`, `P2`, `P3` |
 | Labels | `bug`, `enhancement`, `documentation`, `servicenow`, `question` |
 
@@ -135,16 +135,32 @@ gh issue comment <n> -R Mjolner-ServiceNow/Rights-Management-App-Runbooks --body
 A decision that outlives the issue also goes into `docs/DECISIONS.md`, with a link from
 the comment.
 
-## 5. Blocked on the ServiceNow team
+## 5. Blocked by another issue, or by the ServiceNow team
 
-1. Set Status to `Blocked: ServiceNow`.
-2. Add the `servicenow` label.
-3. Comment with exactly what is asked of them.
-4. Add the item to the checklist in #35, the ServiceNow team's list.
+There is no *Blocked* status. A blocked issue keeps its own status (usually `Backlog` or
+`Ready`) and gets a **Blocked by** relation to the issue that blocks it. The relation
+clears itself when the blocker closes.
 
-When the blocker clears, move the issue back to `Ready` or `In progress`.
+```bash
+R=Mjolner-ServiceNow/Rights-Management-App-Runbooks
+blocker_id=$(gh api repos/$R/issues/<blocker> -q .id)      # the REST id, not the number
+gh api -X POST repos/$R/issues/<n>/dependencies/blocked_by -F issue_id=$blocker_id
+gh api repos/$R/issues/<n>/dependencies/blocked_by -q '.[].number'   # check
+```
 
-Anything else that blocks keeps its status and gets a comment naming the blocker.
+**When the blocker is work for the ServiceNow team**, it must be an issue of its own:
+
+1. Find it among the sub-issues of #35, or create it: owned by the ServiceNow team,
+   labelled `servicenow`, saying exactly what is asked of them.
+2. Make it a sub-issue of #35:
+   `gh api -X POST repos/$R/issues/35/sub_issues -F sub_issue_id=$(gh api repos/$R/issues/<new> -q .id)`
+3. Put it on the board with Status `Ready` and a Priority.
+4. Add the *Blocked by* relation from every issue here that waits on it.
+
+The `servicenow` label goes only on the ServiceNow team's own issues, never on the issues
+that wait on them: the board's **ServiceNow** view (`label:servicenow`) is their work list.
+
+A blocker that is not an issue, such as a person or a decision, is named in a comment.
 
 ## 6. Open the pull request
 

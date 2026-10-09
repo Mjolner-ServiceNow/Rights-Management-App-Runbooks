@@ -29,7 +29,9 @@ commands. The rules:
 - Record findings, decisions and where you stopped as comments on the issue. The next
   session starts from the issue, not from this conversation.
 - Something out of scope becomes a new issue, not part of the current pull request.
-- Waiting on the ServiceNow team is `Blocked: ServiceNow` plus the `servicenow` label.
+- Waiting on the ServiceNow team is a *Blocked by* relation to their issue, which is a
+  sub-issue of #35 with the `servicenow` label. The blocked issue keeps its own status and
+  does not get the label.
 
 Issues are public: never name a customer or paste a real identifier into one. The process
 for people is *Tracking work* in [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).

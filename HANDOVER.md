@@ -50,26 +50,28 @@ Every place that needed help is a gap; record it.
 
 ## Waiting on the ServiceNow team
 
-The ServiceNow application is maintained outside this repository. These items stop work
-here until they are done.
-[#35](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/35) tracks them, with the open questions below, as one
-checklist for the ServiceNow team.
+The ServiceNow application is maintained outside this repository. Each thing it has to do
+is an issue owned by the ServiceNow team, with the `servicenow` label, as a sub-issue of
+[#35](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/35). Issues here that wait on one have a *Blocked by* relation to it. The board's
+**ServiceNow** view shows them all.
 
-| What | Why it matters | Reference |
+| Issue | What | Why it matters |
 |---|---|---|
-| A server-side compare-and-set for the job claim (Scripted REST) | Without it two executions can run the same job | [#27](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/27), [DECISIONS.md F1](docs/DECISIONS.md#f1-the-job-claim-is-not-atomic-on-the-instance-it-was-tested-on) |
-| Fix the health endpoint's resource script | Every `Test-RmaHealth` job fails | [#23](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/23) |
-| The domain record field changes | ServiceNow cannot supply the runbook parameters | [DECISIONS.md D9](docs/DECISIONS.md#d9-changes-to-the-servicenow-domain-record) |
-| The `/insertMultiple` contract: URL, body, upsert semantics, response | The Initial-Import runbooks cannot be written | [DECISIONS.md D12](docs/DECISIONS.md#d12-how-the-four-initial-import-runbooks-are-to-be-rebuilt) |
-| Running `/cleanup` on their side, skipped after a failed import | Until then the runbook has to do it | D12 |
-| A written installation guide for the ServiceNow application | [INSTALLATION.md](docs/INSTALLATION.md) covers only Azure; the ServiceNow half has no written procedure | |
+| [#106](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/106) | The `/insertMultiple` contract and the resource names | Every runbook that writes to ServiceNow, including the Initial-Import runbooks ([D12](docs/DECISIONS.md#d12-how-the-four-initial-import-runbooks-are-to-be-rebuilt)) |
+| [#108](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/108) | Domain record fields and job parameters, including Exchange `Organization` | ServiceNow cannot supply the runbook parameters ([D9](docs/DECISIONS.md#d9-changes-to-the-servicenow-domain-record)); no Exchange runbook can connect |
+| [#27](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/27) | A server-side compare-and-set for the job claim (Scripted REST) | Without it two executions can run the same job ([F1](docs/DECISIONS.md#f1-the-job-claim-is-not-atomic-on-the-instance-it-was-tested-on)) |
+| [#23](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/23) | Fix the health endpoint's resource script | Every `Test-RmaHealth` job fails |
+| [#107](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/107) | Run `/cleanup` on their side, skipped after a failed import | Until then the runbook has to do it |
+| [#109](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/109) | Which overlapping 1.0 commands are still sent | Decides which runbooks need migrating |
+| [#110](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/110) | How often the watchdog is started | A stranded job waits `StaleAfterMinutes` plus that interval |
+| [#111](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/111) | How the application takes runbooks from `main`, and how an operator stops it | Rolling out a module version, and rollback |
+| [#112](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/112) | A written installation guide for the ServiceNow application | [INSTALLATION.md](docs/INSTALLATION.md) covers only Azure |
 
 ## Open work in this repository
 
 Tracked as GitHub issues, most urgent first. The
 [project board](https://github.com/orgs/Mjolner-ServiceNow/projects/1) shows the same issues
-by status (Backlog, Ready, In progress, Blocked: ServiceNow, Done) and priority (P1 blocks
-production use). Add every new issue to it, and move a card when its state changes:
+by status (Backlog, Ready, In progress, Done) and priority (P1 blocks production use). Add every new issue to it, and move a card when its state changes:
 
 - [#27](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/27) The job claim is not atomic; the call into the ServiceNow endpoint is ours.
 - [#24](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/24) Retry in `Invoke-RmaRestMethod` has never worked.
@@ -81,24 +83,6 @@ production use). Add every new issue to it, and move a card when its state chang
 - [#31](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/31) `Test-RmaHealth` does not verify Exchange.
 - [#33](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/33) Run the Run Command provisioning route and the outbound hosts on a real worker.
 - [#32](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/32) Require CI to pass before merging to `main`.
-
-## Open questions
-
-Each needs an answer from the ServiceNow team, not more code. All are on
-[#35](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/35):
-
-- How and when does the ServiceNow application take the runbooks from `main`, and how is
-  it held back while a new module version is installed on the workers?
-- How often should the ServiceNow application start the watchdog? A stranded job waits
-  `StaleAfterMinutes` plus that interval.
-- How does an operator stop the ServiceNow application from starting runs, for a
-  rollback?
-- Which ServiceNow field and runbook parameter will carry Exchange's `Organization`
-  (`*.onmicrosoft.com`)? See
-  [DECISIONS.md D9](docs/DECISIONS.md#d9-changes-to-the-servicenow-domain-record).
-- Does the ServiceNow application need the Automation Account's resource group as a
-  separate value? The ARM path to start a job contains it, so
-  [INSTALLATION.md](docs/INSTALLATION.md) lists it among the values to record.
 
 ## Kept outside this repository
 

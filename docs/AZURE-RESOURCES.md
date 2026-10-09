@@ -107,16 +107,31 @@ Do not create schedules. Every job is started by the ServiceNow application.
 | Size | At least 2 vCPU and 4 GB RAM |
 | System-assigned managed identity | **On. Required.** The Hybrid Worker extension needs it. Give it no role assignments. |
 | User-assigned managed identity | **`id-rma-prod`. Required.** |
-| Public IP | None needed. Provisioning uses Azure Run Command, which goes through the Azure control plane. |
+| Public IP | None needed. Provisioning can use Azure Run Command, which goes through the Azure control plane. Run Command runs Windows PowerShell 5.1, so the module provisioning step has to hand over to PowerShell 7; [`INSTALLATION.md`](INSTALLATION.md) step 3 shows how. |
 | Hybrid Worker | Registered in `hwg-rma-prod` in `aa-rma-prod`, which installs the Hybrid Worker extension. PowerShell 7 runbooks need extension version 1.3.63 or above. |
 
-**Network.** The VM must reach:
+**Network.** The VM must reach, to run jobs:
 
 | Destination | Why |
 |---|---|
-| Your domain controllers | Active Directory runbooks. The `ActiveDirectory` module talks to Active Directory Web Services on TCP 9389. |
+| Your domain controllers | The Active Directory runbooks, once migrated, and the health check's AD check. The `ActiveDirectory` module talks to Active Directory Web Services on TCP 9389. |
 | Your ServiceNow instance, HTTPS | The command queue, and writing results back |
-| Azure Automation, Microsoft Entra ID, Microsoft Graph, Exchange Online and Key Vault, HTTPS | Jobs, tokens and secrets |
+| Azure Automation, Microsoft Entra ID (`login.microsoftonline.com`), Microsoft Graph (`graph.microsoft.com`), Exchange Online (`outlook.office365.com`) and Key Vault (`*.vault.azure.net`), HTTPS | Jobs, tokens and secrets |
+| The instance metadata service, `169.254.169.254`, HTTP | Every managed identity token. It is link-local and never leaves the host, but a host firewall or proxy setting that catches it breaks authentication everywhere. |
+
+And, to be provisioned and upgraded:
+
+| Destination | Why |
+|---|---|
+| `github.com`, HTTPS, and the `*.githubusercontent.com` host GitHub redirects release downloads to (`objects.githubusercontent.com` at the time of writing) | `Initialize-RmaWorkerHost.ps1` downloads the PowerShell MSI and its `hashes.sha256` from the PowerShell project's releases; the release-notes block downloads `Initialize-RmaWorker.ps1` and the `RMA.Runbooks` package from this repository's releases |
+| The PowerShell Gallery, `www.powershellgallery.com`, HTTPS, and the host it serves packages from | `Install-Module` in `Initialize-RmaWorker.ps1`, for every pinned module |
+| The host the NuGet package provider is bootstrapped from, HTTPS | `Install-PackageProvider` in `Initialize-RmaWorkerHost.ps1`. It is a different host from the gallery and a common firewall omission |
+
+The gallery's package host and the provider's bootstrap host are chosen by
+`Install-Module` and `Install-PackageProvider`, not named in the scripts, so take their
+current names from Microsoft's PowerShell Gallery documentation rather than from here. The
+same goes for GitHub's download host. A blocked download host shows up as an error that
+names the module or the provider, not the host.
 
 Reaching the domain controllers usually means a virtual network with a connection to the
 on-premises network, or domain controllers in Azure. That network belongs to your
@@ -128,7 +143,11 @@ environment rather than to this solution, so it is not specified here.
 > identity instead and fails.
 
 For more throughput, add `vm-rma-hw2-prod` and onwards: same configuration, same identity,
-same Hybrid Worker Group. The job claim makes more than one worker safe.
+same Hybrid Worker Group, provisioned with both scripts, and its subnet allowed on the Key
+Vault. More than one worker is meant to be safe because of the job claim, but **the claim
+is not yet atomic**: on the ServiceNow instance it was tested on, the Table API ignores the
+claim's `status=1` condition, so two executions that read the same row can both run it. See
+*The claim is not yet atomic* in [`INSTALLATION.md`](INSTALLATION.md) step 9.
 
 ---
 
@@ -168,7 +187,7 @@ hyphens and start with a letter, which leaves at most 12 characters for the suff
 | Permission model | **Azure role-based access control. Required.** Not vault access policies. |
 | Soft delete | On, 90 days |
 | Purge protection | On in production |
-| Public network access | In production: disabled, with the worker VM's subnet allowed. The subnet needs the `Microsoft.KeyVault` service endpoint. A private endpoint also works. |
+| Public network access | In production: **Enabled from selected virtual networks and IP addresses**, with only the worker VM's subnet allowed. The subnet needs the `Microsoft.KeyVault` service endpoint. Alternatively **Disabled** with a private endpoint in the worker's network: Disabled admits private endpoints only, so it cannot be combined with a subnet rule. |
 
 **Role assignments**, at the scope of the vault:
 
@@ -186,7 +205,7 @@ before the next step.
 | Secret name | Value | Used by |
 |---|---|---|
 | `servicenow-api-password` | Password of the ServiceNow integration account | Every runbook, to read and update the command queue |
-| `ad-service-account-password` | Password of the Active Directory service account | The Active Directory runbooks |
+| `ad-service-account-password` | Password of the Active Directory service account | `Test-RmaHealth`'s AD check now, and the Active Directory runbooks once they are migrated |
 
 Give both an expiry date matching the password's own lifetime, so a lapsing password is
 visible in the vault. The usernames are not secrets and are not stored here.
@@ -276,36 +295,35 @@ ServiceNow every other Automation Account in that scope too.
 > Doing so breaks every runbook, as described under *Automation Account* above. The
 > ServiceNow application must never change the account's identity settings.
 
-**Its credential expires.** A client secret created in the portal lasts at most two years; when it lapses,
-ServiceNow can no longer start jobs. Queue rows then accumulate at `status = 1` and nothing
-in Azure reports it. Record the expiry date and renew it before then, or use a certificate
+**Its credential expires.** A client secret created in the portal lasts at most two years;
+when it lapses, ServiceNow can no longer start jobs. Queue rows then accumulate at
+`status = 1` and nothing in Azure reports it. Record the expiry date and renew it before then, or use a certificate
 with a longer lifetime.
 
 ---
 
 ## Build order
 
-Each step needs something the one before it created.
+Each step needs something the one before it created. The order is the one
+[`INSTALLATION.md`](INSTALLATION.md) follows, labelled with its step numbers; the commands
+are there.
 
-1. **Create the three resource groups** in the same subscription.
-2. **Create `aa-rma-prod`** in `rg-rma-automation-prod`, with the system-assigned identity turned
-   off. Create the `Powershell_7-6` Runtime environment and the `hwg-rma-prod` Hybrid Worker
-   Group in it.
-3. **Create `vm-rma-hw1-prod`** in `rg-rma-workloads-prod`, with the system-assigned identity
-   turned on and network access to the domain controllers.
-4. **Create `id-rma-prod`** in `rg-rma-shared-prod`. Record its client ID and principal ID. Attach
-   it to `vm-rma-hw1-prod`, then register the VM in `hwg-rma-prod`.
-5. **Create `kv-rma-<suffix>-prod`** in `rg-rma-shared-prod` with the RBAC permission model, and
-   assign the two roles.
-6. **Add the two secrets** to the Key Vault.
-7. **Create the runbooks' app registration** with the federated credential and the
-   permissions above, then grant admin consent and assign Exchange Recipient Administrator.
-8. **Create ServiceNow's app registration**, assign it Automation Contributor on
-   `aa-rma-prod`, and hand its credential to whoever configures the ServiceNow application.
-
-After that, the worker itself is provisioned with `scripts/Initialize-RmaWorkerHost.ps1`
-and `scripts/Initialize-RmaWorker.ps1`. That step is software on the VM rather than an
-Azure resource, and is covered in [`INSTALLATION.md`](INSTALLATION.md) step 3.
+1. **Step 1, the resources.** The three resource groups, in the same subscription.
+   `aa-rma-prod` with the system-assigned identity turned off, and the `hwg-rma-prod` Hybrid
+   Worker Group in it. `vm-rma-hw1-prod`, with the system-assigned identity on and network
+   access to the domain controllers. `id-rma-prod`; record its client ID and principal ID.
+   `kv-rma-<suffix>-prod` with the RBAC permission model, and its two role assignments.
+   ServiceNow's app registration with Automation Contributor on `aa-rma-prod`, its
+   credential handed to whoever configures the ServiceNow application.
+2. **Step 2.** Attach `id-rma-prod` to `vm-rma-hw1-prod`, then register the VM in
+   `hwg-rma-prod`.
+3. **Step 3.** Provision the worker with `scripts/Initialize-RmaWorkerHost.ps1` and then
+   `scripts/Initialize-RmaWorker.ps1`. Software on the VM rather than an Azure resource.
+4. **Steps 4 and 5.** The runbooks' app registration with the federated credential and the
+   permissions above, then admin consent and Exchange Recipient Administrator.
+5. **Step 6.** The two secrets in the Key Vault.
+6. **Step 7.** The `Powershell_7-6` Runtime environment in `aa-rma-prod`, for the ServiceNow
+   application to link the runbooks to.
 
 ## Values the runbooks need
 
@@ -321,3 +339,16 @@ including the ServiceNow and Active Directory values, is under *Runbook paramete
 | `TenantId` | The ID of the Entra tenant the app registration is in |
 | `ApplicationId` | The application (client) ID of the app registration |
 | `AdSecretName` | `ad-service-account-password`, unless there is more than one AD domain |
+
+The application also needs these to reach Azure at all. They are not runbook parameters:
+
+| Value | Why |
+|---|---|
+| Subscription ID, and `rg-rma-automation-prod` | Where the Automation Account is |
+| `aa-rma-prod` | The Automation Account it publishes runbooks to and starts jobs in |
+| `hwg-rma-prod` | The `RunOn` of every job it starts |
+| ServiceNow's app registration: client ID, tenant ID, and its secret or certificate | What it signs in as |
+
+`Connect-RmaExchange` takes the tenant's `*.onmicrosoft.com` name as a mandatory
+`-Organization`. No runbook in this repository connects to Exchange Online yet, so it is
+not in the parameter list, and which parameter will carry it is not decided.

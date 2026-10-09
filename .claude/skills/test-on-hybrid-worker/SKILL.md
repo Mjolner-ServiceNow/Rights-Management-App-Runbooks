@@ -20,7 +20,10 @@ the gate in `CLAUDE.md`.
    SSH key it uses has administrator rights on the worker.
 2. **Never guess a runbook parameter value, least of all a ServiceNow one.** The health
    check sends the ServiceNow password from Key Vault to whatever instance `Instance`
-   names. If a value is missing from `rma-worker.local.json`, ask the user for it.
+   names, and it is not read-only against ServiceNow: it writes its result with a `PATCH`
+   to the health endpoint of the domain `DomainId` names, so a wrong `DomainId` could
+   overwrite another domain's health view. If a value is missing from
+   `rma-worker.local.json`, ask the user for it.
 3. **Never commit `rma-worker.local.json`,** and never copy its values into a committed
    file, a commit message or a pull request. The repository is public. `*.local.json` is
    gitignored; check with `git check-ignore` if the file was renamed.

@@ -10,7 +10,9 @@ because it did not meet the bar. Do not re-add it without being asked.
 
 Read [README.md](README.md) for the component map, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 for the identity and job-lifecycle design, and [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
-for the review rules. This file covers what those leave implicit.
+for the review rules. [HANDOVER.md](HANDOVER.md) tracks the open points and
+[docs/DECISIONS.md](docs/DECISIONS.md) records why things are as they are. This file covers
+what those leave implicit.
 
 ## Commands
 
@@ -24,10 +26,10 @@ The gate, in the order CI runs it. Run all of it before claiming a change is don
 ```
 
 Note the comma with no space in `-FailOn Error,Warning`. Under `pwsh -File`, arguments are
-passed as raw strings and PowerShell never parses them into an array: `-FailOn Error, Warning`
-binds `Warning` to `-Path`, and `-FailOn Error,Warning` arrives as one literal string that
-matches no severity, so the gate reports success no matter what the analyzer found. From a
-shell, use the `-Command` form:
+passed as raw strings and PowerShell never parses them into an array, so neither spelling
+reaches `-FailOn` as two severities. That used to pass the gate silently; `-FailOn` now has
+a `[ValidateSet]`, so under `pwsh -File` both spellings fail parameter binding with exit 1
+instead. From a shell, use the `-Command` form:
 
 ```bash
 pwsh -NoProfile -Command "& ./build/Invoke-Analysis.ps1 -FailOn Error,Warning"
@@ -39,8 +41,8 @@ parsed correctly. Do not "fix" the workflow to match this file.
 Two more, both now also run by CI (see *Where enforcement actually lives*):
 
 ```powershell
-./build/Test-ModuleManifestIntegrity.ps1              # Public/ functions vs FunctionsToExport, and help
-./build/Assert-ModuleVersionBump.ps1 -BaseRef main    # pull requests only
+./build/Test-ModuleManifestIntegrity.ps1                  # Public/ functions vs FunctionsToExport, and help
+./build/Assert-ModuleVersionBump.ps1 -BaseRef origin/main # pull requests only
 ```
 
 ### A single test
@@ -63,19 +65,36 @@ oddly.
 
 ### The module owns the queue contract; runbooks own business logic only
 
-A runbook is eight lines of setup plus a body — copy
+A runbook is a fixed setup plus a body — copy
 [src/runbooks/Create-EntraUser.ps1](src/runbooks/Create-EntraUser.ps1). `Invoke-RmaQueueLoop`
-wraps the body and guarantees the parts that went wrong in the library this replaces:
+wraps the body and owns the parts that went wrong in the library this replaces:
 
-- `Request-RmaJobClaim` claims atomically — a conditional PATCH filtered on `status=1`,
-  then a read-back comparing `worker_id` to its own. Two workers cannot run one job.
-- `try`/`finally` guarantees a terminal state. Throwing from the body fails the job;
-  returning normally completes it. Neither path can strand a job at In Progress.
+- `Request-RmaJobClaim` claims with a PATCH filtered on `status=1`, then a read-back
+  comparing `worker_id` to its own. **It is not atomic yet.** The Table API ignores
+  `sysparm_query` on a single-record PATCH (found on a test instance, 2026-09-30), so the
+  PATCH wins any row and the read-back only proves this worker wrote last: two executions
+  that read the same Pending row can both run it. The fix is a server-side compare-and-set
+  (a Scripted REST endpoint) called from inside `Request-RmaJobClaim`, whose signature does
+  not change. The heartbeat's renewal and the watchdog's requeue share the limitation.
+- `try`/`finally` writes a terminal state. Throwing from the body fails the job; returning
+  normally completes it. If that write itself fails, the job stays at Work in Progress until
+  the watchdog requeues it.
+- A background heartbeat renews `claimed_at` while a job runs, so the watchdog leaves long
+  jobs alone. Runbook bodies never call `Update-RmaJobHeartbeat`.
 - Correlation flows from the loop as `$script:RmaCorrelationId`, set to the ServiceNow job
   `sys_id` and cleared in `finally`. Do not invent your own.
 
-A runbook that claims, retries, bounds or sets terminal state itself is rejected in review.
+A runbook that claims, retries, bounds, renews or sets terminal state itself is rejected in
+review, even while the claim is not atomic: the fix belongs inside `Request-RmaJobClaim`.
 That duplication is the defect this repository exists to remove.
+
+`tests/Unit/RunbookDefinition.Tests.ps1` holds every runbook to what Azure Automation
+accepts: no parameter sets (Automation refuses to start one), `$PSStyle.OutputRendering =
+'PlainText'`, and calls only to exported `Rma` functions — a runbook cannot see `Private/`,
+which is how the watchdog broke before 8840cf5.
+
+Any Date/Time written to ServiceNow is UTC `yyyy-MM-dd HH:mm:ss` (`Get-RmaGlideDateTime`).
+ISO 8601 is accepted and stored as midnight.
 
 ### Module loading and state
 
@@ -141,6 +160,10 @@ Both gaps the docs used to overstate are now wired in
   must be greater. `release.yml` still compares the `v*` tag against the manifest at
   release time; that is now a backstop rather than the first time anyone finds out.
 
+None of it blocks a merge. The `main` ruleset has no required status checks and requires 0
+approvals, so a red CI run can still be merged. Passing CI is a convention; enforcing it is
+an open point in [HANDOVER.md](HANDOVER.md).
+
 One thing is still checked only by eye: nothing automated rejects customer-identifying
 values in committed files. See *This repository is public* below.
 
@@ -148,8 +171,9 @@ values in committed files. See *This repository is public* below.
 
 [release.yml](.github/workflows/release.yml) has two entry points, and
 [build/Get-RmaReleasePlan.ps1](build/Get-RmaReleasePlan.ps1) is what tells them apart. A
-push to `main` whose `ModuleVersion` has no release yet **drafts** one, package and SHA256
-attached; a pushed `v*` tag **publishes**. Most pushes to `main` produce nothing, because a
+push to `main` whose `ModuleVersion` has no release yet **drafts** one, with the module zip
+and `Initialize-RmaWorker.ps1` attached and both SHA256 hashes in the notes; a pushed `v*`
+tag **publishes**. Most pushes to `main` produce nothing, because a
 release for that version already exists.
 
 The last step stays human on purpose. A release here is not a marker — it is the artefact

@@ -16,21 +16,37 @@ managed identity, federated to an app registration. No client secret, no certifi
 two passwords that cannot be federated, for ServiceNow and the AD service account, live in
 Key Vault and are read at run time.
 
-**Read-only access to secrets.** The runtime identity holds `Key Vault Secrets User`. It
-can read the two secrets it needs and cannot rotate, add or delete anything.
+**Read-only access to secrets.** The runtime identity holds `Key Vault Secrets User` on
+the vault. It cannot rotate, add or delete anything, but it can read *every* secret in that
+vault, not only the two it needs. Keep nothing else in it.
 
-**Least privilege on the directory side.** The app registration is granted
-`Exchange Recipient Administrator`, which covers every Exchange cmdlet the runbooks call.
-Not Exchange Administrator, and not Global Administrator.
+**Broad directory permissions, deliberately scoped to one role in Exchange.** The app
+registration holds tenant-wide Microsoft Graph *application* permissions, among them
+`User.ReadWrite.All`, `Group.ReadWrite.All`, `User-PasswordProfile.ReadWrite.All` and
+`UserAuthenticationMethod.ReadWrite.All` — the full list is in
+[`docs/AZURE-RESOURCES.md`](docs/AZURE-RESOURCES.md). Application permissions are not
+limited to a subset of users, so whoever can act as the app registration can change any
+user in the tenant. In Exchange the app is granted `Exchange Recipient Administrator`,
+which covers every Exchange cmdlet the runbooks call: not Exchange Administrator, and not
+Global Administrator.
 
-**Secrets cannot reach the logs by accident.** `Write-RmaLog` redacts values whose property
-name suggests a secret, at any depth, and a custom analyzer rule blocks the pattern that
-caused a real disclosure in the predecessor codebase: writing a whole payload object to the
-job output.
+**Logging redacts a fixed list of field names.** `Write-RmaLog` passes `-Data` through
+`ConvertTo-RmaSafeLogValue`, which replaces the value of any key or property named, ignoring
+case, `password`, `pwd`, `secret`, `clientsecret`, `token`, `accesstoken`, `refreshtoken`,
+`apikey`, `authorization`, `credential`, `passwordprofile`, `thumbprint` or `assertion`, at
+any depth. It is an exact-name match: `access_token`, `client_secret` or `adPassword` pass
+through unredacted, and the `-Message` text is never redacted at all. A custom analyzer
+rule blocks the pattern that caused a real disclosure in the predecessor codebase: writing
+a whole payload object to the job output. Both are defence in depth, not a guarantee; log
+named, non-secret fields.
 
-**Jobs cannot execute twice.** Queue items are claimed with a conditional update that the
-caller verifies it won. Without it, two concurrent runs both execute the same directory
-write.
+**Jobs are meant to execute once, and today can execute twice.** Queue items are claimed
+with a conditional update that the caller verifies it won. ServiceNow's Table API ignores
+the condition on a single-record update (found on a test instance on 2026-09-30), so two
+concurrent runs that read the same Pending row can both execute the same directory write.
+The fix is a server-side compare-and-set; see
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#job-lifecycle) and
+[`HANDOVER.md`](HANDOVER.md). Until it lands, command bodies must be idempotent.
 
 ## The security boundary
 

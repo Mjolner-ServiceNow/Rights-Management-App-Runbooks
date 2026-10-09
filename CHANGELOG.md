@@ -15,12 +15,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `HeartbeatMinutes` (new parameter, 5 by default) through the new public function
   `Update-RmaJobHeartbeat`. A thread, because one blocking call such as `Get-ADUser -Filter *`
   can outlast the threshold by itself. The renewal is filtered on `status=2` and this
-  worker's id and checked against the record returned, so it never extends a job that has
-  finished or passed to another worker. A job that ends within one interval is never
+  worker's id and checked against the record returned, which is meant to stop it extending
+  a job that has finished or passed to another worker; on an instance that ignores the
+  filter it does not (see *Known issues*). A job that ends within one interval is never
   renewed, and a run that finds the queue empty never starts the thread. When a job ends,
   a lost claim is logged as Error, failed renewals as Warning, and a thread that could not
   start as Error when the job starts. Like the claim, this needs the `worker_id` and
   `claimed_at` columns in ServiceNow.
+- **`Test-RmaHealth` sends its result to the ServiceNow application**, which displays it
+  on the domain. The result is JSON, sent with `PATCH` to
+  `/api/x_autps_active_dir/domain/{DomainId}/health` whether the checks passed or failed.
+  `checked_at` is UTC `yyyy-MM-dd HH:mm:ss`, the lesson from `claimed_at`; each check's
+  detail is capped at 4000 characters; the body names `charset=utf-8`, because PowerShell
+  before 7.4 sends a string body as ISO-8859-1. A result that could not be sent fails the
+  job even when every check passed, so the Automation job's status says whether the
+  ServiceNow view is current. `PATCH` was found by trial on a test instance: `POST`, `PUT`
+  and `GET` answer 405. The shape is in `docs/ARCHITECTURE.md`, *The health result*.
+- `HANDOVER.md` and `docs/DECISIONS.md`: the state of the work, what is blocked on whom,
+  and the decisions behind the design that were not written down anywhere in the
+  repository.
 - The `test-on-hybrid-worker` skill in `.claude/skills/` tells an AI agent how to use
   `scripts/Invoke-RmaWorkerRun.ps1`: the prerequisites in the order they fail, what it
   must not do, how to read a run and the traps found so far. `CLAUDE.md` points to it.
@@ -58,6 +71,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and both run the job; the heartbeat's worker filter was equally blind. The id now uses the
   job id where it exists, then `AUTOMATION_ASSET_SANDBOX_ID`, which is unique per job, then
   the process id and start time. It never falls back to a shared constant.
+
+### Changed
+- The runbooks require `RMA.Runbooks` 2.1.0. Install it on every Hybrid Worker before
+  republishing them.
+- `StaleAfterMinutes` is now measured against the heartbeat interval, not against the
+  longest job. `docs/INSTALLATION.md` and the watchdog's help say to keep it at three
+  heartbeats or more; the defaults leave six.
+- The README's runbook example no longer passes `-DomainId` to `Test-RmaPrerequisite`,
+  which has not taken it since 2.0.0.
+- The documentation was checked against the code before a change of maintainer. It no
+  longer describes the job claim as atomic, documents the heartbeat, the worker id and the
+  watchdog's parameters, and corrects the worker provisioning route, the roles each
+  installation step needs, the Key Vault network setting and the release example, which
+  installed 1.0.0.
+- `[2.0.1]` now has its own section. Its fixes were left under *Unreleased* when it was
+  tagged, so they read as new in 2.1.0.
+
+### Known issues
+- **The job claim is not atomic on the instance it was tested on.** On 2026-09-30 a
+  ServiceNow test instance ignored `sysparm_query` on a single-record Table API `PATCH`:
+  `Request-RmaJobClaim` won a Completed row and a row held by another worker. Two
+  executions that read the same Pending row can both run it, and the heartbeat's renewal
+  and the watchdog's requeue rely on the same filter. The fix is a server-side
+  compare-and-set in the ServiceNow application, behind the same function signature.
+- Every `Test-RmaHealth` job fails at its last step, because the ServiceNow health
+  endpoint answers HTTP 500
+  ([#23](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/23)).
+- `Invoke-RmaRestMethod` overwrites the request headers with the response's on a retry, so
+  no retry has ever worked: a 429 or 5xx surfaces as a type conversion error
+  ([#24](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/24)).
+
+## [2.0.1] - 2026-09-24
+
+### Fixed
 - **Every module function that logged at Information and then returned a value returned
   the log line as well.** `Write-RmaLog` wrote Information records with `Write-Output`,
   which is the success stream, so `Connect-RmaServiceNow` handed back
@@ -114,13 +161,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     Publish tags that commit rather than whatever `main` has moved on to.
 
 ### Changed
-- The runbooks require `RMA.Runbooks` 2.1.0. Install it on every Hybrid Worker before
+- The runbooks require `RMA.Runbooks` 2.0.1. Install it on every Hybrid Worker before
   republishing them.
-- `StaleAfterMinutes` is now measured against the heartbeat interval, not against the
-  longest job. `docs/INSTALLATION.md` and the watchdog's help say to keep it at three
-  heartbeats or more; the defaults leave six.
-- The README's runbook example no longer passes `-DomainId` to `Test-RmaPrerequisite`,
-  which has not taken it since 2.0.0.
 
 ## [2.0.0] - 2026-09-24
 

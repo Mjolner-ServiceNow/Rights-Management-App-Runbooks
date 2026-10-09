@@ -51,7 +51,7 @@ Examples in the reference files below are trimmed to the lesson at hand and may 
 
 ## Before you call it done
 
-After changing any `.ps1`, `.psm1` or `.psd1` file, run all three commands and show the output. Do not claim the code is finished, correct, or ready to commit without them. This matches what CI (`.github/workflows/ci.yml`) actually runs — a gate weaker than CI can go green here and still fail there. If analysis fails, fix the code — not the analyzer settings.
+After changing any `.ps1`, `.psm1` or `.psd1` file, run all of the commands below and show the output. Do not claim the code is finished, correct, or ready to commit without them. Together they are what CI (`.github/workflows/ci.yml`) runs — a gate weaker than CI can go green here and still fail there. If analysis fails, fix the code — not the analyzer settings.
 
 ```bash
 pwsh -File build/Invoke-Format.ps1 -Check
@@ -65,7 +65,21 @@ pwsh -NoProfile -Command "& ./build/Invoke-Analysis.ps1 -FailOn Error,Warning"
 pwsh -File build/Invoke-Tests.ps1
 ```
 
-In another repository, where `build/` does not exist, these three commands are replaced by that repository's own equivalents — see `references/house-rules.md`. As a generic fallback with no repository-specific settings to load:
+```bash
+pwsh -File build/Assert-Coverage.ps1 -Path ./tests/Coverage.xml -MinimumPercent 70
+```
+
+```bash
+pwsh -File build/Test-ModuleManifestIntegrity.ps1
+```
+
+When anything under `src/RMA.Runbooks` changed, CI also requires a `ModuleVersion` bump on the pull request:
+
+```bash
+pwsh -File build/Assert-ModuleVersionBump.ps1 -BaseRef origin/main
+```
+
+In another repository, where `build/` does not exist, these commands are replaced by that repository's own equivalents — see `references/house-rules.md`. As a generic fallback with no repository-specific settings to load:
 
 ```bash
 pwsh -NoProfile -Command "Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error,Warning"

@@ -7,10 +7,10 @@ ServiceNow                Azure                                  Microsoft 365
 ──────────                ─────                                  ─────────────
                           ┌──────────────────┐
 command_queue  ◀────────  │ Automation Acct  │
-  status 1 Pending        │ identity: None   │  ← must stay None
-  status 2 In Progress    └────────┬─────────┘
-  status 3 Failed                  │ RunOn: hybrid worker group
-  status 4 Completed               ▼
+  1 Pending               │ identity: None   │  ← must stay None
+  2 Work in Progress      └────────┬─────────┘
+  3 Failed                         │ RunOn: hybrid worker group
+  4 Completed                      ▼
                           ┌──────────────────┐
 results        ◀────────  │ Hybrid Worker VM │
   (write-back of what     │  + user-assigned │────── IMDS token ──┐
@@ -21,8 +21,11 @@ results        ◀────────  │ Hybrid Worker VM │
                                    ▼                     │ App registration│
                           ┌──────────────────┐           │ + federated     │
                           │    Key Vault     │           │   credential    │
-                          │ servicenow-pw    │           └────────┬────────┘
-                          │ ad-service-pw    │                    │
+                          │ servicenow-api-  │           └────────┬────────┘
+                          │   password       │                    │
+                          │ ad-service-      │                    │
+                          │   account-       │                    │
+                          │   password       │                    │
                           └──────────────────┘                    ▼
                                                          Graph · Exchange Online
 
@@ -92,11 +95,19 @@ only table they query, and what they send back is job state and the results of t
 | `DomainController` | Active Directory | Host name or IP address of a domain controller | Active Directory Setup › Domain Controller IP |
 | `AdUserName` | Active Directory | The AD service account | Active Directory Setup › AD username *(replaces Active Directory Credentials)* |
 | `AdSecretName` | Active Directory | Key Vault secret with that account's password. Defaults to `ad-service-account-password`. | Active Directory Setup › AD secret name *(replaces Active Directory Credentials)* |
+| `StaleAfterMinutes` | Watchdog | Minutes a claim may go unrenewed before the job is requeued. Defaults to 30. | No field. Set where the application schedules the watchdog. |
+| `MaxRequeue` | Watchdog | Most stranded jobs one run will requeue; above it the run refuses and fails. Defaults to 50. | No field. Set where the application schedules the watchdog. |
 
 The last column is the ServiceNow application's domain record form, as *tab › field*.
 Fields marked *new* or *replaces* are changes the application needs for this release. The
 application is maintained outside this repository, so check its own guide for the final
 field names.
+
+One value has no row yet. `Connect-RmaExchange` takes a mandatory `-Organization`, the
+tenant's `*.onmicrosoft.com` name, and Exchange Online will not connect without it. No
+runbook declares it and the domain record has no field for it, because no Exchange runbook
+has been migrated yet. Which field supplies it is an open point in
+[HANDOVER.md](../HANDOVER.md).
 
 Some fields on the form do not become parameters:
 
@@ -186,43 +197,112 @@ ServiceNow goes on showing the last result it received. A result that could not 
 fails the job, as a failed check does, so the Automation job's own status always says
 whether the ServiceNow view is current.
 
+**Delivery does not work yet.** On the test instance the endpoint fails with HTTP 500 inside
+its own resource script, before anything is stored
+([#23](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/23)). The
+fault is on the ServiceNow side. Until it is fixed every run fails at the report, even when
+all the checks pass, and the job output is the only record.
+
 ## Job lifecycle
 
 ```
    Pending (1)
-       │  Get-RmaPendingJob            oldest first, limit 1
-       ▼
+       │  Get-RmaPendingJob            oldest first, up to BatchSize (default 20),
+       ▼                               walked from a random offset
    ┌────────────────────────────────────────────┐
    │ Request-RmaJobClaim                        │
-   │   PATCH ...?sysparm_query=status%3D1       │  conditional: only a still-Pending row
-   │   { status: 2, worker_id, claimed_at }     │
+   │   PATCH ...?sysparm_query=status%3D1       │  meant to touch only a still-Pending row;
+   │   { status: 2, worker_id, claimed_at }     │  ServiceNow ignores the filter (see below)
    │   won = (response.worker_id == mine)       │
    └────────────┬───────────────────┬───────────┘
           won   │                   │  lost
-                ▼                   └──▶ skip, poll again
+                ▼                   └──▶ skip, try the next row
    Work in Progress (2)
                 │  try { body } catch { record } finally { set terminal state }
+                │  heartbeat renews claimed_at every HeartbeatMinutes while the body runs
                 ▼
    Completed (4)  or  Failed (3)
 
-   Worker dies before finally ──▶ stuck at (2)
-                                    │  Invoke-RmaQueueWatchdog (ServiceNow, on a cadence)
+   Worker dies, or the terminal write fails ──▶ stuck at (2), claimed_at stops moving
+                                    │  Invoke-RmaQueueWatchdog (ServiceNow, on a cadence):
+                                    │  claimed_at older than StaleAfterMinutes
                                     ▼
                                  Pending (1)
 ```
 
-The claim is the property that makes everything else safe. Without it, running two workers
-doubles the duplicate-execution rate; with it, workers can be added without risking
-duplicate execution.
+The claim is the property that is meant to make everything else safe. Without it, running
+two workers doubles the duplicate-execution rate; with it, workers could be added without
+risking duplicate execution.
 
 Safe is not the same as useful. The claim makes a second worker *correct*; the batched poll
 described under **Scaling** is what makes it *faster*.
 
-> **Verify before relying on this.** Correctness depends on the filtered `PATCH` being a
-> single server-side compare-and-set on your ServiceNow instance. Confirm it in the
-> technical workshop. If the instance does not honour it, replace the call inside
-> `Request-RmaJobClaim` with a Scripted REST endpoint that does the compare-and-set server
-> side. No other code changes.
+> **The claim is not atomic today.** It depends on the filtered `PATCH` being a single
+> server-side compare-and-set, and it is not one: on 2026-09-30, on a ServiceNow test
+> instance, the Table API was found to ignore `sysparm_query` on a single-record `PATCH`.
+> The `PATCH` succeeds on any row — it won a Completed row and a row held by another worker
+> — and the read-back proves only that this worker wrote last. Two executions that read the
+> same Pending row can therefore both run it.
+>
+> The shape of the claim is still right; the server side has to honour it. The fix is a
+> Scripted REST endpoint in the ServiceNow application that does the compare-and-set server
+> side, called from inside `Request-RmaJobClaim`. Its signature does not change, and no
+> runbook changes. Until then, keep command bodies idempotent, as `Create-EntraUser` is. The
+> endpoint is an open point in [HANDOVER.md](../HANDOVER.md).
+
+### The heartbeat
+
+A full directory import runs for hours, longer than the watchdog's threshold. Without
+renewal the watchdog would requeue it while it was still running, and a second worker
+would start the same import.
+
+`Invoke-RmaQueueLoop` starts one background runspace per run, on the first claim, so a run
+that finds the queue empty never pays for it. Every `HeartbeatMinutes` (default 5) it calls
+`Update-RmaJobHeartbeat` for the job that is running, which writes a new `claimed_at` with a
+`PATCH` filtered on `status=2^worker_id=<mine>` and checks the record that comes back. A
+job that ends inside one interval, which is nearly all of them, is never renewed. Runbook
+bodies never call it themselves.
+
+What the loop logs when a job ends:
+
+- **Claim lost** (Error): a renewal found the job no longer `status=2` with this worker's
+  id. The watchdog requeued it while it ran, so another worker may have run it as well. The
+  terminal state is still written.
+- **Some renewals failed** (Warning): requests failed and were retried after a minute. The
+  claim was not known to be lost.
+- **Thread not running** (Error), reported at the *start* of a job: the heartbeat thread
+  has died, so a long job will be requeued by the watchdog.
+
+The renewal's filter has the same limitation as the claim's, and the read-back is what
+makes it trustworthy. The watchdog keys on `claimed_at` older than `StaleAfterMinutes`
+(default 30). Keep **`StaleAfterMinutes` at three times `HeartbeatMinutes` or more**, so
+two failed renewals in a row do not requeue a job that is still running.
+
+### The worker id
+
+`worker_id` must be unique per execution, not per machine: the claim's read-back and the
+heartbeat's filter both compare against it, and two runs that share an id both believe
+they hold the same job. `Get-RmaWorkerId` builds it as `<machine>/<suffix>`, using the
+first of these that is available:
+
+1. `<jobId>`, the Automation job id from `$PSPrivateMetadata`. Older sandboxes set it.
+2. `sandbox-<AUTOMATION_ASSET_SANDBOX_ID>`. This is the real case: a Hybrid Worker job on a
+   PowerShell 7.x runtime environment has no `$PSPrivateMetadata`, and the environment
+   variable of that name holds the literal text `System.Collections.Hashtable`. The
+   sandbox id is a GUID unique per job.
+3. `process-<pid>-<start time>`, anywhere else: a local run, a test, a dev run over SSH.
+
+Before e4e8441 the fallback was `local`, so every real job on a worker shared the id
+`<machine>/local`.
+
+### ServiceNow Date/Time values
+
+Any Date/Time written to ServiceNow — `claimed_at`, the health result's `checked_at` — must
+be UTC in the internal format, `yyyy-MM-dd HH:mm:ss`. The Table API accepts ISO 8601
+without complaint and stores midnight of its date. That was found on a real instance:
+every `claimed_at` read as 00:00:00, so the heartbeat renewed nothing and the watchdog saw
+every running job as stale. `Get-RmaGlideDateTime` formats it inside the module;
+`Test-RmaHealth` inlines the same format, because a runbook cannot call a private function.
 
 ## Module distribution
 
@@ -231,21 +311,22 @@ into an Automation Account are made available to jobs running in an Azure sandbo
 resolves modules from its own `PSModulePath`, and nothing pushes them there.
 
 Everything the runbooks need is therefore installed on the worker by
-`scripts/Initialize-RmaWorker.ps1`: the Graph and Exchange modules at pinned versions, and
+`scripts/Initialize-RmaWorker.ps1`: the `RSAT-AD-PowerShell` Windows feature for the
+`ActiveDirectory` module, the Graph and Exchange modules at pinned versions, and
 `RMA.Runbooks` itself.
 
 ```
-build/New-RmaModulePackage.ps1   →  RMA.Runbooks-1.0.0.zip
+build/New-RmaModulePackage.ps1   →  RMA.Runbooks-<version>.zip
                                           │
                     GitHub release asset  │  (or a repo checkout, or a file share)
                                           ▼
               scripts/Initialize-RmaWorker.ps1  on each worker
                                           │
                                           ▼
-        C:\Program Files\PowerShell\Modules\RMA.Runbooks\1.0.0\
+        C:\Program Files\PowerShell\Modules\RMA.Runbooks\<version>\
                                           │
                                           ▼
-                 #Requires -Modules @{ ...; RequiredVersion = '1.0.0' }
+                 #Requires -Modules @{ ...; RequiredVersion = '<version>' }
 ```
 
 Two consequences worth understanding:
@@ -280,11 +361,16 @@ tune and arrival rate is set by whatever the customer's users are doing. Three l
 | Raise `BatchSize` | Workers are losing claims to each other | One larger read per poll |
 | Add a Hybrid Worker to the group | Single worker is saturated | One VM |
 
+`MaxJobs` (default 500), `MaxMinutes` (default 45) and `BatchSize` (default 20) are
+parameters of `Invoke-RmaQueueLoop`, and no runbook exposes them. Raising one is a code
+change to the runbook's call to it, deployed like any other runbook change.
+
 Concurrency is therefore not a number anyone configures. A burst of requests starts several
 runbook jobs that overlap on the same queue, and a quiet hour starts none.
 
-Adding workers is safe **because of the claim**. It is *productive* because of the batched
-poll, which is a separate mechanism and worth understanding before the fleet grows.
+Adding workers is meant to be safe **because of the claim**, which today it is not; see
+*Job lifecycle*. It is *productive* because of the batched poll, which is a separate
+mechanism and worth understanding before the fleet grows.
 
 A poll fetches up to `BatchSize` rows and the worker walks that window from a random
 offset. Fetching a single row instead makes every worker contend for the same head of the
@@ -308,16 +394,16 @@ queue intact and the next run continues.
 
 | Failure | Covered by |
 |---|---|
-| Two runs claim the same job | Conditional claim; verified by unit test |
+| Two runs claim the same job | **Not covered yet.** The conditional claim is unit-tested, but ServiceNow ignores its filter; needs a server-side compare-and-set |
 | Worker dies mid-job | `try/finally` pre-set to Failed, then the watchdog |
 | Long job outlives the watchdog threshold | Heartbeat thread renews `claimed_at` every `HeartbeatMinutes` |
 | Terminal state write fails | Logged as Error, loop continues, watchdog requeues |
-| ServiceNow transient 5xx | `Invoke-RmaRestMethod` retry with backoff and jitter |
-| Token expires mid-run | `Get-RmaAccessToken` re-mints inside a five-minute margin |
+| ServiceNow transient 5xx | `Invoke-RmaRestMethod` retry with backoff and jitter. **Broken today:** the retry overwrites the request headers ([#24](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/24)) |
+| Token expires mid-run | Partly. `Get-RmaAccessToken` re-mints inside a five-minute margin for any call that asks it for a token, such as a Key Vault read. Graph and Exchange are connected once with a static token (`Connect-MgGraph -AccessToken`, `Connect-ExchangeOnline -AccessToken`) and nothing reconnects, so a run longer than the token lifetime (`MaxMinutes` allows up to 170) can fail part-way |
 | Payload action mismatch | Job explicitly Failed, never silently skipped |
 | Runaway loop | `MaxJobs` and `MaxMinutes`; the run ends with a Warning naming the limit |
 | Mass stranding | Watchdog refuses to act above `MaxRequeue` and raises |
-| Secret in a log | `Write-RmaLog` redacts; `RmaAvoidUnredactedObjectLogging` blocks the pattern |
+| Secret in a log | `Write-RmaLog` redacts a fixed list of field names; `RmaAvoidUnredactedObjectLogging` blocks the pattern. See [SECURITY.md](../SECURITY.md) for what the list misses |
 | Worker disk exhaustion | Pinned modules, no runtime install, analyzer rule, prune sweep |
 
 ## Infrastructure

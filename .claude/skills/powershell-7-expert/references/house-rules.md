@@ -7,7 +7,15 @@ in `src/RMA.Runbooks/RMA.Runbooks.psd1`).
 
 ## The mandatory gate's five repository-specific analyzer rules
 
-`build/Invoke-Analysis.ps1` enforces five repository-specific rules — `Measure-RmaEmptyCatchBlock`, `Measure-RmaRuntimeModuleInstall`, `Measure-RmaUnpinnedModuleInstall`, `Measure-RmaScriptScopeReturn`, `Measure-RmaUnredactedObjectLogging` — defined in `build/rules/RmaRules.psm1`. Each is explained in its own section below.
+`build/Invoke-Analysis.ps1` enforces five repository-specific rules, defined in `build/rules/RmaRules.psm1`. Each is explained in its own section below. A finding, and a `SuppressMessageAttribute` that silences one, uses the rule name, not the function name:
+
+| Rule name (findings, suppressions) | Function in `RmaRules.psm1` |
+| --- | --- |
+| `RmaAvoidEmptyCatchBlock` | `Measure-RmaEmptyCatchBlock` |
+| `RmaAvoidRuntimeModuleInstall` | `Measure-RmaRuntimeModuleInstall` |
+| `RmaRequirePinnedModuleVersion` | `Measure-RmaUnpinnedModuleInstall` |
+| `RmaAvoidScriptScopeReturn` | `Measure-RmaScriptScopeReturn` |
+| `RmaAvoidUnredactedObjectLogging` | `Measure-RmaUnredactedObjectLogging` |
 
 ## Validating this skill's own examples
 
@@ -24,9 +32,14 @@ pwsh -File .claude/skills/powershell-7-expert/tools/Test-SkillExample.ps1 -Path 
 Call `Write-RmaLog -Level <Debug|Information|Warning|Error> -Message <string> -Data <hashtable>`.
 Pass values as named fields in `-Data`; each one is routed through `ConvertTo-RmaSafeLogValue`
 before it reaches the log line. Passing a whole object to `Write-Output`, `Write-Host` or
-`Write-Information` instead skips that redaction — `Measure-RmaUnredactedObjectLogging` flags
-a bare `$Payload`, `$Credential`, `$Secret`, `$ParameterObject` or `$JobQueueItem` passed to any
-of those three cmdlets. `PSAvoidUsingWriteHost` is excluded repository-wide, so the analyzer
+`Write-Information` instead skips that redaction. `RmaAvoidUnredactedObjectLogging` flags a
+bare variable passed to any of those three cmdlets when its name matches the regex
+`Payload|Parameters|^p$|Job|Json|Credential|Secret|Token|Response|Assertion`, ignoring case — so
+`$Payload`, `$parameters`, `$p`, `$job`, `$JobQueueItem` and `$response` are caught. It is a
+name match, not a type check: `$ParameterObject`, the name the original disclosure used,
+does **not** match (`Parameters` needs the `s`). That gap is known and not yet fixed; do not
+rely on the rule to catch a payload under any other name. `PSAvoidUsingWriteHost` is
+excluded repository-wide, so the analyzer
 will not stop `Write-Host` on its own; use `Write-RmaLog` anyway so the record carries a level,
 a correlation id and a timestamp.
 
@@ -45,7 +58,13 @@ Write-RmaLog -Level Information -Message 'Job completed' -Data @{ jobId = $Paylo
 Never call `Invoke-RestMethod` or `Invoke-WebRequest` directly against ServiceNow or Graph.
 `Invoke-RmaRestMethod` (`src/RMA.Runbooks/Public/Invoke-RmaRestMethod.ps1`) wraps them with
 bounded retry, exponential backoff and jitter, retrying only 408, 429, 5xx and transport
-failures — a bare 4xx fails immediately instead of burning the job's time budget. It is the
+failures — a bare 4xx fails immediately instead of burning the job's time budget. **The
+retry is broken today**
+([#24](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/24)):
+the retry branch assigns the response headers to `$headers`, which is the same variable as
+the `$Headers` parameter, so a 408/429/5xx throws a `System.Object[]` to `Hashtable`
+conversion error instead of retrying, and a transport failure is retried without the
+request headers. Still call through this function; the fix belongs inside it. It is the
 repository-specific wrapper around the general `Invoke-RestMethod` patterns in
 `references/rest-api.md`; use those patterns for building the URI, body and headers, then make
 the call through this function.

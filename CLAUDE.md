@@ -14,6 +14,26 @@ for the review rules. [HANDOVER.md](HANDOVER.md) tracks the open points and
 [docs/DECISIONS.md](docs/DECISIONS.md) records why things are as they are. This file covers
 what those leave implicit.
 
+## All work is an issue on the board
+
+Every piece of work, code or not, is a GitHub issue with exactly one owner (its assignee),
+and all project tracking goes through the
+[RMA 2.0 board](https://github.com/orgs/Mjolner-ServiceNow/projects/1). Invoke the
+`track-work` skill in `.claude/skills/` at the start of every task; it has the `gh`
+commands. The rules:
+
+- Find the issue before changing anything. If there is none, create it, assigned to the
+  user you work for, and put it on the board with Status and Priority set.
+- Set it to `In progress` when you start, on a branch named `<type>/<issue>-<slug>`. The
+  pull request body starts with `Closes #<issue>`.
+- Record findings, decisions and where you stopped as comments on the issue. The next
+  session starts from the issue, not from this conversation.
+- Something out of scope becomes a new issue, not part of the current pull request.
+- Waiting on the ServiceNow team is `Blocked: ServiceNow` plus the `servicenow` label.
+
+Issues are public: never name a customer or paste a real identifier into one. The process
+for people is *Tracking work* in [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).
+
 ## Commands
 
 The gate, in the order CI runs it. Run all of it before claiming a change is done:

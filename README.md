@@ -22,6 +22,7 @@ See [`docs/AZURE-RESOURCES.md`](docs/AZURE-RESOURCES.md) for what to create.
 | **Operations** | [`docs/RUNBOOK-OPERATIONS.md`](docs/RUNBOOK-OPERATIONS.md) |
 | **Handover** | [`HANDOVER.md`](HANDOVER.md) — state of the work and the open points |
 | **Decisions** | [`docs/DECISIONS.md`](docs/DECISIONS.md) — why things are as they are |
+| **Work tracking** | [RMA 2.0 board](https://github.com/orgs/Mjolner-ServiceNow/projects/1) — every piece of work is an issue with an owner; see *Tracking work* in [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) |
 
 ## Why this repository exists
 

@@ -132,6 +132,8 @@ where the code changed after the text was written. To keep it that way:
   `CHANGELOG.md` in the same pull request.
 - A decision or a finding about ServiceNow or Azure goes into
   [docs/DECISIONS.md](docs/DECISIONS.md) when it is made, not into someone's notes.
-- Open work goes into an issue, not into this file's prose.
+- All work is an issue with one owner, on the
+  [RMA 2.0 board](https://github.com/orgs/Mjolner-ServiceNow/projects/1), as *Tracking
+  work* in [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) describes. Not this file's prose.
 - Before publishing a release, check the docs against the code. Ask Claude Code to audit
   the documentation against the source; that is how this file started.

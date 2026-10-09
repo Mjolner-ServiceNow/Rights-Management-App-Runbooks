@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **All work is tracked as a GitHub issue with one owner, on the RMA 2.0 project board.**
+  `docs/CONTRIBUTING.md` (*Tracking work*) describes the process: the board's columns,
+  what each priority means, branch names and `Closes #<n>`. `CLAUDE.md` binds every Claude
+  Code session to it, and the new `track-work` skill in `.claude/skills/` gives the exact
+  `gh` commands. A pull request template asks for the issue it closes.
 - **Long jobs renew their claim, so the watchdog no longer requeues them while they run.**
   The watchdog requeues any job whose `claimed_at` is older than `StaleAfterMinutes` (30
   by default). A full directory import at the 500,000-user scale runs for hours, and

@@ -2,7 +2,7 @@
   "Worker": {
     "ResourceGroup": "rg-rma-workloads-test",
     "BastionName": "bas-rma-test",
-    "VmName": "vm-rma-hw-test01",
+    "VmName": "vm-rma-hw1-test",
     "UserName": "rmaadmin",
     "KeyFilePath": "~/.ssh/rma-worker",
     "KnownHostsFile": "~/.ssh/known_hosts_rma",

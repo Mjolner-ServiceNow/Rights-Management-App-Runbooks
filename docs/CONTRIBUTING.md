@@ -10,9 +10,13 @@
 ./build/Test-ModuleManifestIntegrity.ps1
 ```
 
-CI runs all five and will not merge without them, plus a check that `ModuleVersion` was
+CI runs all five, the formatter in `-Check` mode, plus a check that `ModuleVersion` was
 bumped when the module changed. CI has no Azure access, so it runs on forks and
 first-time contributors without exposing anything.
+
+Nothing stops a red pull request from merging. The `main` ruleset requires no status checks
+and no approvals, so a passing CI run is a convention, not a gate. Do not merge on red.
+Making it a gate is an open point in [HANDOVER.md](../HANDOVER.md).
 
 From a shell rather than inside a `pwsh` session, use the `-Command` form for
 `Invoke-Analysis.ps1`: `pwsh -File` passes `-FailOn Error,Warning` as one literal string.
@@ -155,5 +159,5 @@ is a review responsibility.
 
 ## Changing the shared module
 
-Add a test first. The module is the blast radius for all 63 runbooks, and the coverage
-floor exists to keep it that way.
+Add a test first. Every runbook runs on the module, so a defect in it reaches all of them,
+and the coverage floor exists to keep it that way.

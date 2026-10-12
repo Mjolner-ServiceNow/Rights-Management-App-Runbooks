@@ -263,7 +263,12 @@ Describe 'Connect-RmaGraph' -Tag 'Unit', 'Security' {
         }
     }
 
-    It 'tells you which module to declare when it is missing' -Skip:([bool](Get-Command Connect-MgGraph -ErrorAction SilentlyContinue)) {
+    It 'tells you which module to declare when it is missing' {
+        # Mocked rather than skipped when the module is installed: the test then runs the
+        # same on every machine, and a stub another test file left behind cannot change it.
+        Mock -ModuleName RMA.Runbooks Get-Command { $null } -ParameterFilter { $Name -eq 'Connect-MgGraph' }
+        Mock -ModuleName RMA.Runbooks Get-RmaAccessToken { throw 'must not be reached' }
+
         { Connect-RmaGraph -Context $script:GraphContext -TenantId $script:TenantId -ApplicationId $script:AppId } |
         Should -Throw '*Microsoft.Graph.Authentication is not available*'
     }
@@ -278,7 +283,7 @@ Describe 'Connect-RmaGraph' -Tag 'Unit', 'Security' {
                 param($AccessToken, [switch] $NoWelcome)
             }
         }
-        AfterAll { Remove-Item function:global:Connect-MgGraph -ErrorAction SilentlyContinue }
+        AfterAll { Remove-Item -Path Function:\Connect-MgGraph -ErrorAction SilentlyContinue }
 
         BeforeEach {
             Mock -ModuleName RMA.Runbooks Write-RmaLog {}
@@ -326,7 +331,12 @@ Describe 'Connect-RmaExchange' -Tag 'Unit', 'Security' {
         }
     }
 
-    It 'tells you which module to declare when it is missing' -Skip:([bool](Get-Command Connect-ExchangeOnline -ErrorAction SilentlyContinue)) {
+    It 'tells you which module to declare when it is missing' {
+        # Mocked rather than skipped when the module is installed: the test then runs the
+        # same on every machine, and a stub another test file left behind cannot change it.
+        Mock -ModuleName RMA.Runbooks Get-Command { $null } -ParameterFilter { $Name -eq 'Connect-ExchangeOnline' }
+        Mock -ModuleName RMA.Runbooks Get-RmaAccessToken { throw 'must not be reached' }
+
         { Connect-RmaExchange -Context $script:ExoContext -TenantId $script:TenantId -ApplicationId $script:AppId -Organization 'contoso.onmicrosoft.com' } |
         Should -Throw '*ExchangeOnlineManagement is not available*'
     }
@@ -339,7 +349,7 @@ Describe 'Connect-RmaExchange' -Tag 'Unit', 'Security' {
                 param($AccessToken, $Organization, [switch] $ShowBanner)
             }
         }
-        AfterAll { Remove-Item function:global:Connect-ExchangeOnline -ErrorAction SilentlyContinue }
+        AfterAll { Remove-Item -Path Function:\Connect-ExchangeOnline -ErrorAction SilentlyContinue }
 
         BeforeEach {
             Mock -ModuleName RMA.Runbooks Write-RmaLog {}

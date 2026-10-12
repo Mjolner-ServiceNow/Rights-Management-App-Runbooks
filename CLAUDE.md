@@ -103,6 +103,10 @@ wraps the body and owns the parts that went wrong in the library this replaces:
   the watchdog requeues it.
 - A background heartbeat renews `claimed_at` while a job runs, so the watchdog leaves long
   jobs alone. Runbook bodies never call `Update-RmaJobHeartbeat`.
+- Graph and Exchange sessions keep the token they were opened with. The loop calls
+  `Update-RmaConnection` before every job, which reconnects any session close to expiry.
+  A body that itself runs longer than a token lives, such as a full import, calls
+  `Update-RmaConnection` between pages; that is the one renewal a body does.
 - Correlation flows from the loop as `$script:RmaCorrelationId`, set to the ServiceNow job
   `sys_id` and cleared in `finally`. Do not invent your own.
 

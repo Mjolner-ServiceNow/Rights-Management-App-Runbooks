@@ -50,7 +50,7 @@ BeforeAll {
 AfterAll {
     $env:PSModulePath = $script:SavedModulePath
     $PSStyle.OutputRendering = $script:SavedRendering
-    if ($script:StubbedAd) { Remove-Item function:global:Get-ADDomain -ErrorAction SilentlyContinue }
+    if ($script:StubbedAd) { Remove-Item -Path Function:\Get-ADDomain -ErrorAction SilentlyContinue }
 }
 
 Describe 'Test-RmaHealth parameter binding' -Tag 'Unit' {

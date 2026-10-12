@@ -18,3 +18,6 @@ foreach ($scope in 'Private', 'Public') {
 # Module-scoped state. Deliberately not exported.
 $script:RmaCorrelationId = $null
 $script:RmaTokenCache    = @{}
+# Graph and Exchange connections, with the expiry of the token each was made with.
+# Update-RmaConnection renews them; see Connect-RmaGraph.
+$script:RmaSessions      = [ordered]@{}

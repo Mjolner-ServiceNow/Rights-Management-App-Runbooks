@@ -100,18 +100,19 @@ claims a ServiceNow view is current when it is not.
 **At present every run fails at the report.** The application's health endpoint answers
 HTTP 500 from its own resource script
 ([#23](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/23)).
-Because of the retry bug below, the reason shows as the `System.Object[]` conversion error
-rather than as the 500. Read the per-check lines above it for the actual health.
+From module 2.1.1 the reason shows as `HTTP 500` after the retries; before it, as the
+`System.Object[]` conversion error below. Read the per-check lines above it for the actual
+health.
 
 ### `Cannot convert "System.Object[]" … to type "System.Collections.Hashtable"`
-A known bug, not a fault in the call that failed
-([#24](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/24)).
-On a transient failure, `Invoke-RmaRestMethod` overwrites the request's `$Headers` with the
-response's headers before retrying. An HTTP 408, 429 or 5xx therefore surfaces as this
-conversion error instead of being retried, with the status code and the service's message
-lost. A transport failure is retried without the `Authorization` header and comes back as
-a 401. Every ServiceNow call, Key Vault read and federated token exchange goes through this
-function, so until #24 is fixed treat this message as "a request failed transiently".
+The worker runs a module older than 2.1.1. It is a bug in those versions, not a fault in
+the call that failed
+([#24](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/24)):
+`Invoke-RmaRestMethod` overwrote the request's `$Headers` with the response's before
+retrying, so an HTTP 408, 429 or 5xx surfaced as this conversion error, with the status
+code and the service's message lost, and a transport failure was retried without
+`Authorization` and came back as a 401. Treat it as "a request failed transiently", and
+install 2.1.1 or later on the worker.
 
 ### A run stops at a safety limit: `max-jobs` or `max-minutes`
 Runs are ending with work still queued. Not urgent once, a capacity problem if sustained.

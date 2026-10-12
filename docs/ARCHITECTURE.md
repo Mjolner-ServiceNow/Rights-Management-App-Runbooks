@@ -398,7 +398,7 @@ queue intact and the next run continues.
 | Worker dies mid-job | `try/finally` pre-set to Failed, then the watchdog |
 | Long job outlives the watchdog threshold | Heartbeat thread renews `claimed_at` every `HeartbeatMinutes` |
 | Terminal state write fails | Logged as Error, loop continues, watchdog requeues |
-| ServiceNow transient 5xx | `Invoke-RmaRestMethod` retry with backoff and jitter. **Broken today:** the retry overwrites the request headers ([#24](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/24)) |
+| ServiceNow transient 5xx, 408 or 429 | `Invoke-RmaRestMethod` retry with backoff and jitter, honouring `Retry-After`. Working from module 2.1.1 ([#24](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/24)) |
 | Token expires mid-run | Partly. `Get-RmaAccessToken` re-mints inside a five-minute margin for any call that asks it for a token, such as a Key Vault read. Graph and Exchange are connected once with a static token (`Connect-MgGraph -AccessToken`, `Connect-ExchangeOnline -AccessToken`) and nothing reconnects, so a run longer than the token lifetime (`MaxMinutes` allows up to 170) can fail part-way |
 | Payload action mismatch | Job explicitly Failed, never silently skipped |
 | Runaway loop | `MaxJobs` and `MaxMinutes`; the run ends with a Warning naming the limit |

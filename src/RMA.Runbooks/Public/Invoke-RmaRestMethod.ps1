@@ -10,7 +10,8 @@ function Invoke-RmaRestMethod {
         failures. A 4xx other than 408/429 is a caller error and fails immediately, because
         retrying it just delays the inevitable and burns the job's time budget.
 
-        Honours Retry-After when the service supplies it.
+        Honours Retry-After when the service supplies it, as seconds or as an HTTP date,
+        and never retries before it. Every retry sends the caller's own -Headers again.
     .PARAMETER MaxAttempts
         Total attempts including the first. 1 disables retry.
     .EXAMPLE
@@ -76,19 +77,33 @@ function Invoke-RmaRestMethod {
                 throw "$Method $Uri failed after $attempt attempt(s) ($label): $($_.Exception.Message)"
             }
 
-            # Prefer the server's own guidance when present.
-            $delayMs = $BaseDelayMs * [math]::Pow(2, $attempt - 1)
-            $headers = Get-RmaProperty -InputObject $response -Name 'Headers'
-            if ($headers) {
-                $retryAfter = $headers | Where-Object { (Get-RmaProperty -InputObject $_ -Name 'Key') -ieq 'Retry-After' } |
-                Select-Object -First 1
-                $seconds = 0
-                if ($retryAfter -and [int]::TryParse("$((Get-RmaProperty -InputObject $retryAfter -Name 'Value') | Select-Object -First 1)", [ref] $seconds) -and $seconds -gt 0) {
-                    $delayMs = $seconds * 1000
-                }
+            # Prefer the server's own guidance when present. Never name this variable
+            # $headers: names are case-insensitive, so it would overwrite the -Headers
+            # parameter and send the retry without Authorization (#24). And do not read it
+            # through Get-RmaProperty or as the value of an if expression: both unroll the
+            # enumerable HttpResponseHeaders into key/value pairs with no RetryAfter.
+            $retryAfterMs = 0
+            $responseHeaders = $null
+            if ($null -ne $response -and $null -ne $response.PSObject.Properties['Headers']) {
+                $responseHeaders = $response.PSObject.Properties['Headers'].Value
             }
-            # Jitter prevents a fleet of workers retrying in lockstep.
-            $delayMs = [int]($delayMs * (0.75 + (Get-Random -Minimum 0.0 -Maximum 0.5)))
+            $retryAfter = Get-RmaProperty -InputObject $responseHeaders -Name 'RetryAfter'
+            $delta = Get-RmaProperty -InputObject $retryAfter -Name 'Delta'
+            $date = Get-RmaProperty -InputObject $retryAfter -Name 'Date'
+            if ($null -ne $delta) {
+                $retryAfterMs = $delta.TotalMilliseconds
+            } elseif ($null -ne $date) {
+                $retryAfterMs = ($date - [System.DateTimeOffset]::UtcNow).TotalMilliseconds
+            }
+
+            # Jitter prevents a fleet of workers retrying in lockstep. It may shorten our
+            # own backoff, but only ever lengthens the server's delay: a retry before
+            # Retry-After is just another 429.
+            $delayMs = if ($retryAfterMs -gt 0) {
+                [int]($retryAfterMs * (1 + (Get-Random -Minimum 0.0 -Maximum 0.25)))
+            } else {
+                [int]($BaseDelayMs * [math]::Pow(2, $attempt - 1) * (0.75 + (Get-Random -Minimum 0.0 -Maximum 0.5)))
+            }
 
             Write-RmaLog -Level Warning -Message 'Transient request failure, retrying' -Data @{
                 uri = $Uri; method = $Method; attempt = $attempt; maxAttempts = $MaxAttempts

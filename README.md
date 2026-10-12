@@ -74,7 +74,7 @@ Every runbook is the same setup plus a body. Copy
 view of it:
 
 ```powershell
-#Requires -Modules @{ ModuleName = 'RMA.Runbooks'; RequiredVersion = '2.1.0' }
+#Requires -Modules @{ ModuleName = 'RMA.Runbooks'; RequiredVersion = '2.1.1' }
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest

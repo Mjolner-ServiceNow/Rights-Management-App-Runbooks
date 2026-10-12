@@ -53,6 +53,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `rma-worker.local.json`, and `rma-worker.example.json` shows the shape.
 
 ### Fixed
+- **`Invoke-RmaRestMethod` retries again, which it had never done.** Its retry branch read
+  the response's headers into `$headers`, the same variable as its `-Headers` parameter,
+  because PowerShell names are case-insensitive. An HTTP 408, 429 or 5xx therefore failed
+  with `Cannot convert "System.Object[]" ... to type "System.Collections.Hashtable"`
+  instead of being retried, losing the status and the service's message, and a transport
+  failure was retried without `Authorization` and came back as a 401. Every ServiceNow
+  call, Key Vault read and federated token exchange goes through the function. `Retry-After`
+  is now read from the real response, as seconds or as an HTTP date, and jitter only ever
+  lengthens it. The old tests threw a fake response without headers; the new ones use a
+  real `HttpResponseMessage`
+  ([#24](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/24)).
+  Module 2.1.1, which replaces the unpublished 2.1.0.
 - **The watchdog threw the first time it found a stranded job.** `Invoke-RmaQueueWatchdog`
   read the previous worker id with `Get-RmaProperty`, which is private to the module and
   not visible to a runbook. A scan that found nothing never reached the call, and no test
@@ -103,9 +115,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Every `Test-RmaHealth` job fails at its last step, because the ServiceNow health
   endpoint answers HTTP 500
   ([#23](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/23)).
-- `Invoke-RmaRestMethod` overwrites the request headers with the response's on a retry, so
-  no retry has ever worked: a 429 or 5xx surfaces as a type conversion error
-  ([#24](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/24)).
 
 ## [2.0.1] - 2026-09-24
 

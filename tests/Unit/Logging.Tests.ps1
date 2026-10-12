@@ -159,3 +159,93 @@ Describe 'Invoke-RmaRestMethod retry behaviour' -Tag 'Unit', 'Reliability' {
         Should -Invoke -ModuleName RMA.Runbooks Invoke-RestMethod -Times 2 -Exactly
     }
 }
+
+Describe 'Invoke-RmaRestMethod retry against a real HTTP response' -Tag 'Unit', 'Reliability' {
+    # The tests above throw a [pscustomobject] with only StatusCode. A real failure carries
+    # an HttpResponseMessage whose Headers are never empty, and the retry branch once
+    # assigned them to $headers, which is the -Headers parameter: every 5xx became a type
+    # conversion error and every transport retry went out without Authorization (#24).
+
+    BeforeAll {
+        function New-HttpFailure {
+            param([int] $Status, [System.Net.Http.Headers.RetryConditionHeaderValue] $RetryAfter)
+            $response = [System.Net.Http.HttpResponseMessage]::new([System.Net.HttpStatusCode] $Status)
+            $response.Headers.Add('X-Test', '1')
+            if ($RetryAfter) { $response.Headers.RetryAfter = $RetryAfter }
+            [Microsoft.PowerShell.Commands.HttpResponseException]::new(
+                "Response status code does not indicate success: $Status", $response)
+        }
+    }
+
+    BeforeEach {
+        Mock -ModuleName RMA.Runbooks Write-RmaLog {}
+        $script:Sent = [System.Collections.Generic.List[object]]::new()
+        $script:Slept = [System.Collections.Generic.List[int]]::new()
+        Mock -ModuleName RMA.Runbooks Start-Sleep { $script:Slept.Add($Milliseconds) }
+    }
+
+    It 'retries a 500 that carries response headers and reports the status' {
+        Mock -ModuleName RMA.Runbooks Invoke-RestMethod { throw (New-HttpFailure -Status 500) }
+
+        { Invoke-RmaRestMethod -Uri 'https://contoso.service-now.com/x' -Method PATCH -Headers @{ a = 1 } -MaxAttempts 2 } |
+        Should -Throw '*failed after 2 attempt(s) (HTTP 500)*'
+        Should -Invoke -ModuleName RMA.Runbooks Invoke-RestMethod -Times 2 -Exactly
+    }
+
+    It 'sends the same headers on a retry after an HTTP 503' {
+        Mock -ModuleName RMA.Runbooks Invoke-RestMethod {
+            $script:Sent.Add($Headers)
+            if ($script:Sent.Count -eq 1) { throw (New-HttpFailure -Status 503) }
+            [pscustomobject]@{ ok = $true }
+        }
+
+        (Invoke-RmaRestMethod -Uri 'https://contoso.service-now.com/x' -Headers @{ Authorization = 'Basic x' } -MaxAttempts 2).ok |
+        Should -BeTrue
+        $script:Sent[1].Authorization | Should -Be 'Basic x'
+    }
+
+    It 'sends the same headers on a retry after a transport failure' {
+        Mock -ModuleName RMA.Runbooks Invoke-RestMethod {
+            $script:Sent.Add($Headers)
+            if ($script:Sent.Count -eq 1) { throw [System.Net.Http.HttpRequestException]::new('No such host is known.') }
+            [pscustomobject]@{ ok = $true }
+        }
+
+        $null = Invoke-RmaRestMethod -Uri 'https://contoso.service-now.com/x' -Headers @{ Authorization = 'Basic x' } -MaxAttempts 2
+        $script:Sent[1].Authorization | Should -Be 'Basic x'
+    }
+
+    It 'waits at least the Retry-After seconds a 429 asks for' {
+        Mock -ModuleName RMA.Runbooks Invoke-RestMethod {
+            throw (New-HttpFailure -Status 429 -RetryAfter ([System.Net.Http.Headers.RetryConditionHeaderValue]::new([timespan]::FromSeconds(5))))
+        }
+
+        { Invoke-RmaRestMethod -Uri 'https://contoso.service-now.com/x' -MaxAttempts 2 } | Should -Throw '*(HTTP 429)*'
+        # Jitter may lengthen the server's delay, never shorten it: retrying early earns another 429.
+        $script:Slept[0] | Should -BeGreaterOrEqual 5000
+        $script:Slept[0] | Should -BeLessOrEqual 6250
+    }
+
+    It 'waits until a Retry-After date' {
+        Mock -ModuleName RMA.Runbooks Invoke-RestMethod {
+            $when = [System.DateTimeOffset]::UtcNow.AddSeconds(10)
+            throw (New-HttpFailure -Status 503 -RetryAfter ([System.Net.Http.Headers.RetryConditionHeaderValue]::new($when)))
+        }
+
+        { Invoke-RmaRestMethod -Uri 'https://contoso.service-now.com/x' -MaxAttempts 2 } | Should -Throw '*(HTTP 503)*'
+        # HTTP dates have one-second resolution, so allow for the second already begun.
+        $script:Slept[0] | Should -BeGreaterOrEqual 8000
+        $script:Slept[0] | Should -BeLessOrEqual 12500
+    }
+
+    It 'falls back to exponential backoff when there is no Retry-After' {
+        Mock -ModuleName RMA.Runbooks Invoke-RestMethod { throw (New-HttpFailure -Status 502) }
+
+        { Invoke-RmaRestMethod -Uri 'https://contoso.service-now.com/x' -MaxAttempts 3 -BaseDelayMs 1000 } | Should -Throw
+        $script:Slept.Count | Should -Be 2
+        $script:Slept[0] | Should -BeGreaterOrEqual 750
+        $script:Slept[0] | Should -BeLessOrEqual 1250
+        $script:Slept[1] | Should -BeGreaterOrEqual 1500
+        $script:Slept[1] | Should -BeLessOrEqual 2500
+    }
+}

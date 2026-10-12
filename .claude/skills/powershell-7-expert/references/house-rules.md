@@ -58,13 +58,11 @@ Write-RmaLog -Level Information -Message 'Job completed' -Data @{ jobId = $Paylo
 Never call `Invoke-RestMethod` or `Invoke-WebRequest` directly against ServiceNow or Graph.
 `Invoke-RmaRestMethod` (`src/RMA.Runbooks/Public/Invoke-RmaRestMethod.ps1`) wraps them with
 bounded retry, exponential backoff and jitter, retrying only 408, 429, 5xx and transport
-failures — a bare 4xx fails immediately instead of burning the job's time budget. **The
-retry is broken today**
+failures — a bare 4xx fails immediately instead of burning the job's time budget — and
+honouring `Retry-After`. Until 2.1.1 the retry never worked
 ([#24](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/24)):
-the retry branch assigns the response headers to `$headers`, which is the same variable as
-the `$Headers` parameter, so a 408/429/5xx throws a `System.Object[]` to `Hashtable`
-conversion error instead of retrying, and a transport failure is retried without the
-request headers. Still call through this function; the fix belongs inside it. It is the
+a local `$headers` overwrote the `$Headers` parameter, since PowerShell names are
+case-insensitive. Never reuse a parameter's name, in any casing, for a local variable. It is the
 repository-specific wrapper around the general `Invoke-RestMethod` patterns in
 `references/rest-api.md`; use those patterns for building the URI, body and headers, then make
 the call through this function.

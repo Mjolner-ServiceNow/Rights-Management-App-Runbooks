@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Graph and Exchange Online sessions are renewed during a run.** `Connect-MgGraph` and
+  `Connect-ExchangeOnline` keep the federated token they are given and cannot renew it,
+  so a run that outlived the token (`MaxMinutes` allows 170, an import runs for hours)
+  failed part-way through. `Connect-RmaGraph` and `Connect-RmaExchange` now register the
+  connection with the token's expiry, read from its `exp` claim, and the new public
+  `Update-RmaConnection` reconnects, with a newly minted token, any session within
+  `MinimumValidityMinutes` (15) of expiry; an Exchange session is closed before the new
+  one opens. `Invoke-RmaQueueLoop` calls it before every job, so runbooks need no change.
+  A single job that runs for longer than a token lives calls it between pages. Both
+  connect functions take `-Force` to bypass the token cache
+  ([#30](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/30)).
+  Module 2.2.0.
 - **All work is tracked as a GitHub issue with one owner, on the RMA 2.0 project board.**
   `docs/CONTRIBUTING.md` (*Tracking work*) describes the process: the board's columns,
   what each priority means, branch names and `Closes #<n>`. `CLAUDE.md` binds every Claude

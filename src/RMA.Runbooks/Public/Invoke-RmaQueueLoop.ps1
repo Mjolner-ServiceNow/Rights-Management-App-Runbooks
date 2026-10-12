@@ -39,6 +39,11 @@ function Invoke-RmaQueueLoop {
                           for the whole MaxMinutes window, and MaxJobs never applies
                           because nothing was processed.
 
+        Connections       Graph and Exchange Online sessions opened with Connect-RmaGraph
+                          and Connect-RmaExchange are renewed before each job when their
+                          token is within 15 minutes of expiry. Their SDKs keep the token
+                          they were given, so a run that outlived it failed part-way.
+
         Heartbeat         A background thread renews the claim of a job that is still
                           running, every HeartbeatMinutes. Without it the watchdog requeues
                           any job older than its StaleAfterMinutes, so a full directory
@@ -219,6 +224,11 @@ function Invoke-RmaQueueLoop {
                     }
 
                     Write-RmaLog -Level Information -Message 'Processing job' -Data @{ sysId = $sysId; action = $action }
+
+                    # Graph and Exchange sessions keep the token they were opened with, so
+                    # one that expires during a long run is renewed here, between jobs.
+                    # Inside the try: if it cannot be renewed, this job fails with the reason.
+                    Update-RmaConnection
 
                     $null = & $Body $job $parameters
 

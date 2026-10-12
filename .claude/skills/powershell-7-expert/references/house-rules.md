@@ -32,13 +32,15 @@ pwsh -File .claude/skills/powershell-7-expert/tools/Test-SkillExample.ps1 -Path 
 Call `Write-RmaLog -Level <Debug|Information|Warning|Error> -Message <string> -Data <hashtable>`.
 Pass values as named fields in `-Data`; each one is routed through `ConvertTo-RmaSafeLogValue`
 before it reaches the log line. Passing a whole object to `Write-Output`, `Write-Host` or
-`Write-Information` instead skips that redaction. `RmaAvoidUnredactedObjectLogging` flags a
-bare variable passed to any of those three cmdlets when its name matches the regex
-`Payload|Parameters|^p$|Job|Json|Credential|Secret|Token|Response|Assertion`, ignoring case — so
-`$Payload`, `$parameters`, `$p`, `$job`, `$JobQueueItem` and `$response` are caught. It is a
-name match, not a type check: `$ParameterObject`, the name the original disclosure used,
-does **not** match (`Parameters` needs the `s`). That gap is known and not yet fixed; do not
-rely on the rule to catch a payload under any other name. `PSAvoidUsingWriteHost` is
+`Write-Information` instead skips that redaction, and passing one whole to `Write-RmaLog`
+leaves it to a redaction that only knows property names. `RmaAvoidUnredactedObjectLogging`
+flags a bare variable passed to any of those three cmdlets, or to `Write-RmaLog` as `-Data`
+or as a value inside the `-Data` hashtable, when its name matches the regex
+`Payload|Parameter|^p$|(?<!Max)Job(?!Id)|Json|Credential|Secret|Token|Response|Assertion`,
+ignoring case — so `$Payload`, `$parameters`, `$ParameterObject` (the name the original
+disclosure used), `$p`, `$job`, `$jobs`, `$JobQueueItem` and `$response` are caught, and
+`$MaxJobs` and `$jobId` are not. It is a name match, not a type check: do not rely on it
+to catch a payload under any other name. `PSAvoidUsingWriteHost` is
 excluded repository-wide, so the analyzer
 will not stop `Write-Host` on its own; use `Write-RmaLog` anyway so the record carries a level,
 a correlation id and a timestamp.

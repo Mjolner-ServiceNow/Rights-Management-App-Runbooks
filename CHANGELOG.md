@@ -53,6 +53,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `rma-worker.local.json`, and `rma-worker.example.json` shows the shape.
 
 ### Fixed
+- **`RmaAvoidUnredactedObjectLogging` now catches `$ParameterObject`**, the name under which
+  the library this repository replaces logged a password, and which the rule was written
+  against. Its pattern said `Parameters`. It also flags a suspect variable passed to
+  `Write-RmaLog` whole, as `-Data` or as a value inside the `-Data` hashtable: that
+  redaction knows only property names. `$MaxJobs` and `$jobId` are excepted from the
+  `Job` match
+  ([#28](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/28)).
 - **`Invoke-RmaRestMethod` retries again, which it had never done.** Its retry branch read
   the response's headers into `$headers`, the same variable as its `-Headers` parameter,
   because PowerShell names are case-insensitive. An HTTP 408, 429 or 5xx therefore failed

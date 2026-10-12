@@ -55,6 +55,11 @@ Write-Output $Payload
 Write-RmaLog -Level Information -Message 'Job completed' -Data @{ jobId = $Payload.JobId; status = $Payload.Status }
 ```
 
+Build `-Message` from constant text and put every value in `-Data`. The message is scanned
+for tokens and `key=value` secrets as a safety net, but a message interpolated from a
+payload can carry a secret in a shape the scan does not know, and it cannot be queried as
+a field either.
+
 ## Call ServiceNow and Graph through Invoke-RmaRestMethod
 
 Never call `Invoke-RestMethod` or `Invoke-WebRequest` directly against ServiceNow or Graph.

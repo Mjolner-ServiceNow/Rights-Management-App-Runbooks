@@ -403,7 +403,7 @@ queue intact and the next run continues.
 | Payload action mismatch | Job explicitly Failed, never silently skipped |
 | Runaway loop | `MaxJobs` and `MaxMinutes`; the run ends with a Warning naming the limit |
 | Mass stranding | Watchdog refuses to act above `MaxRequeue` and raises |
-| Secret in a log | `Write-RmaLog` redacts a fixed list of field names; `RmaAvoidUnredactedObjectLogging` blocks the pattern. See [SECURITY.md](../SECURITY.md) for what the list misses |
+| Secret in a log | `Write-RmaLog` redacts secret-like field names and secrets inside text, the message included; `RmaAvoidUnredactedObjectLogging` blocks the pattern. See [SECURITY.md](../SECURITY.md) for what it covers |
 | Worker disk exhaustion | Pinned modules, no runtime install, analyzer rule, prune sweep |
 
 ## Infrastructure

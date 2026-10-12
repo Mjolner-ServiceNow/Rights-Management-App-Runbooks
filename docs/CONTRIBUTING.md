@@ -233,12 +233,18 @@ is a review responsibility.
 
 ## Adding a runbook
 
-1. Copy `src/runbooks/Create-EntraUser.ps1`.
+1. Copy `src/runbooks/Create-EntraUser.ps1` for Entra ID, or `src/runbooks/Unlock-ADUser.ps1`
+   for Active Directory.
 2. Change the `#Requires` set to what you actually call, nothing more.
 3. Change the `-Command` string to the ServiceNow command name.
 4. Write the body. Throw to fail the job; return normally to complete it.
 5. Add an idempotency pre-check if a repeat execution would write twice.
-6. Add a test if the body has branching logic worth protecting.
+6. Read payload fields as `$p.PSObject.Properties['name']?.Value`. The runbook runs under
+   `Set-StrictMode -Version Latest`, where `$p.name` on a payload without the field throws a
+   property-not-found that tells nobody which ServiceNow field is missing.
+7. Add a test if the body has branching logic worth protecting.
+   `tests/Unit/Unlock-ADUser.Tests.ps1` shows how: it takes the body from the runbook's AST,
+   so the test runs without the modules the runbook `#Requires`.
 
 ## Changing the shared module
 

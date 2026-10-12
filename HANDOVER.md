@@ -36,7 +36,7 @@ Every place that needed help is a gap; record it.
 
 - **Done:** the shared module (`RMA.Runbooks` 2.2.0) with the queue loop, claim, heartbeat,
   watchdog, health check and logging; CI and the release pipeline; the reference runbook
-  `Create-EntraUser`.
+  `Create-EntraUser`, and its Active Directory counterpart `Unlock-ADUser`.
 - **Released:** 2.2.0 is the latest release, installed on the test Hybrid Worker, the
   only worker today. 2.1.1 fixed the retry
   ([#24](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/24)),

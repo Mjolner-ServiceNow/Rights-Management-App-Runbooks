@@ -88,7 +88,8 @@ oddly.
 ### The module owns the queue contract; runbooks own business logic only
 
 A runbook is a fixed setup plus a body — copy
-[src/runbooks/Create-EntraUser.ps1](src/runbooks/Create-EntraUser.ps1). `Invoke-RmaQueueLoop`
+[src/runbooks/Create-EntraUser.ps1](src/runbooks/Create-EntraUser.ps1) for Entra ID or
+[src/runbooks/Unlock-ADUser.ps1](src/runbooks/Unlock-ADUser.ps1) for Active Directory. `Invoke-RmaQueueLoop`
 wraps the body and owns the parts that went wrong in the library this replaces:
 
 - `Request-RmaJobClaim` claims with a PATCH filtered on `status=1`, then a read-back

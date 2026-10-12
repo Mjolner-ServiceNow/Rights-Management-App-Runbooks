@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Unlock-ADUser`, the first Active Directory runbook migrated from 1.0** and the reference
+  for the rest: the service account's password from Key Vault once before the loop,
+  `-Server` and `-Credential` on every AD cmdlet, payload fields read so that a missing one
+  fails with its name under StrictMode. Unlocking a user who is not locked out completes
+  the job without change. Its tests take the body from the runbook's AST, so they run
+  where the `ActiveDirectory` module does not
+  ([#93](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/93)).
 - **Graph and Exchange Online sessions are renewed during a run.** `Connect-MgGraph` and
   `Connect-ExchangeOnline` keep the federated token they are given and cannot renew it,
   so a run that outlived the token (`MaxMinutes` allows 170, an import runs for hours)

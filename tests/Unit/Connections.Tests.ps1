@@ -41,7 +41,7 @@ BeforeAll {
 }
 
 AfterAll {
-    Remove-Item function:global:Connect-MgGraph, function:global:Connect-ExchangeOnline, function:global:Disconnect-ExchangeOnline -ErrorAction SilentlyContinue
+    Remove-Item -Path Function:\Connect-MgGraph, Function:\Connect-ExchangeOnline, Function:\Disconnect-ExchangeOnline -ErrorAction SilentlyContinue
 }
 
 Describe 'Get-RmaTokenExpiry' -Tag 'Unit', 'Reliability' {

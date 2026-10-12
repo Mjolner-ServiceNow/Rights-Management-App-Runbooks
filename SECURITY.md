@@ -30,15 +30,23 @@ user in the tenant. In Exchange the app is granted `Exchange Recipient Administr
 which covers every Exchange cmdlet the runbooks call: not Exchange Administrator, and not
 Global Administrator.
 
-**Logging redacts a fixed list of field names.** `Write-RmaLog` passes `-Data` through
-`ConvertTo-RmaSafeLogValue`, which replaces the value of any key or property named, ignoring
-case, `password`, `pwd`, `secret`, `clientsecret`, `token`, `accesstoken`, `refreshtoken`,
-`apikey`, `authorization`, `credential`, `passwordprofile`, `thumbprint` or `assertion`, at
-any depth. It is an exact-name match: `access_token`, `client_secret` or `adPassword` pass
-through unredacted, and the `-Message` text is never redacted at all. A custom analyzer
-rule blocks the pattern that caused a real disclosure in the predecessor codebase: writing
-a whole payload object to the job output. Both are defence in depth, not a guarantee; log
-named, non-secret fields.
+**Logging redacts secret-like names and secrets inside text.** `Write-RmaLog` passes its
+`-Message` and every `-Data` value through `ConvertTo-RmaSafeLogValue`, at any depth:
+
+- A key or property is redacted when its name, ignoring case, `_`, `-`, `.` and spaces,
+  contains `password`, `passwd`, `pwd`, `secret`, `token`, `credential`, `authorization`,
+  `assertion`, `thumbprint`, `cookie`, `connectionstring`, or `apikey`, `privatekey`,
+  `accountkey`, `accesskey`, `clientkey`, `signingkey` or `sharedkey`. So `access_token`,
+  `client_secret` and `adPassword` are caught.
+- Every string, the message included, is scanned for `Bearer` and `Basic` credentials,
+  JWTs, `key=value`, `key: value` and `"key":"value"` pairs whose key looks like a secret,
+  and SAS `sig=` signatures.
+
+It is a pattern match, not a guarantee: a secret under an innocent name, or in a format it
+does not know, still gets through. A custom analyzer rule blocks the pattern that caused a
+real disclosure in the predecessor codebase, writing a whole payload object to the job
+output, including passing one whole to `Write-RmaLog`. Both are defence in depth; log
+named, non-secret fields and build messages from constant text.
 
 **Jobs are meant to execute once, and today can execute twice.** Queue items are claimed
 with a conditional update that the caller verifies it won. ServiceNow's Table API ignores

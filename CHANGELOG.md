@@ -53,6 +53,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `rma-worker.local.json`, and `rma-worker.example.json` shows the shape.
 
 ### Fixed
+- **Log redaction matches secret-like names by pattern, and scans text.** It used an
+  exact list of property names, so `access_token`, `client_secret` and `adPassword` were
+  logged in clear, and `Write-RmaLog`'s `-Message` was never redacted. A name is now
+  redacted when, ignoring case and `_ - .`, it contains `password`, `secret`, `token`,
+  `credential`, `apikey` and the like; and every string, the message included, is
+  scanned for `Bearer`/`Basic` credentials, JWTs, `key=value` and `"key":"value"`
+  secrets, and SAS signatures. Enums, `DateTimeOffset` and other value types are logged
+  as values rather than as their properties. None of the field names the module logs
+  today is affected
+  ([#29](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/29)).
+  Module 2.1.2.
 - **`RmaAvoidUnredactedObjectLogging` now catches `$ParameterObject`**, the name under which
   the library this repository replaces logged a password, and which the rule was written
   against. Its pattern said `Parameters`. It also flags a suspect variable passed to

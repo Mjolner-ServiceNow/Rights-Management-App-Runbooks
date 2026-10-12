@@ -6,8 +6,10 @@ function Write-RmaLog {
         Azure Automation forwards job streams to Log Analytics. Emitting JSON on a single
         line makes every field queryable in KQL instead of requiring string parsing.
 
-        Values are passed through ConvertTo-RmaSafeLogValue, so anything that looks like a
-        secret is redacted before it reaches the log.
+        The message and every value are passed through ConvertTo-RmaSafeLogValue, so a
+        secret-named field, or a token, credential or key=value secret inside a string, is
+        redacted before it reaches the log. That is a safety net: build -Message from
+        constant text, and put values in -Data as named fields.
     .PARAMETER Level
         Severity. Information goes to the information stream, never the success stream:
         a record written with Write-Output became part of the return value of every
@@ -40,7 +42,7 @@ function Write-RmaLog {
     $record = [ordered]@{
         timestamp     = (Get-Date).ToUniversalTime().ToString('o')
         level         = $Level
-        message       = $Message
+        message       = ConvertTo-RmaSafeLogValue -InputObject $Message
         runbook       = $Runbook
         correlationId = $CorrelationId
         worker        = [Environment]::MachineName

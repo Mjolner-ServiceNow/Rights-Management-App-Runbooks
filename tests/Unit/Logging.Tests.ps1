@@ -89,6 +89,65 @@ Describe 'Write-RmaLog secret redaction' -Tag 'Unit', 'Security' {
             $line | Should -Not -Match 'LEAKED' -Because "'$name' should be redacted"
         }
     }
+
+    It 'redacts <Name> by pattern, not only by exact name' -ForEach @(
+        # An exact list missed all of these (#29).
+        @{ Name = 'access_token' }, @{ Name = 'client_secret' }, @{ Name = 'adPassword' }
+        @{ Name = 'refresh-token' }, @{ Name = 'NewPassword' }, @{ Name = 'x-api-key' }
+        @{ Name = 'privateKey' }, @{ Name = 'storageAccountKey' }, @{ Name = 'connectionString' }
+        @{ Name = 'Cookie' }, @{ Name = 'pwd' }, @{ Name = 'client_assertion' }
+    ) {
+        $line = Write-RmaLog -Level Information -Message 'x' -Data @{ $Name = 'LEAKED'; upn = 'jane@contoso.com' } 6>&1 | Out-String
+        $line | Should -Not -Match 'LEAKED'
+        $line | Should -Match 'jane@contoso\.com'
+    }
+
+    It 'leaves ordinary fields alone' {
+        $line = Write-RmaLog -Level Information -Message 'x' -Data @{
+            upn = 'jane@contoso.com'; queueSysId = 'abc'; maxJobs = 5; status = 500; keyCount = 2
+        } 6>&1 | Out-String
+        $parsed = ($line | ConvertFrom-Json).data
+        $parsed.upn | Should -Be 'jane@contoso.com'
+        $parsed.queueSysId | Should -Be 'abc'
+        $parsed.maxJobs | Should -Be 5
+        $parsed.keyCount | Should -Be 2
+    }
+
+    It 'redacts a secret-named property inside an array of objects' {
+        $line = Write-RmaLog -Level Information -Message 'x' -Data @{
+            users = @(
+                [pscustomobject]@{ upn = 'a@contoso.com'; initialPassword = 'LEAKED-1' }
+                @{ upn = 'b@contoso.com'; credentials = @{ user = 'b'; pass = 'x' } }
+            )
+        } 6>&1 | Out-String
+        $line | Should -Not -Match 'LEAKED-1'
+        $line | Should -Match 'a@contoso\.com'
+        $line | Should -Match 'b@contoso\.com'
+        $line | Should -Not -Match '"pass":"x"'
+    }
+
+    It 'redacts <Case> inside a string value and inside -Message' -ForEach @(
+        @{ Case = 'a bearer token'; Text = 'request failed with Authorization: Bearer abc.def-ghi'; Secret = 'abc.def-ghi' }
+        @{ Case = 'basic credentials'; Text = 'header was Basic c3ZjOnBhc3N3b3Jk'; Secret = 'c3ZjOnBhc3N3b3Jk' }
+        @{ Case = 'a JWT'; Text = 'token eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.c2lnbmF0dXJl rejected'; Secret = 'eyJhbGciOiJSUzI1NiJ9' }
+        @{ Case = 'a query string secret'; Text = 'POST https://login.contoso.com/token?client_secret=s3cr3t&grant_type=x failed'; Secret = 's3cr3t' }
+        @{ Case = 'a JSON password'; Text = 'body {"user":"jane","password":"Pa55w0rd!"} rejected'; Secret = 'Pa55w0rd!' }
+        @{ Case = 'a SAS signature'; Text = 'GET https://contoso.blob.core.windows.net/c/x?sv=2024&sig=AbC%2Bd3f'; Secret = 'AbC%2Bd3f' }
+    ) {
+        $inData = Write-RmaLog -Level Warning -Message 'x' -Data @{ error = $Text } 3>&1 | Out-String
+        $inMessage = Write-RmaLog -Level Warning -Message $Text 3>&1 | Out-String
+
+        $inData | Should -Not -Match ([regex]::Escape($Secret))
+        $inMessage | Should -Not -Match ([regex]::Escape($Secret))
+        $inMessage | Should -Match '<redacted>'
+    }
+
+    It 'leaves an ordinary message untouched' {
+        foreach ($text in 'Token acquired', 'Password reset for jane@contoso.com', 'Queue loop started: maxJobs=5') {
+            $line = Write-RmaLog -Level Information -Message $text 6>&1 | Out-String
+            ($line | ConvertFrom-Json).message | Should -Be $text
+        }
+    }
 }
 
 Describe 'A function that logs before it returns' -Tag 'Unit', 'Reliability' {

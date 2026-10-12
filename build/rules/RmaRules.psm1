@@ -180,7 +180,13 @@ function Measure-RmaUnredactedObjectLogging {
         $parameters and hands it to the body as $p, which is the name every runbook
         copies from Create-EntraUser.ps1. $job and $response are here for the same
         reason - the queue row carries the base64 payload, and a token response carries
-        the token.
+        the token. 'Parameter' rather than 'Parameters', so $ParameterObject, the very
+        name of that disclosure, is caught too (#28). $MaxJobs and $jobId are counts and
+        ids, not rows, and are excepted.
+
+        Write-RmaLog redacts by property name, which is a safety net rather than a
+        licence: a suspect variable passed to it whole, as -Data or as a value in the
+        -Data hashtable, is flagged too. Log named fields.
     .INPUTS
         [System.Management.Automation.Language.ScriptBlockAst]
     .OUTPUTS
@@ -191,22 +197,52 @@ function Measure-RmaUnredactedObjectLogging {
     param( [Parameter(Mandatory)][ValidateNotNullOrEmpty()] [ScriptBlockAst] $ScriptBlockAst )
 
     $writers  = @('Write-Output', 'Write-Host', 'Write-Information')
-    $suspect  = 'Payload|Parameters|^p$|Job|Json|Credential|Secret|Token|Response|Assertion'
+    $suspect  = 'Payload|Parameter|^p$|(?<!Max)Job(?!Id)|Json|Credential|Secret|Token|Response|Assertion'
     $results  = [System.Collections.Generic.List[DiagnosticRecord]]::new()
 
-    foreach ($cmd in $ScriptBlockAst.FindAll({ $args[0] -is [CommandAst] }, $true)) {
-        if ($cmd.GetCommandName() -notin $writers) { continue }
+    # A bare suspect variable, possibly wrapped as a hashtable value's statement. Only a
+    # bare variable: an interpolated string or a member access such as $p.upn names a field.
+    $suspectVariable = {
+        param($Ast)
+        if ($Ast -is [PipelineAst] -and $Ast.PipelineElements.Count -eq 1) { $Ast = $Ast.PipelineElements[0] }
+        if ($Ast -is [CommandExpressionAst]) { $Ast = $Ast.Expression }
+        if ($Ast -is [VariableExpressionAst] -and $Ast.VariablePath.UserPath -match $suspect) { $Ast.VariablePath.UserPath }
+    }
 
-        foreach ($element in $cmd.CommandElements | Select-Object -Skip 1) {
-            # Only flag a bare variable. An interpolated string with a named property is fine.
-            if ($element -is [VariableExpressionAst] -and $element.VariablePath.UserPath -match $suspect) {
-                $results.Add([DiagnosticRecord]@{
-                        Message  = "Logging '`$$($element.VariablePath.UserPath)' writes the whole object to the job log and may disclose a secret. Use Write-RmaLog, which redacts, or log named fields."
-                        Extent   = $cmd.Extent
-                        RuleName = 'RmaAvoidUnredactedObjectLogging'
-                        Severity = 'Error'
-                    })
+    foreach ($cmd in $ScriptBlockAst.FindAll({ $args[0] -is [CommandAst] }, $true)) {
+        $name = $cmd.GetCommandName()
+        $found = [System.Collections.Generic.List[string]]::new()
+
+        if ($name -in $writers) {
+            foreach ($element in $cmd.CommandElements | Select-Object -Skip 1) {
+                $variable = & $suspectVariable $element
+                if ($variable) { $found.Add($variable) }
             }
+        } elseif ($name -eq 'Write-RmaLog') {
+            $elements = $cmd.CommandElements
+            for ($i = 1; $i -lt $elements.Count - 1; $i++) {
+                if ($elements[$i] -isnot [CommandParameterAst] -or $elements[$i].ParameterName -ne 'Data') { continue }
+                $data = $elements[$i + 1]
+                $variable = & $suspectVariable $data
+                if ($variable) { $found.Add($variable) }
+                if ($data -is [HashtableAst]) {
+                    foreach ($pair in $data.KeyValuePairs) {
+                        $variable = & $suspectVariable $pair.Item2
+                        if ($variable) { $found.Add($variable) }
+                    }
+                }
+            }
+        } else {
+            continue
+        }
+
+        foreach ($variable in $found) {
+            $results.Add([DiagnosticRecord]@{
+                    Message  = "Logging '`$$variable' writes the whole object to the job log and may disclose a secret. Log named fields, such as `$$variable.upn."
+                    Extent   = $cmd.Extent
+                    RuleName = 'RmaAvoidUnredactedObjectLogging'
+                    Severity = 'Error'
+                })
         }
     }
     return $results

@@ -28,6 +28,12 @@ Describe 'RmaAvoidUnredactedObjectLogging' -Tag 'Unit', 'Security', 'Analyzer' {
         @{ Name = '$job'; Script = '$job = @{}; Write-Host $job' }
         @{ Name = '$response'; Script = '$response = @{}; Write-Information $response' }
         @{ Name = '$Payload'; Script = '$Payload = @{}; Write-Output $Payload' }
+        # The variable whose logging disclosed a password in the library this replaces (#28).
+        @{ Name = '$ParameterObject'; Script = '$ParameterObject = @{}; Write-Output $ParameterObject' }
+        @{ Name = '$ParameterObject as -Data'; Script = '$ParameterObject = @{}; Write-RmaLog -Level Information -Message m -Data $ParameterObject' }
+        @{ Name = '$ParameterObject inside -Data'; Script = '$ParameterObject = @{}; Write-RmaLog -Level Information -Message m -Data @{ x = $ParameterObject }' }
+        @{ Name = '$p inside -Data'; Script = '$p = @{}; Write-RmaLog -Level Information -Message m -Data @{ payload = $p; id = 1 }' }
+        @{ Name = '$jobs inside -Data'; Script = '$jobs = @(); Write-RmaLog -Level Information -Message m -Data @{ rows = $jobs }' }
     ) {
         # Invoke-RmaQueueLoop decodes the ServiceNow payload into $parameters and hands it
         # to the body as $p. Create-EntraUser.ps1 is the template every runbook copies, so
@@ -40,6 +46,9 @@ Describe 'RmaAvoidUnredactedObjectLogging' -Tag 'Unit', 'Security', 'Analyzer' {
         @{ Case = 'interpolated named field'; Script = '$p = @{}; Write-Output "upn is $($p.upn)"' }
         @{ Case = 'the logger own output line'; Script = '$line = "x"; Write-Output $line' }
         @{ Case = 'a summary object'; Script = '$summary = @{}; Write-Output $summary' }
+        @{ Case = 'named fields in -Data'; Script = '$p = @{}; $job = @{}; Write-RmaLog -Level Information -Message m -Data @{ upn = $p.upn; queueSysId = $job.sys_id }' }
+        @{ Case = 'an unrelated variable in -Data'; Script = '$count = 1; Write-RmaLog -Level Information -Message m -Data @{ count = $count }' }
+        @{ Case = 'a job count and a job id'; Script = '$MaxJobs = 1; $jobId = "x"; Write-RmaLog -Level Information -Message m -Data @{ maxJobs = $MaxJobs; jobId = $jobId }' }
     ) {
         (Get-RmaFinding -Script $Script -RuleName 'RmaAvoidUnredactedObjectLogging').Count |
         Should -Be 0 -Because "$Case is not a whole payload"

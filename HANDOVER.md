@@ -37,11 +37,10 @@ Every place that needed help is a gap; record it.
 - **Done:** the shared module (`RMA.Runbooks` 2.1.1) with the queue loop, claim, heartbeat,
   watchdog, health check and logging; CI and the release pipeline; the reference runbook
   `Create-EntraUser`.
-- **Released:** 2.0.1 is the latest published release. 2.1.0 was drafted and never
-  published; 2.1.1 replaces it with the retry fix
-  ([#24](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/24)).
-  The runbooks on `main` already require 2.1.1, so publish it and install it on every
-  worker before the ServiceNow application next takes the runbooks from `main` ([#34](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/34)).
+- **Released:** 2.1.1 is the latest published release, installed on the test Hybrid
+  Worker, the only worker today
+  ([#34](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/34)).
+  2.1.0 was drafted and never published.
 - **Not started:** migrating the remaining 1.0 runbooks, including the live Import-Entra*
   commands and the four Initial-Import runbooks, whose rebuild is decided in
   [DECISIONS.md D12](docs/DECISIONS.md#d12-how-the-four-initial-import-runbooks-are-to-be-rebuilt)
@@ -76,10 +75,8 @@ Tracked as GitHub issues, most urgent first. The
 by status (Backlog, Ready, In progress, Done) and priority (P1 blocks production use). Add every new issue to it, and move a card when its state changes:
 
 - [#27](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/27) The job claim is not atomic; the call into the ServiceNow endpoint is ours.
-- [#28](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/28) `RmaAvoidUnredactedObjectLogging` does not match `$ParameterObject`.
 - [#29](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/29) Log redaction misses common secret names and never redacts `-Message`.
 - [#30](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/30) Graph and Exchange sessions are never refreshed during a run.
-- [#34](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/34) Publish 2.1.1 and install it on every worker before the runbooks move.
 - [#36](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/36) Migrate the remaining 1.0 runbooks.
 - [#31](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/31) `Test-RmaHealth` does not verify Exchange.
 - [#33](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/33) Run the Run Command provisioning route and the outbound hosts on a real worker.

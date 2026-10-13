@@ -157,18 +157,17 @@ Describe 'Remove-EntraAUGroupMember' -Tag 'Unit' {
         $script:Logged[-1].Data.group | Should -Be $script:GroupId
     }
 
-    It 'completes, with a warning and without asking Graph to remove, when the unit has dynamic membership' {
-        # 1.0 failed the job here. A dynamic rule selects users or devices, never groups.
+    It 'refuses an administrative unit with dynamic membership before asking Graph to remove' {
+        # As 1.0 and the two user runbooks do (#159).
         Mock Get-MgDirectoryAdministrativeUnit {
             [pscustomobject]@{ Id = '22222222-2222-2222-2222-222222222222'; DisplayName = 'Region North'; MembershipType = 'Dynamic' }
         }
 
-        { & $script:Body $script:Job ([pscustomobject]@{ ou = $script:UnitId; group = $script:GroupId }) } | Should -Not -Throw
+        { & $script:Body $script:Job ([pscustomobject]@{ ou = $script:UnitId; group = $script:GroupId }) } |
+        Should -Throw "*payload field 'ou'*dynamic membership*Correct the ServiceNow record."
 
         Should -Invoke Remove-MgDirectoryAdministrativeUnitMemberByRef -Times 0 -Exactly
-        Should -Invoke Write-RmaLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Warning' -and $Message -match 'dynamic membership' }
-        $script:Logged[-1].Data.administrativeUnitId | Should -Be $script:UnitId
-        $script:Logged[-1].Data.groupId | Should -Be $script:GroupId
+        Should -Invoke Write-RmaLog -Times 0 -Exactly -ParameterFilter { $Level -eq 'Warning' }
     }
 
     It 'fails when the <Cmdlet> lookup fails for any other reason' -ForEach @(

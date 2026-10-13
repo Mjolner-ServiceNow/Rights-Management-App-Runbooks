@@ -17,10 +17,12 @@
     Removing is idempotent: when the membership does not exist, because the group is not a
     member or because the administrative unit or the group does not exist, the job
     completes with a Warning saying which, since the outcome ServiceNow asked for is true
-    (docs/DECISIONS.md D15). An administrative unit with dynamic membership is the same
-    case: its rule covers users or devices, so a group is never a member of it, and the
-    job completes with a Warning without asking Graph to remove anything. 1.0 failed the
-    job in all four cases.
+    (docs/DECISIONS.md D15). 1.0 failed the job in all three cases.
+
+    An administrative unit with dynamic membership fails the job before Graph is asked to
+    change it, as 1.0 failed it and as Create-EntraAUUserMember and Remove-EntraAUUserMember
+    do: a membership job naming a dynamic unit means the ServiceNow record names the wrong
+    unit (#159).
 
     The administrative unit and the group are looked up first and the membership is
     removed by the two object ids that came back, so the removal cannot hit a different
@@ -87,6 +89,12 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'R
         Write-RmaLog -Level Warning -Message 'Entra administrative unit not found; the membership does not exist' -Data $absent
         return
     }
+    # Refused as the two user runbooks refuse it (#159). Graph would answer a group with the
+    # same not-found as any other non-member (test tenant), which would hide that the record
+    # names the wrong unit. Assigned membership is reported as null or 'Assigned'.
+    if ($unit.MembershipType -eq 'Dynamic') {
+        throw "The administrative unit that payload field 'ou' names has dynamic membership; its members follow its rule and cannot be removed. Correct the ServiceNow record."
+    }
     try {
         $group = Get-MgGroup -GroupId $groupId -Property 'id', 'displayName' -ErrorAction Stop
     } catch {
@@ -107,14 +115,6 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'R
     $fields = @{
         administrativeUnit = $unit.DisplayName; administrativeUnitId = $unit.Id
         group = $group.DisplayName; groupId = $group.Id; queueSysId = $job.sys_id
-    }
-
-    # A dynamic unit's rule selects users or devices, never groups. Graph answers the
-    # removal with the same not-found as any other non-member (test tenant), so this
-    # only gives the warning a reason; 1.0 failed the job here.
-    if ($unit.MembershipType -eq 'Dynamic') {
-        Write-RmaLog -Level Warning -Message 'Entra administrative unit has dynamic membership, which holds no groups; nothing to remove' -Data $fields
-        return
     }
 
     # A group that is not a member is reported with the same not-found as a missing unit,

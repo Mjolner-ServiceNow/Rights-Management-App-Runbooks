@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   message, where 1.0 passed Graph's error on. Needs `User.ReadWrite.All` and
   `User.RevokeSessions.All`
   ([#56](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/56)).
+- **`Disable-EntraUser`**, migrated from 1.0 on the `Create-EntraUser` pattern. The
+  payload's `user` must be an Entra object id or a user principal name, because
+  Microsoft.Graph does not escape `/` in the request path. A user who is already
+  disabled completes the job unchanged; a user who does not exist fails it with an
+  actionable message, and so does a user synchronised from on-premises AD, which only
+  `Disable-ADUser` can disable. Disabled by object id
+  ([#55](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/55)).
 - **The `migrate-runbook` skill** in `.claude/skills/` writes down how a 1.0 runbook is
   moved onto the shared module, as ten have been: which migrated runbook to copy, the
   rules reviewers check, the tests, and an end-to-end test on the test environment.

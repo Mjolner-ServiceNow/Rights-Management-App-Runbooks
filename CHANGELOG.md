@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Remove-ADOrganizationalUnit`**, migrated from 1.0, which cleared *Protect object from
+  accidental deletion* and then deleted. The service account is not allowed to change
+  permissions, so a protected OU now fails the job with a message saying an
+  administrator must remove the protection; an OU that is not empty fails too, and an OU
+  is never deleted as a tree. An OU that does not exist completes the job
+  (`docs/DECISIONS.md` D15). Needs the `OrganizationalUnits` delegation scope on the
+  parent
+  ([#80](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/80)).
 - **`Move-ADGroupToOrganizationalUnit`**, migrated from 1.0. A group already in the
   target OU completes the job unchanged; a group or target OU that does not exist fails it
   with an actionable message. Moved by objectGUID. Needs the `Groups` delegation scope on

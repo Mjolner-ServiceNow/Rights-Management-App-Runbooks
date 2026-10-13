@@ -29,6 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   failing it (`docs/DECISIONS.md` D15). Needs the `User.ReadWrite.All` application
   permission
   ([#87](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/87)).
+- **`Enable-EntraUser`**, migrated from 1.0 on the `Create-EntraUser` pattern. The user is
+  named by user principal name or object id, looked up, checked to be the user asked
+  for, and enabled by object id. A user who is already enabled completes the job
+  unchanged; a user who does not exist fails it with an actionable message, as in 1.0.
+  Needs the Graph permission `User.EnableDisableAccount.All` with `User.Read.All`, or
+  `User.ReadWrite.All`
+  ([#58](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/58)).
 - **The `migrate-runbook` skill** in `.claude/skills/` writes down how a 1.0 runbook is
   moved onto the shared module, as ten have been: which migrated runbook to copy, the
   rules reviewers check, the tests, and an end-to-end test on the test environment.

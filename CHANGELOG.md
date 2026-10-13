@@ -117,8 +117,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unit or the group does not exist, the job now completes with a warning instead of
   failing (`docs/DECISIONS.md` D15); the unit's endpoint answers every one of these with
   `Request_ResourceNotFound`, immediately after a removal as well as later. A unit with
-  dynamic membership, which 1.0 refused, also completes with a warning, since its rule
-  never selects a group. Needs `AdministrativeUnit.ReadWrite.All` and `Group.Read.All`
+  dynamic membership fails the job before Graph is asked, as in 1.0 and as in the two
+  user runbooks
+  ([#159](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/159)).
+  Needs `AdministrativeUnit.ReadWrite.All` and `Group.Read.All`
   ([#82](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/82)).
 - **The `migrate-runbook` skill** in `.claude/skills/` writes down how a 1.0 runbook is
   moved onto the shared module, as ten have been: which migrated runbook to copy, the

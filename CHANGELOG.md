@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that succeeded is not reported as a failure (`docs/DECISIONS.md` D15). Needs the
   `Users` delegation scope
   ([#81](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/81)).
+- **`Set-ADUserPassword`**, migrated from 1.0 on the `Unlock-ADUser` pattern. The new
+  password goes from the payload into a SecureString and is never logged or put into a
+  message; tests check both. `mustChange` and `unlock` must be true or false, as JSON
+  booleans or text, and anything else fails the job before the directory is touched. A
+  refused password fails the job with the directory's reason and nothing after it runs.
+  Needs the `Users` delegation scope
+  ([#88](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/88)).
 - **`Disable-ADUser`**, migrated from 1.0 on the `Unlock-ADUser` pattern. A user who is
   already disabled completes the job unchanged. Needs the `Users` delegation scope
   ([#54](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/54)).

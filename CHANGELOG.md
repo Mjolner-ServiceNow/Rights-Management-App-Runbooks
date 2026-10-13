@@ -67,6 +67,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   before the password is sent (`Set-ADUserPassword` is for that user), and so does a user
   who does not exist. Needs `User-PasswordProfile.ReadWrite.All` with `User.Read.All`
   ([#91](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/91)).
+- **`Remove-EntraGroupMember`**, migrated from 1.0. The payload's `group` is the group's
+  object id and `user` the member's object id or user principal name, as before; only a
+  user is removed, as in 1.0. Both are looked up, and the membership is removed by the two
+  object ids. When the user is not a direct member, or the group or the user does not
+  exist, the job now completes with a warning instead of failing (`docs/DECISIONS.md`
+  D15). Graph answers a non-member with the same `Request_ResourceNotFound` as a missing
+  group, or, seconds after the membership was removed, with a `Request_BadRequest` whose
+  message says the reference does not exist; both are read as *not a member*. Needs
+  `Group.ReadWrite.All` (or `GroupMember.ReadWrite.All`) and `User.Read.All`
+  ([#86](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/86)).
 - **The `migrate-runbook` skill** in `.claude/skills/` writes down how a 1.0 runbook is
   moved onto the shared module, as ten have been: which migrated runbook to copy, the
   rules reviewers check, the tests, and an end-to-end test on the test environment.

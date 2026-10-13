@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Remove-ADGroupMember`**, migrated from 1.0. Membership is read from the user's
+  `memberOf`, never by listing the group's members, which can number hundreds of
+  thousands. A user who is not a member, or a group or user that does not exist,
+  completes the job (`docs/DECISIONS.md` D15); 1.0 failed it. Needs the `Groups`
+  delegation scope on the group's OU
+  ([#79](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/79)).
 - **`Remove-ADGroup`**, migrated from 1.0 on the `Remove-ADUser` pattern: deleted by the
   objectGUID it looked up, and a group that does not exist completes the job with a
   Warning (`docs/DECISIONS.md` D15). Needs the `Groups` delegation scope

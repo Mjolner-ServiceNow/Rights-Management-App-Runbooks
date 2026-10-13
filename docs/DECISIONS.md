@@ -240,6 +240,11 @@ the identities come from ServiceNow's own import of the directory.
 Only *not found* completes. Every other failure, such as access denied or a protected
 object, fails the job as before.
 
+The same holds for removing a membership (`Remove-ADGroupMember`,
+[#79](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/79)): when
+the user is not a member, or the group or the user does not exist, the membership is gone
+and the job completes.
+
 
 ### F1. The job claim is not atomic on the instance it was tested on
 

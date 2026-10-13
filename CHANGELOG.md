@@ -110,6 +110,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Graph's own answer is a misleading *Insufficient privileges*. Needs
   `AdministrativeUnit.ReadWrite.All` and `User.Read.All`
   ([#83](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/83)).
+- **`Remove-EntraAUGroupMember`**, migrated from 1.0. The payload's `ou` is the
+  administrative unit's object id and `group` the group's, as 1.0 already passed them to
+  Graph; anything else is refused before Graph is asked. Both are looked up, and the
+  membership is removed by the two object ids. When the group is not a member, or the
+  unit or the group does not exist, the job now completes with a warning instead of
+  failing (`docs/DECISIONS.md` D15); the unit's endpoint answers every one of these with
+  `Request_ResourceNotFound`, immediately after a removal as well as later. A unit with
+  dynamic membership, which 1.0 refused, also completes with a warning, since its rule
+  never selects a group. Needs `AdministrativeUnit.ReadWrite.All` and `Group.Read.All`
+  ([#82](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/82)).
 - **The `migrate-runbook` skill** in `.claude/skills/` writes down how a 1.0 runbook is
   moved onto the shared module, as ten have been: which migrated runbook to copy, the
   rules reviewers check, the tests, and an end-to-end test on the test environment.

@@ -101,6 +101,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `rma-worker.local.json`, and `rma-worker.example.json` shows the shape.
 
 ### Fixed
+- **The AD service account could not delete or move anything in an OU holding a protected
+  OU.** `Grant-RmaAdDelegation.ps1` granted deletion only as *Delete child* on the OU, and
+  protecting an OU from accidental deletion adds *Deny Everyone: Delete child* to its
+  parent, which wins. Every scope now also grants *Delete* on its objects, which Active
+  Directory accepts instead. Protected objects stay undeletable. An installation that ran
+  the script before should run it again with the same arguments; it only adds
+  ([#131](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/131)).
 - **Log redaction matches secret-like names by pattern, and scans text.** It used an
   exact list of property names, so `access_token`, `client_secret` and `adPassword` were
   logged in clear, and `Write-RmaLog`'s `-Message` was never redacted. A name is now

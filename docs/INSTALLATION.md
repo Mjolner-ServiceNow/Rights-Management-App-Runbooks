@@ -462,10 +462,17 @@ Grant only the scopes the runbooks the customer uses need:
 
 | Scope | Rights, on the named OUs and everything below them | Runbooks |
 |---|---|---|
-| `Users` | Create and delete user objects; read and write all properties of user objects; Reset Password | `Unlock-ADUser`, `Enable-ADUser`, `Disable-ADUser`, `Set-ADUserPassword`, `Create-ADUser`, `Remove-ADUser`, `Update-ADUser`, `Update-ADUserName`, `Change-ADSamaccountname`, `Move-ADUserToOrganizationalUnit`, `Update-ADUserPath` |
-| `Groups` | Create and delete group objects; read and write all properties of group objects, `member` included | `Create-ADGroup`, `Remove-ADGroup`, `Update-ADGroup`, `Create-ADGroupMember`, `Remove-ADGroupMember`, `Move-ADGroupToOrganizationalUnit` |
-| `OrganizationalUnits` | Create and delete OUs below the named ones; read and write all properties of those OUs | `Create-ADOrganizationalUnit`, `Update-ADOrganizationalUnit`, `Remove-ADOrganizationalUnit` |
+| `Users` | Create and delete user objects; read and write all properties of user objects; Reset Password; Delete on user objects | `Unlock-ADUser`, `Enable-ADUser`, `Disable-ADUser`, `Set-ADUserPassword`, `Create-ADUser`, `Remove-ADUser`, `Update-ADUser`, `Update-ADUserName`, `Change-ADSamaccountname`, `Move-ADUserToOrganizationalUnit`, `Update-ADUserPath` |
+| `Groups` | Create and delete group objects; read and write all properties of group objects, `member` included; Delete on group objects | `Create-ADGroup`, `Remove-ADGroup`, `Update-ADGroup`, `Create-ADGroupMember`, `Remove-ADGroupMember`, `Move-ADGroupToOrganizationalUnit` |
+| `OrganizationalUnits` | Create and delete OUs below the named ones; read and write all properties of those OUs; Delete on those OUs | `Create-ADOrganizationalUnit`, `Update-ADOrganizationalUnit`, `Remove-ADOrganizationalUnit` |
 | none | Read, which Domain Users already has | `Import-AD*`, `Initial-Import-AD*`, `Test-RmaHealth` |
+
+Deletion is granted twice on purpose, as *Delete child* on the OU and as *Delete* on the
+objects below it. Protecting an OU from accidental deletion adds *Deny Everyone: Delete
+child* to its parent, which beats the allow, so in any OU that holds a protected OU the
+first alone deletes and moves nothing. If you ran the script before this was added
+([#131](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/131)),
+run it again with the same arguments: it only adds what is missing.
 
 Four things the table does not say:
 

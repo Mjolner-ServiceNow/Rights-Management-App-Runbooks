@@ -21,6 +21,13 @@
       OrganizationalUnits  Create and delete OUs below the given ones; read and write all
                            properties of those OUs.
 
+    Each scope grants deletion twice, as Delete Child on the OU and as Delete on the objects
+    below it. Protecting an OU from accidental deletion adds 'Deny Everyone: Delete Child'
+    to its parent, and that deny beats an allow on the same OU, so in any OU holding a
+    protected OU, Delete Child alone could delete nothing (#131). Active Directory allows a
+    delete with either right, so the object's own Delete gets past the parent's deny. An
+    object that is itself protected denies Delete to Everyone and stays undeletable.
+
     No scope grants Write Permissions (WRITE_DAC). Clearing 'Protect object from accidental
     deletion' is a permission change, so Remove-ADOrganizationalUnit cannot remove a
     protected OU; that stays an administrator's decision.
@@ -70,14 +77,17 @@ $grants = @{
         @{ Inherit = 'T'; Rights = 'CCDC;user'; Purpose = 'create and delete user objects' }
         @{ Inherit = 'S'; Rights = 'RPWP;;user'; Purpose = 'read and write all properties of user objects' }
         @{ Inherit = 'S'; Rights = 'CA;Reset Password;user'; Purpose = 'reset the password of user objects' }
+        @{ Inherit = 'S'; Rights = 'SD;;user'; Purpose = 'delete user objects where the OU denies Delete Child' }
     )
     Groups              = @(
         @{ Inherit = 'T'; Rights = 'CCDC;group'; Purpose = 'create and delete group objects' }
         @{ Inherit = 'S'; Rights = 'RPWP;;group'; Purpose = 'read and write all properties of group objects' }
+        @{ Inherit = 'S'; Rights = 'SD;;group'; Purpose = 'delete group objects where the OU denies Delete Child' }
     )
     OrganizationalUnits = @(
         @{ Inherit = 'T'; Rights = 'CCDC;organizationalUnit'; Purpose = 'create and delete OUs' }
         @{ Inherit = 'S'; Rights = 'RPWP;;organizationalUnit'; Purpose = 'read and write all properties of OUs' }
+        @{ Inherit = 'S'; Rights = 'SD;;organizationalUnit'; Purpose = 'delete OUs where the parent OU denies Delete Child' }
     )
 }
 

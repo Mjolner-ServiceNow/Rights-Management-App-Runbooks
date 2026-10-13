@@ -67,6 +67,7 @@ and runs safely on forks.
 | [`Remove-ADUser`](src/runbooks/Remove-ADUser.ps1) | The ServiceNow application, per request | Deletes an AD user; a user already gone completes the job |
 | [`Remove-ADGroup`](src/runbooks/Remove-ADGroup.ps1) | The ServiceNow application, per request | Deletes an AD group; a group already gone completes the job |
 | [`Remove-ADGroupMember`](src/runbooks/Remove-ADGroupMember.ps1) | The ServiceNow application, per request | Removes a user from an AD group; a membership already gone completes the job |
+| [`Move-ADGroupToOrganizationalUnit`](src/runbooks/Move-ADGroupToOrganizationalUnit.ps1) | The ServiceNow application, per request | Moves an AD group to another OU |
 | [`Set-ADUserPassword`](src/runbooks/Set-ADUserPassword.ps1) | The ServiceNow application, per request | Resets an AD user's password; optionally requires a change at next logon and unlocks |
 | [`Invoke-RmaQueueWatchdog`](src/runbooks/Invoke-RmaQueueWatchdog.ps1) | The ServiceNow application, on a cadence, per domain | Requeues jobs stranded in Work in Progress |
 | [`Test-RmaHealth`](src/runbooks/Test-RmaHealth.ps1) | The ServiceNow application | Proves every dependency end to end and reports the result to ServiceNow |

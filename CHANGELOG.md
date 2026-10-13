@@ -77,6 +77,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   message says the reference does not exist; both are read as *not a member*. Needs
   `Group.ReadWrite.All` (or `GroupMember.ReadWrite.All`) and `User.Read.All`
   ([#86](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/86)).
+- **`Create-EntraAUUserMember`**, migrated from 1.0, with the same payload: `ou` is the
+  administrative unit's object id and `user` the member's object id or user principal
+  name; only a user is added, as in 1.0. Both are looked up, and the user is added by the
+  two object ids. A user who is already a member now completes the job, where 1.0 failed
+  it with Graph's error; Graph answers that case with a `Request_BadRequest` whose message
+  reports a conflicting object, and only that message is read as *already a member*. An
+  administrative unit or a user that does not exist fails the job, as in 1.0, and so does
+  a unit with dynamic membership, before Graph is asked: Graph would refuse it with an
+  `Authorization_RequestDenied` that names no reason. Needs
+  `AdministrativeUnit.ReadWrite.All` and `User.Read.All`
+  ([#49](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/49)).
 - **The `migrate-runbook` skill** in `.claude/skills/` writes down how a 1.0 runbook is
   moved onto the shared module, as ten have been: which migrated runbook to copy, the
   rules reviewers check, the tests, and an end-to-end test on the test environment.

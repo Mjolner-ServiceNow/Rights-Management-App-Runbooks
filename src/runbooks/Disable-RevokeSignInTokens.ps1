@@ -13,14 +13,22 @@
     The queue command is Revoke-SignInTokens, not the file name.
 
     The user is looked up first and then changed by object id, so the user changed is the
-    user looked up. The account is disabled before the sessions are revoked, so no new
-    sign-in can fall between the two.
+    user looked up. A cloud-only account is disabled before its sessions are revoked, so
+    no new sign-in can fall between the two.
 
     Repeating the job is safe and completes. A user who is already disabled is not
     updated again, and the revoke still runs: revoking has no state that could already
     be true, so every run is a fresh revoke that moves signInSessionsValidFromDateTime to
     now. A disabled user cannot have obtained a token since the last one, so the repeat
     changes nothing a user could notice. A user who does not exist fails the job.
+
+    A user synchronised from on-premises Active Directory cannot be disabled in Entra ID:
+    the account is mastered on-premises. For such a user the sessions are revoked, which
+    is the part that cuts access off at once, and the job then fails, saying that the
+    sessions were revoked but the account was not disabled and that Disable-ADUser is the
+    runbook for it (docs/DECISIONS.md D17). A synchronised user who is already disabled is
+    in the asked-for state: the sessions are revoked and the job completes. If the revoke
+    itself fails, the job fails with Graph's error rather than the message above.
 
     Needs the Microsoft Graph application permissions User.ReadWrite.All and
     User.RevokeSessions.All (docs/AZURE-RESOURCES.md). Graph refuses to disable a user who
@@ -66,7 +74,9 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'R
     }
 
     try {
-        $user = Get-MgUser -UserId $identity -Property 'id', 'userPrincipalName', 'accountEnabled' -ErrorAction Stop
+        # accountEnabled and onPremisesSyncEnabled are not in Graph's default property set;
+        # without -Property both come back null and every user would look disabled.
+        $user = Get-MgUser -UserId $identity -Property 'id', 'userPrincipalName', 'accountEnabled', 'onPremisesSyncEnabled' -ErrorAction Stop
     } catch {
         # The Graph SDK throws a plain System.Exception; only the error id says what Graph
         # answered. Every other failure (throttling, access denied) is rethrown as is.
@@ -76,16 +86,27 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'R
 
     $fields = @{ userPrincipalName = $user.UserPrincipalName; id = $user.Id; queueSysId = $job.sys_id }
 
-    if ($user.AccountEnabled) {
+    # A synchronised account is mastered in AD, so Entra cannot disable it. Its sessions
+    # are still revoked, and the job then fails so that someone disables it there.
+    $syncedAndEnabled = $user.AccountEnabled -and $user.OnPremisesSyncEnabled
+
+    if (-not $user.AccountEnabled) {
+        Write-RmaLog -Level Information -Message 'Entra user is already disabled; revoking sessions only' -Data $fields
+    } elseif ($syncedAndEnabled) {
+        Write-RmaLog -Level Warning -Message 'Entra user is synchronised from on-premises AD and cannot be disabled in Entra ID; revoking sessions only' -Data $fields
+    } else {
         Update-MgUser -UserId $user.Id -AccountEnabled:$false -ErrorAction Stop
         Write-RmaLog -Level Information -Message 'Entra user disabled' -Data $fields
-    } else {
-        Write-RmaLog -Level Information -Message 'Entra user is already disabled; revoking sessions only' -Data $fields
     }
 
-    # Returns true; Graph answers an error, not false, when it cannot revoke.
+    # Returns true; Graph answers an error, not false, when it cannot revoke. That error
+    # fails the job as it is, before the message below could claim a revoke.
     $null = Revoke-MgUserSignInSession -UserId $user.Id -ErrorAction Stop
     Write-RmaLog -Level Information -Message 'Entra user sign-in sessions revoked' -Data $fields
+
+    if ($syncedAndEnabled) {
+        throw "The sign-in sessions of Entra ID user '$($user.UserPrincipalName)' were revoked, but the account is synchronised from on-premises Active Directory and was not disabled. Disable it there with Disable-ADUser."
+    }
 }
 
 Write-Output ($summary | Format-List | Out-String)

@@ -51,8 +51,9 @@ Describe 'Disable-RevokeSignInTokens' -Tag 'Unit' {
         Mock Write-RmaLog { $script:Logged.Add([pscustomobject]@{ Level = $Level; Message = $Message; Data = $Data }) }
         Mock Update-MgUser {}
         Mock Revoke-MgUserSignInSession { $true }
+        # Graph answers null, not false, for a user who was never synchronised.
         Mock Get-MgUser {
-            [pscustomobject]@{ Id = $script:UserObjectId; UserPrincipalName = 'jdoe@contoso.com'; AccountEnabled = $true }
+            [pscustomobject]@{ Id = $script:UserObjectId; UserPrincipalName = 'jdoe@contoso.com'; AccountEnabled = $true; OnPremisesSyncEnabled = $null }
         }
     }
 
@@ -68,7 +69,8 @@ Describe 'Disable-RevokeSignInTokens' -Tag 'Unit' {
         & $script:Body $script:Job ([pscustomobject]@{ action = 'Revoke-SignInTokens'; user = ' jdoe@contoso.com ' })
 
         Should -Invoke Get-MgUser -Times 1 -Exactly -ParameterFilter {
-            $UserId -eq 'jdoe@contoso.com' -and 'accountEnabled' -in $Property -and 'id' -in $Property
+            $UserId -eq 'jdoe@contoso.com' -and 'accountEnabled' -in $Property -and 'id' -in $Property -and
+            'onPremisesSyncEnabled' -in $Property
         }
         Should -Invoke Update-MgUser -Times 1 -Exactly -ParameterFilter {
             $UserId -eq $script:UserObjectId -and $PesterBoundParameters.ContainsKey('AccountEnabled') -and -not $AccountEnabled
@@ -90,7 +92,7 @@ Describe 'Disable-RevokeSignInTokens' -Tag 'Unit' {
     }
 
     It 'revokes the sessions of a user who is already disabled, without updating them, and completes' {
-        Mock Get-MgUser { [pscustomobject]@{ Id = $script:UserObjectId; UserPrincipalName = 'jdoe@contoso.com'; AccountEnabled = $false } }
+        Mock Get-MgUser { [pscustomobject]@{ Id = $script:UserObjectId; UserPrincipalName = 'jdoe@contoso.com'; AccountEnabled = $false; OnPremisesSyncEnabled = $null } }
 
         { & $script:Body $script:Job ([pscustomobject]@{ user = 'jdoe@contoso.com' }) } | Should -Not -Throw
 
@@ -98,6 +100,61 @@ Describe 'Disable-RevokeSignInTokens' -Tag 'Unit' {
         Should -Invoke Revoke-MgUserSignInSession -Times 1 -Exactly -ParameterFilter { $UserId -eq $script:UserObjectId }
         $script:Logged[0].Message | Should -Match 'already disabled'
         $script:Logged[-1].Message | Should -Be 'Entra user sign-in sessions revoked'
+    }
+
+    It 'disables a cloud-only user whose onPremisesSyncEnabled is false, before revoking' {
+        Mock Get-MgUser {
+            [pscustomobject]@{ Id = $script:UserObjectId; UserPrincipalName = 'jdoe@contoso.com'; AccountEnabled = $true; OnPremisesSyncEnabled = $false }
+        }
+        $script:Order = [System.Collections.Generic.List[string]]::new()
+        Mock Update-MgUser { $script:Order.Add('disable') }
+        Mock Revoke-MgUserSignInSession { $script:Order.Add('revoke'); $true }
+
+        { & $script:Body $script:Job ([pscustomobject]@{ user = 'jdoe@contoso.com' }) } | Should -Not -Throw
+
+        $script:Order -join ',' | Should -Be 'disable,revoke'
+    }
+
+    Context 'a user synchronised from on-premises AD' {
+
+        BeforeEach {
+            Mock Get-MgUser {
+                [pscustomobject]@{ Id = $script:UserObjectId; UserPrincipalName = 'jdoe@contoso.com'; AccountEnabled = $true; OnPremisesSyncEnabled = $true }
+            }
+        }
+
+        It 'revokes the sessions, never disables, and then fails naming Disable-ADUser' {
+            { & $script:Body $script:Job ([pscustomobject]@{ user = 'jdoe@contoso.com' }) } |
+            Should -Throw "The sign-in sessions of Entra ID user 'jdoe@contoso.com' were revoked, but the account is synchronised from on-premises Active Directory and was not disabled. Disable it there with Disable-ADUser."
+
+            Should -Invoke Revoke-MgUserSignInSession -Times 1 -Exactly -ParameterFilter { $UserId -eq $script:UserObjectId }
+            Should -Invoke Update-MgUser -Times 0 -Exactly
+            $script:Logged[0].Level | Should -Be 'Warning'
+            $script:Logged[0].Message | Should -Match 'synchronised from on-premises AD'
+            $script:Logged[-1].Message | Should -Be 'Entra user sign-in sessions revoked'
+        }
+
+        It 'fails with Graph''s error, not the revoked message, when the revoke fails' {
+            Mock Revoke-MgUserSignInSession { throw '[Authorization_RequestDenied] : Insufficient privileges to complete the operation.' }
+
+            $thrown = { & $script:Body $script:Job ([pscustomobject]@{ user = 'jdoe@contoso.com' }) } | Should -Throw -PassThru
+            $thrown.Exception.Message | Should -BeLike '*Insufficient privileges*'
+            $thrown.Exception.Message | Should -Not -BeLike '*were revoked*'
+            Should -Invoke Update-MgUser -Times 0 -Exactly
+            $script:Logged.Message | Should -Not -Contain 'Entra user sign-in sessions revoked'
+        }
+
+        It 'revokes the sessions and completes when the user is already disabled' {
+            Mock Get-MgUser {
+                [pscustomobject]@{ Id = $script:UserObjectId; UserPrincipalName = 'jdoe@contoso.com'; AccountEnabled = $false; OnPremisesSyncEnabled = $true }
+            }
+
+            { & $script:Body $script:Job ([pscustomobject]@{ user = 'jdoe@contoso.com' }) } | Should -Not -Throw
+
+            Should -Invoke Update-MgUser -Times 0 -Exactly
+            Should -Invoke Revoke-MgUserSignInSession -Times 1 -Exactly -ParameterFilter { $UserId -eq $script:UserObjectId }
+            $script:Logged[0].Message | Should -Match 'already disabled'
+        }
     }
 
     It 'fails with an actionable message when the user does not exist' {

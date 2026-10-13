@@ -248,6 +248,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `rma-worker.local.json`, and `rma-worker.example.json` shows the shape.
 
 ### Fixed
+- **`Disable-RevokeSignInTokens` revokes a synchronised user's sessions, then fails the
+  job.** It asked Graph to disable every enabled user, including one synchronised from
+  on-premises AD, whose account is mastered there; when that failed, the job failed
+  before the revoke and the user kept their sessions. The lookup now reads
+  `onPremisesSyncEnabled`. A cloud-only user is disabled and then revoked, as before. A
+  synchronised, enabled user has their sessions revoked, and the job then fails saying
+  that the sessions were revoked but the account was not disabled, naming
+  `Disable-ADUser`; a synchronised user already disabled has their sessions revoked and
+  the job completes. A revoke that fails still fails the job with Graph's error (`docs/DECISIONS.md` D17,
+  [#141](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/141)).
 - **`Create-EntraUser` no longer fails when an optional payload field is absent.** It read
   its fifteen payload fields as `$p.city` and so on, and under `Set-StrictMode -Version
   Latest` a payload without one of them failed the job with a property-not-found naming no

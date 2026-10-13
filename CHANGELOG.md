@@ -16,6 +16,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a group synchronised from on-premises AD fails it before Graph is asked, naming
   `Remove-ADGroup`. Needs the `Group.ReadWrite.All` application permission
   ([#85](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/85)).
+- **`Set-EntraUserAuthenticationPhoneMethod`**, migrated from 1.0, with the same payload
+  (`useridforauth`, `mobile`) and the same phone type, mobile. The user is looked up by
+  user principal name or object id and its mobile method set by object id. A user without
+  one gets it, as in 1.0; a user whose mobile method holds another number now has it
+  changed in place, where 1.0 failed every job for a user who already had one; the same
+  number, in whatever spelling Graph accepts, completes the job unchanged. An empty number
+  fails the job, as in 1.0, and never removes the method. The number is never logged or
+  written into a failure reason. Needs `UserAuthenticationMethod.ReadWrite.All` and
+  `User.Read.All`
+  ([#89](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/89)).
 - **`Disable-RevokeSignInTokens`**, migrated from 1.0, for the `Revoke-SignInTokens`
   command. Looks the Entra ID user up by user principal name or object id, then disables
   the account and revokes its sign-in sessions by object id, in that order. A user who is

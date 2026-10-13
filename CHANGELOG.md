@@ -22,6 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   actionable message, and so does a user synchronised from on-premises AD, which only
   `Disable-ADUser` can disable. Disabled by object id
   ([#55](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/55)).
+- **`Remove-EntraUser`**, migrated from 1.0. The payload's `user` is an object id or a
+  user principal name, as before; the user is looked up and then deleted by its object id.
+  The delete is a soft delete, as in 1.0, so the user stays restorable from Deleted users
+  for 30 days. A user that does not exist now completes the job with a warning instead of
+  failing it (`docs/DECISIONS.md` D15). Needs the `User.ReadWrite.All` application
+  permission
+  ([#87](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/87)).
 - **The `migrate-runbook` skill** in `.claude/skills/` writes down how a 1.0 runbook is
   moved onto the shared module, as ten have been: which migrated runbook to copy, the
   rules reviewers check, the tests, and an end-to-end test on the test environment.

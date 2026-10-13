@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Remove-EntraAdministrativeUnit`**, migrated from 1.0, with the same payload field,
+  `organizationalunit`, which must be the administrative unit's Entra object id, as 1.0
+  already passed it to Graph; a display name or anything that could change the Graph
+  request path is refused. The unit is looked up and deleted by that id. The delete is a
+  soft delete, as in 1.0: on the test tenant the unit moved to deleted items, from which
+  Graph cannot purge an administrative unit early. Members are not touched and the unit
+  is deleted whether it has any or not, as in 1.0. A unit that does not exist now
+  completes the job with a warning instead of failing it (`docs/DECISIONS.md` D15).
+  Needs the `AdministrativeUnit.ReadWrite.All` application permission
+  ([#84](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/84)).
 - **`Remove-EntraGroup`**, migrated from 1.0. The payload's `group` must be the group's
   Entra object id, as 1.0 already passed it to Graph; a display name or anything that
   could change the Graph request path is refused. The group is looked up and deleted by

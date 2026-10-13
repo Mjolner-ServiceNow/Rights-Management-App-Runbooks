@@ -70,6 +70,7 @@ and runs safely on forks.
 | [`Set-EntraUserPassword`](src/runbooks/Set-EntraUserPassword.ps1) | The ServiceNow application, per request | Resets an Entra ID user's password; optionally requires a change at next sign-in. Refuses a user synchronised from on-premises AD |
 | [`Remove-EntraGroupMember`](src/runbooks/Remove-EntraGroupMember.ps1) | The ServiceNow application, per request | Removes a user from an Entra ID group; a membership already gone completes the job |
 | [`Create-EntraAUUserMember`](src/runbooks/Create-EntraAUUserMember.ps1) | The ServiceNow application, per request | Adds a user to an Entra ID administrative unit; a user already a member completes the job, a unit with dynamic membership is refused |
+| [`Remove-EntraAdministrativeUnit`](src/runbooks/Remove-EntraAdministrativeUnit.ps1) | The ServiceNow application, per request | Deletes an Entra ID administrative unit by object id (soft delete, to deleted items); its members stay. One already gone completes the job |
 | [`Unlock-ADUser`](src/runbooks/Unlock-ADUser.ps1) | The ServiceNow application, per request | Unlocks a locked-out AD user. The reference for Active Directory runbooks: the service account from Key Vault, `-Server` and `-Credential` on every AD cmdlet. |
 | [`Enable-ADUser`](src/runbooks/Enable-ADUser.ps1) | The ServiceNow application, per request | Enables a disabled AD user |
 | [`Disable-ADUser`](src/runbooks/Disable-ADUser.ps1) | The ServiceNow application, per request | Disables an AD user |

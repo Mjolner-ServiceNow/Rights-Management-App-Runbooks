@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Move-ADGroupToOrganizationalUnit`**, migrated from 1.0. A group already in the
+  target OU completes the job unchanged; a group or target OU that does not exist fails it
+  with an actionable message. Moved by objectGUID. Needs the `Groups` delegation scope on
+  both OUs
+  ([#76](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/76)).
 - **`Remove-ADGroupMember`**, migrated from 1.0. Membership is read from the user's
   `memberOf`, never by listing the group's members, which can number hundreds of
   thousands. A user who is not a member, or a group or user that does not exist,

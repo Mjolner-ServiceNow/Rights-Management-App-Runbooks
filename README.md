@@ -65,6 +65,7 @@ and runs safely on forks.
 | [`Enable-ADUser`](src/runbooks/Enable-ADUser.ps1) | The ServiceNow application, per request | Enables a disabled AD user |
 | [`Disable-ADUser`](src/runbooks/Disable-ADUser.ps1) | The ServiceNow application, per request | Disables an AD user |
 | [`Remove-ADUser`](src/runbooks/Remove-ADUser.ps1) | The ServiceNow application, per request | Deletes an AD user; a user already gone completes the job |
+| [`Remove-ADGroup`](src/runbooks/Remove-ADGroup.ps1) | The ServiceNow application, per request | Deletes an AD group; a group already gone completes the job |
 | [`Set-ADUserPassword`](src/runbooks/Set-ADUserPassword.ps1) | The ServiceNow application, per request | Resets an AD user's password; optionally requires a change at next logon and unlocks |
 | [`Invoke-RmaQueueWatchdog`](src/runbooks/Invoke-RmaQueueWatchdog.ps1) | The ServiceNow application, on a cadence, per domain | Requeues jobs stranded in Work in Progress |
 | [`Test-RmaHealth`](src/runbooks/Test-RmaHealth.ps1) | The ServiceNow application | Proves every dependency end to end and reports the result to ServiceNow |

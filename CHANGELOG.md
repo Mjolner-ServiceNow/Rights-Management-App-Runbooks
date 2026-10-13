@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`scripts/Grant-RmaAdDelegation.ps1` delegates the AD service account's rights**, and
+  `docs/INSTALLATION.md` step 6a says which runbook needs which. A member of Domain Users
+  can read the directory but every AD runbook that writes failed with *Access is denied*;
+  nothing said what to grant. The script grants three scopes (`Users`, `Groups`,
+  `OrganizationalUnits`) as inherited permissions on the managed OUs with dsacls, never
+  full control or Write Permissions, and returns each grant so `-WhatIf` shows exactly what
+  it would write. `Test-RmaHealth` does not check the delegation, and the docs say so
+  ([#123](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/123)).
 - **`Unlock-ADUser`, the first Active Directory runbook migrated from 1.0** and the reference
   for the rest: the service account's password from Key Vault once before the loop,
   `-Server` and `-Credential` on every AD cmdlet, payload fields read so that a missing one

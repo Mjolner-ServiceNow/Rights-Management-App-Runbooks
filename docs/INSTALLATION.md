@@ -48,6 +48,7 @@ most common reason this takes days instead of hours.
 | 4 | Application Administrator or Cloud Application Administrator | Microsoft Entra |
 | 5 | Privileged Role Administrator or Global Administrator | Microsoft Entra |
 | 6 | Key Vault Secrets Officer, plus the actual passwords | Azure |
+| 6a | Domain Admin, or an administrator allowed to change permissions on the managed OUs | Active Directory |
 | 7 | Contributor on the Automation Account | Azure |
 
 Contributor alone is not enough for step 1. It cannot create role assignments, and step 1
@@ -96,7 +97,8 @@ by another.
 | Key Vault name | Step 1 | Steps 6, 8 |
 | Tenant ID | Your Entra tenant | Steps 4, 8 |
 | Application (client) ID | Step 4 | Step 8 |
-| AD service account username and a domain controller | Your AD | Steps 6, 8 |
+| AD service account username and a domain controller | Your AD | Steps 6, 6a, 8 |
+| The OUs whose users, groups and OUs the solution manages | Your AD | Step 6a |
 | Subscription ID | Your Azure subscription | ServiceNow application |
 | Automation Account name and its resource group | Step 1 | ServiceNow application |
 | Hybrid Worker Group name | Step 1 | ServiceNow application |
@@ -435,6 +437,54 @@ written down.
 
 If the Key Vault firewall is on, run these from inside the allowed subnet, or temporarily
 add your own IP.
+
+### 6a. Delegate the AD service account's rights
+
+**Who:** Domain Admin, or an administrator allowed to change permissions on the managed OUs.
+
+A member of Domain Users can read the directory, which is all `Test-RmaHealth` and the
+`Import-AD*` runbooks need. Every runbook that changes something fails with *Access is
+denied* until the service account has been delegated the rights it uses. Delegate them on
+the OUs the solution manages, never by adding the account to Domain Admins or Account
+Operators.
+
+[`scripts/Grant-RmaAdDelegation.ps1`](../scripts/Grant-RmaAdDelegation.ps1) does it with
+dsacls, as inherited permissions on each OU you name. Run it on a domain controller or a
+machine with the AD DS tools (`RSAT-ADDS-Tools`), first with `-WhatIf`:
+
+```powershell
+./Grant-RmaAdDelegation.ps1 -ServiceAccount 'CONTOSO\svc-rma' `
+    -OrganizationalUnit 'OU=Staff,DC=contoso,DC=com', 'OU=Groups,DC=contoso,DC=com' `
+    -Scope Users, Groups -WhatIf
+```
+
+Grant only the scopes the runbooks the customer uses need:
+
+| Scope | Rights, on the named OUs and everything below them | Runbooks |
+|---|---|---|
+| `Users` | Create and delete user objects; read and write all properties of user objects; Reset Password | `Unlock-ADUser`, `Enable-ADUser`, `Disable-ADUser`, `Set-ADUserPassword`, `Create-ADUser`, `Remove-ADUser`, `Update-ADUser`, `Update-ADUserName`, `Change-ADSamaccountname`, `Move-ADUserToOrganizationalUnit`, `Update-ADUserPath` |
+| `Groups` | Create and delete group objects; read and write all properties of group objects, `member` included | `Create-ADGroup`, `Remove-ADGroup`, `Update-ADGroup`, `Create-ADGroupMember`, `Remove-ADGroupMember`, `Move-ADGroupToOrganizationalUnit` |
+| `OrganizationalUnits` | Create and delete OUs below the named ones; read and write all properties of those OUs | `Create-ADOrganizationalUnit`, `Update-ADOrganizationalUnit`, `Remove-ADOrganizationalUnit` |
+| none | Read, which Domain Users already has | `Import-AD*`, `Initial-Import-AD*`, `Test-RmaHealth` |
+
+Four things the table does not say:
+
+- **A move needs the scope on both OUs.** Moving a user or group deletes it from one OU and
+  creates it in the other.
+- **Group membership needs the group's OU, not the user's.** `member` is an attribute of the
+  group, so the user may be anywhere.
+- **No scope can remove a protected OU.** Clearing *Protect object from accidental
+  deletion* is a permission change, and the service account is deliberately not given
+  Write Permissions. Removing a protected OU stays an administrator's decision.
+- **Privileged accounts are not affected.** Accounts protected by AdminSDHolder
+  (`adminCount=1`: Domain Admins, Account Operators and the other privileged groups) do not
+  inherit OU permissions, so the delegation cannot reset their passwords. Keep them out of
+  the managed OUs anyway.
+
+`Test-RmaHealth` checks that the service account can authenticate and read the domain. It
+**does not** check the delegation: a health check that passes says nothing about whether a
+write will. To see what was granted, run `dsacls "<OU distinguished name>"` and look for
+the service account.
 
 ---
 

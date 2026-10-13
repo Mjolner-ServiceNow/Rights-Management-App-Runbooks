@@ -16,6 +16,13 @@ managed identity, federated to an app registration. No client secret, no certifi
 two passwords that cannot be federated, for ServiceNow and the AD service account, live in
 Key Vault and are read at run time.
 
+**The AD service account is delegated, not privileged.** It is a member of Domain Users and
+holds only the rights `scripts/Grant-RmaAdDelegation.ps1` delegates on the OUs the
+solution manages: creating, deleting and changing users, groups and OUs there, and
+resetting user passwords. It never holds Write Permissions, so it cannot widen its own
+rights, and accounts protected by AdminSDHolder do not inherit what it was given. Step 6a
+of [`docs/INSTALLATION.md`](docs/INSTALLATION.md) has the table.
+
 **Read-only access to secrets.** The runtime identity holds `Key Vault Secrets User` on
 the vault. It cannot rotate, add or delete anything, but it can read *every* secret in that
 vault, not only the two it needs. Keep nothing else in it.

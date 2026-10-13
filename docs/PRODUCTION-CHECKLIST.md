@@ -25,6 +25,7 @@ Work top to bottom. Anything marked **BLOCKER** stops the release.
 - [ ] ServiceNow's app registration holds **Automation Contributor on `aa-rma-prod` only** — not on the resource group or subscription — and no API permissions
 - [ ] The expiry date of ServiceNow's credential is recorded, and someone owns renewing it
 - [ ] Managed identity has `Key Vault Secrets User` and nothing more. Confirm it does **not** hold Secrets Officer
+- [ ] AD service account is a member of **Domain Users only**, with the rights of `Grant-RmaAdDelegation.ps1` on the managed OUs and only the scopes the customer's runbooks use (INSTALLATION step 6a). Confirm with `dsacls` on each OU. Not Domain Admins, not Account Operators **BLOCKER**
 
 ## 3. Key Vault
 

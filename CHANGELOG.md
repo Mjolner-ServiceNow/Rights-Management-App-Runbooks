@@ -55,6 +55,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Needs the Graph permission `User.EnableDisableAccount.All` with `User.Read.All`, or
   `User.ReadWrite.All`
   ([#58](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/58)).
+- **`Set-EntraUserPassword`**, migrated from 1.0 on the `Create-EntraUser` pattern, with
+  the secret handling of `Set-ADUserPassword`. The user is named by user principal name or
+  object id, looked up, checked to be the user asked for, and reset by object id. As in
+  1.0, `forceChangePasswordNextSignIn` is set from the payload's `mustChange` on every
+  reset, false when it is absent; `mustChange` must now be `true` or `false`. The password
+  goes from the payload into a `SecureString` and becomes text only inside the
+  `Update-MgUser` call. Microsoft.Graph puts the request body, password included, into
+  the error record it raises, so a refused reset fails the job with a new error that
+  carries only Graph's message. A user synchronised from on-premises AD fails the job
+  before the password is sent (`Set-ADUserPassword` is for that user), and so does a user
+  who does not exist. Needs `User-PasswordProfile.ReadWrite.All` with `User.Read.All`
+  ([#91](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/91)).
 - **The `migrate-runbook` skill** in `.claude/skills/` writes down how a 1.0 runbook is
   moved onto the shared module, as ten have been: which migrated runbook to copy, the
   rules reviewers check, the tests, and an end-to-end test on the test environment.

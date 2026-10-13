@@ -67,6 +67,7 @@ and runs safely on forks.
 | [`Enable-EntraUser`](src/runbooks/Enable-EntraUser.ps1) | The ServiceNow application, per request | Enables a disabled Entra ID user |
 | [`Remove-EntraGroup`](src/runbooks/Remove-EntraGroup.ps1) | The ServiceNow application, per request | Deletes an Entra ID group by object id (soft delete, to Deleted groups); a group already gone completes the job, one synchronised from on-premises AD is refused |
 | [`Set-EntraUserAuthenticationPhoneMethod`](src/runbooks/Set-EntraUserAuthenticationPhoneMethod.ps1) | The ServiceNow application, per request | Adds an Entra ID user's mobile phone authentication method, or changes its number; the same number already set completes the job |
+| [`Set-EntraUserPassword`](src/runbooks/Set-EntraUserPassword.ps1) | The ServiceNow application, per request | Resets an Entra ID user's password; optionally requires a change at next sign-in. Refuses a user synchronised from on-premises AD |
 | [`Unlock-ADUser`](src/runbooks/Unlock-ADUser.ps1) | The ServiceNow application, per request | Unlocks a locked-out AD user. The reference for Active Directory runbooks: the service account from Key Vault, `-Server` and `-Credential` on every AD cmdlet. |
 | [`Enable-ADUser`](src/runbooks/Enable-ADUser.ps1) | The ServiceNow application, per request | Enables a disabled AD user |
 | [`Disable-ADUser`](src/runbooks/Disable-ADUser.ps1) | The ServiceNow application, per request | Disables an AD user |

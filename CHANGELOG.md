@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Remove-ADGroup`**, migrated from 1.0 on the `Remove-ADUser` pattern: deleted by the
+  objectGUID it looked up, and a group that does not exist completes the job with a
+  Warning (`docs/DECISIONS.md` D15). Needs the `Groups` delegation scope
+  ([#78](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/78)).
 - **`Remove-ADUser`**, migrated from 1.0 on the `Unlock-ADUser` pattern. It deletes by the
   objectGUID it looked up in the same job. A user who does not exist completes the job
   with a Warning instead of failing it as 1.0 did, so a repeated execution of a delete

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Remove-EntraGroup`**, migrated from 1.0. The payload's `group` must be the group's
+  Entra object id, as 1.0 already passed it to Graph; a display name or anything that
+  could change the Graph request path is refused. The group is looked up and deleted by
+  that id. The delete is a soft delete, as in 1.0: on the test tenant both a security
+  group and a Microsoft 365 group moved to Deleted groups. A group that does not exist
+  now completes the job with a warning instead of failing it (`docs/DECISIONS.md` D15);
+  a group synchronised from on-premises AD fails it before Graph is asked, naming
+  `Remove-ADGroup`. Needs the `Group.ReadWrite.All` application permission
+  ([#85](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/85)).
 - **`Disable-RevokeSignInTokens`**, migrated from 1.0, for the `Revoke-SignInTokens`
   command. Looks the Entra ID user up by user principal name or object id, then disables
   the account and revokes its sign-in sessions by object id, in that order. A user who is

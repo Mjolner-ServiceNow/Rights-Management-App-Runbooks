@@ -17,5 +17,12 @@
   "ApplicationId": "00000000-0000-0000-0000-000000000003",
   "DomainController": "dc01.contoso.test",
   "AdUserName": "svc-rma",
-  "AdSecretName": "ad-service-account-password"
+  "AdSecretName": "ad-service-account-password",
+  "AutomationAccount": {
+    "ResourceGroup": "rg-rma-automation-test",
+    "Name": "aa-rma-test",
+    "HybridWorkerGroup": "hwg-rma-test",
+    "RuntimeEnvironment": "Powershell_7-6"
+  },
+  "LegacyRunbookPath": "~/src/rma-1.0/src/runbooks"
 }

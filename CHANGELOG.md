@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The `migrate-runbook` skill** in `.claude/skills/` writes down how a 1.0 runbook is
+  moved onto the shared module, as ten have been: which migrated runbook to copy, the
+  rules reviewers check, the tests, and an end-to-end test on the test environment.
+  Its scripts publish a runbook to the test Automation Account, queue a row, run a real
+  job and report what it did, and check the directory, reading every value from the
+  gitignored `rma-worker.local.json` (which gains `AutomationAccount` and
+  `LegacyRunbookPath`). Parallel agents each use a hand-made git worktree, a tunnel port
+  and a remote folder of their own
+  ([#137](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/137)).
 - **`Remove-ADOrganizationalUnit`**, migrated from 1.0, which cleared *Protect object from
   accidental deletion* and then deleted. The service account is not allowed to change
   permissions, so a protected OU now fails the job with a message saying an

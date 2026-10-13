@@ -64,6 +64,7 @@ and runs safely on forks.
 | [`Unlock-ADUser`](src/runbooks/Unlock-ADUser.ps1) | The ServiceNow application, per request | Unlocks a locked-out AD user. The reference for Active Directory runbooks: the service account from Key Vault, `-Server` and `-Credential` on every AD cmdlet. |
 | [`Enable-ADUser`](src/runbooks/Enable-ADUser.ps1) | The ServiceNow application, per request | Enables a disabled AD user |
 | [`Disable-ADUser`](src/runbooks/Disable-ADUser.ps1) | The ServiceNow application, per request | Disables an AD user |
+| [`Remove-ADUser`](src/runbooks/Remove-ADUser.ps1) | The ServiceNow application, per request | Deletes an AD user; a user already gone completes the job |
 | [`Invoke-RmaQueueWatchdog`](src/runbooks/Invoke-RmaQueueWatchdog.ps1) | The ServiceNow application, on a cadence, per domain | Requeues jobs stranded in Work in Progress |
 | [`Test-RmaHealth`](src/runbooks/Test-RmaHealth.ps1) | The ServiceNow application | Proves every dependency end to end and reports the result to ServiceNow |
 

@@ -222,7 +222,24 @@ Still open in
 whether single-record writes from the Create and Update runbooks also go through
 `/insertMultiple`, and the endpoint's path, body and response.
 
-## Findings
+### D15. A delete whose object is already gone completes
+
+*2026-10-13. First applied in Remove-ADUser
+([#81](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/81)).*
+
+The `Remove-*` runbooks complete the job, with a Warning record, when the object to delete
+does not exist. The 1.0 runbooks failed it.
+
+The outcome ServiceNow asked for, that the object is gone, is then true. Failing would
+turn every repeated execution of a delete that already succeeded into a failed job: a
+second worker that won the same row while the claim is not atomic (F1), or the watchdog
+requeueing a job whose Completed state was not written. The cost is that an identity that
+never existed, a typo, also completes; nothing is deleted by it, the Warning says so, and
+the identities come from ServiceNow's own import of the directory.
+
+Only *not found* completes. Every other failure, such as access denied or a protected
+object, fails the job as before.
+
 
 ### F1. The job claim is not atomic on the instance it was tested on
 

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Remove-ADUser`**, migrated from 1.0 on the `Unlock-ADUser` pattern. It deletes by the
+  objectGUID it looked up in the same job. A user who does not exist completes the job
+  with a Warning instead of failing it as 1.0 did, so a repeated execution of a delete
+  that succeeded is not reported as a failure (`docs/DECISIONS.md` D15). Needs the
+  `Users` delegation scope
+  ([#81](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/81)).
 - **`Disable-ADUser`**, migrated from 1.0 on the `Unlock-ADUser` pattern. A user who is
   already disabled completes the job unchanged. Needs the `Users` delegation scope
   ([#54](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/54)).

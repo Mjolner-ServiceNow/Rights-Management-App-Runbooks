@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Enable-ADUser`**, migrated from 1.0 on the `Unlock-ADUser` pattern. A user who is
+  already enabled completes the job unchanged; an account the domain will not enable
+  fails with the directory's reason. Needs the `Users` delegation scope. The tests'
+  AST helper moved to `tests/Helpers/RunbookBody.ps1`, shared by the AD runbook tests
+  ([#57](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/57)).
 - **`scripts/Grant-RmaAdDelegation.ps1` delegates the AD service account's rights**, and
   `docs/INSTALLATION.md` step 6a says which runbook needs which. A member of Domain Users
   can read the directory but every AD runbook that writes failed with *Access is denied*;

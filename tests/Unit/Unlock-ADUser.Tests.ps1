@@ -8,21 +8,10 @@
 BeforeAll {
     Import-Module "$PSScriptRoot/../../src/RMA.Runbooks/RMA.Runbooks.psd1" -Force
 
+    . (Join-Path $PSScriptRoot '../Helpers/RunbookBody.ps1')
     $path = Join-Path $PSScriptRoot '../../src/runbooks/Unlock-ADUser.ps1'
-    $script:Ast = [System.Management.Automation.Language.Parser]::ParseFile($path, [ref] $null, [ref] $null)
-    $loop = $script:Ast.Find({
-            $args[0] -is [System.Management.Automation.Language.CommandAst] -and
-            $args[0].GetCommandName() -eq 'Invoke-RmaQueueLoop'
-        }, $true)
-    $elements = $loop.CommandElements
-    $bodyIndex = [array]::FindIndex([object[]] $elements, [Predicate[object]] {
-            param($e) $e -is [System.Management.Automation.Language.CommandParameterAst] -and $e.ParameterName -eq 'Body'
-        })
-    $commandIndex = [array]::FindIndex([object[]] $elements, [Predicate[object]] {
-            param($e) $e -is [System.Management.Automation.Language.CommandParameterAst] -and $e.ParameterName -eq 'Command'
-        })
-    $script:Body = $elements[$bodyIndex + 1].ScriptBlock.GetScriptBlock()
-    $script:Command = $elements[$commandIndex + 1].Value
+    $script:Body = Get-RunbookBody -Path $path
+    $script:Command = Get-RunbookCommand -Path $path
 
     # The exception Get-ADUser throws for an unknown identity. The runbook matches it by
     # type name, so a stand-in with the same name behaves as the real one does.

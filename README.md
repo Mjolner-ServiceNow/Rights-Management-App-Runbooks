@@ -62,6 +62,7 @@ and runs safely on forks.
 |---|---|---|
 | [`Create-EntraUser`](src/runbooks/Create-EntraUser.ps1) | The ServiceNow application, per request | The reference command runbook for Entra ID. A new Entra ID runbook starts as a copy of it. |
 | [`Unlock-ADUser`](src/runbooks/Unlock-ADUser.ps1) | The ServiceNow application, per request | Unlocks a locked-out AD user. The reference for Active Directory runbooks: the service account from Key Vault, `-Server` and `-Credential` on every AD cmdlet. |
+| [`Enable-ADUser`](src/runbooks/Enable-ADUser.ps1) | The ServiceNow application, per request | Enables a disabled AD user |
 | [`Invoke-RmaQueueWatchdog`](src/runbooks/Invoke-RmaQueueWatchdog.ps1) | The ServiceNow application, on a cadence, per domain | Requeues jobs stranded in Work in Progress |
 | [`Test-RmaHealth`](src/runbooks/Test-RmaHealth.ps1) | The ServiceNow application | Proves every dependency end to end and reports the result to ServiceNow |
 

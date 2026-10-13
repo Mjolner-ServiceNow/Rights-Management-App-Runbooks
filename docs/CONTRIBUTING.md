@@ -243,8 +243,9 @@ is a review responsibility.
    `Set-StrictMode -Version Latest`, where `$p.name` on a payload without the field throws a
    property-not-found that tells nobody which ServiceNow field is missing.
 7. Add a test if the body has branching logic worth protecting.
-   `tests/Unit/Unlock-ADUser.Tests.ps1` shows how: it takes the body from the runbook's AST,
-   so the test runs without the modules the runbook `#Requires`.
+   `tests/Helpers/RunbookBody.ps1` takes the body and the `-Command` from the runbook's AST,
+   so the test runs without the modules the runbook `#Requires`;
+   `tests/Unit/Unlock-ADUser.Tests.ps1` shows how to use it.
 
 ## Changing the shared module
 

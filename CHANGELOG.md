@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Disable-RevokeSignInTokens`**, migrated from 1.0, for the `Revoke-SignInTokens`
+  command. Looks the Entra ID user up by user principal name or object id, then disables
+  the account and revokes its sign-in sessions by object id, in that order. A user who is
+  already disabled is not updated again and their sessions are revoked again, so a
+  repeated job completes; a user who does not exist fails the job with an actionable
+  message, where 1.0 passed Graph's error on. Needs `User.ReadWrite.All` and
+  `User.RevokeSessions.All`
+  ([#56](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/56)).
 - **The `migrate-runbook` skill** in `.claude/skills/` writes down how a 1.0 runbook is
   moved onto the shared module, as ten have been: which migrated runbook to copy, the
   rules reviewers check, the tests, and an end-to-end test on the test environment.

@@ -20,9 +20,9 @@ BeforeAll {
 Describe 'Grant-RmaAdDelegation' -Tag 'Unit', 'Security' {
 
     It 'grants <Scope> exactly these rights' -ForEach @(
-        @{ Scope = 'Users'; Expected = @('/I:T CONTOSO\svc-rma:CCDC;user', '/I:S CONTOSO\svc-rma:RPWP;;user', '/I:S CONTOSO\svc-rma:CA;Reset Password;user') }
-        @{ Scope = 'Groups'; Expected = @('/I:T CONTOSO\svc-rma:CCDC;group', '/I:S CONTOSO\svc-rma:RPWP;;group') }
-        @{ Scope = 'OrganizationalUnits'; Expected = @('/I:T CONTOSO\svc-rma:CCDC;organizationalUnit', '/I:S CONTOSO\svc-rma:RPWP;;organizationalUnit') }
+        @{ Scope = 'Users'; Expected = @('/I:T CONTOSO\svc-rma:CCDC;user', '/I:S CONTOSO\svc-rma:RPWP;;user', '/I:S CONTOSO\svc-rma:CA;Reset Password;user', '/I:S CONTOSO\svc-rma:SD;;user') }
+        @{ Scope = 'Groups'; Expected = @('/I:T CONTOSO\svc-rma:CCDC;group', '/I:S CONTOSO\svc-rma:RPWP;;group', '/I:S CONTOSO\svc-rma:SD;;group') }
+        @{ Scope = 'OrganizationalUnits'; Expected = @('/I:T CONTOSO\svc-rma:CCDC;organizationalUnit', '/I:S CONTOSO\svc-rma:RPWP;;organizationalUnit', '/I:S CONTOSO\svc-rma:SD;;organizationalUnit') }
     ) {
         $grants = @(Get-Grant -Scope $Scope)
 
@@ -44,8 +44,16 @@ Describe 'Grant-RmaAdDelegation' -Tag 'Unit', 'Security' {
     It 'grants every scope on every OU given, once' {
         $grants = @(Get-Grant -Scope Users, Users, Groups -OrganizationalUnit 'OU=A,DC=contoso,DC=com', 'OU=B,DC=contoso,DC=com')
 
-        $grants.Count | Should -Be 10
-        @($grants | Where-Object OrganizationalUnit -EQ 'OU=B,DC=contoso,DC=com').Count | Should -Be 5
+        $grants.Count | Should -Be 14
+        @($grants | Where-Object OrganizationalUnit -EQ 'OU=B,DC=contoso,DC=com').Count | Should -Be 7
+    }
+
+    It 'grants Delete on the objects of each scope, so a parent''s Deny Delete Child does not block it' {
+        # #131: protecting an OU denies Delete Child on its parent to Everyone.
+        $rights = (Get-Grant -Scope Users, Groups, OrganizationalUnits).Arguments | Where-Object { $_ -like 'CONTOSO\*' }
+        foreach ($class in 'user', 'group', 'organizationalUnit') {
+            $rights | Should -Contain "CONTOSO\svc-rma:SD;;$class"
+        }
     }
 
     It 'addresses a named domain controller' {

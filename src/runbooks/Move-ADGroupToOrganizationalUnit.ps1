@@ -67,15 +67,15 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'M
     # through PSObject: under StrictMode a missing field would otherwise throw a
     # property-not-found that says nothing about the payload.
     $field = {
-        param([string] $Name)
-        $value = "$($p.PSObject.Properties[$Name]?.Value)".Trim()
+        param($Payload, [string] $Name)
+        $value = "$($Payload.PSObject.Properties[$Name]?.Value)".Trim()
         if (-not $value -or $value -match '[\x00-\x1F]') {
             throw "Payload field '$Name' is empty or contains control characters. Correct the ServiceNow record."
         }
         $value
     }
-    $groupIdentity = & $field 'group'
-    $ouIdentity = & $field 'ou'
+    $groupIdentity = & $field $p 'group'
+    $ouIdentity = & $field $p 'ou'
 
     # Matched by name: a typed catch needs the ActiveDirectory assembly loaded to resolve.
     $isNotFound = { param($ErrorRecord) $ErrorRecord.Exception.GetType().Name -eq 'ADIdentityNotFoundException' }

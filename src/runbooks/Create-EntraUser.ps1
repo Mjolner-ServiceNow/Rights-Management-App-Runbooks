@@ -20,6 +20,15 @@
       - Creation is idempotent: an existing UPN is reported, not retried into a failure.
 .NOTES
     Every other runbook follows this shape. Only the scriptblock body differs.
+
+    Payload:
+      username      required; the local part of the user principal name, in the
+                    character set Entra accepts there. The domain is the tenant's default.
+      password      required; the initial password, changed at first sign-in
+      givenname, surname, city, company, department, title, postalcode, streetaddress,
+      mobilephone, employeeid, physicaldelofficename, businessphone
+                    optional; an empty or absent field is not sent to Graph
+      usersysid     the ServiceNow user record, passed back as it came in the write-back
 #>
 
 [CmdletBinding()]
@@ -47,17 +56,45 @@ Connect-RmaGraph -Context $context -TenantId $TenantId -ApplicationId $Applicati
 $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'Create-EntraUser' -Body {
     param($job, $p)
 
-    $domain = (Get-MgDomain -All | Where-Object { $_.IsDefault }).Id
-    if (-not $domain) { throw 'No default verified domain found in the tenant.' }
+    # Every field is read through PSObject. Under StrictMode, $p.city on a payload without
+    # 'city' throws a property-not-found that names no ServiceNow field (#121); read this
+    # way, a missing field is empty, so an optional one is skipped and a required one fails
+    # with the field's name. The payload is a parameter of the reader, not read from the
+    # enclosing scope, or the analyzer reports $p as unused.
+    $field = {
+        param($Payload, [string] $Name)
+        "$($Payload.PSObject.Properties[$Name]?.Value)".Trim()
+    }
+
+    # Everything the payload must get right is checked before Graph is asked anything.
 
     # Validated, not just trimmed. This value comes straight from the ServiceNow payload
     # and goes into the UPN. The set is the local part Entra accepts, apostrophe included:
     # O'Brien is a real name and rejecting it would be a worse bug than the one below.
-    $userName = "$($p.username)".Trim()
+    $userName = & $field $p 'username'
     if ($userName -notmatch '^[A-Za-z0-9._!#^~''-]{1,64}$') {
         throw "Payload field 'username' is empty or contains characters Entra does not " +
         "accept in a user principal name. Correct the ServiceNow record."
     }
+
+    # The password goes straight into a SecureString, character by character, and the
+    # plain copy is dropped. It is not trimmed: spaces are characters of the password.
+    # Nothing below may log it or put it into a message.
+    $plain = "$($p.PSObject.Properties['password']?.Value)"
+    if (-not $plain -or $plain -match '[\x00-\x1F]') {
+        $plain = $null
+        throw "Payload field 'password' is empty or contains control characters. Correct the ServiceNow record."
+    }
+    $password = [securestring]::new()
+    foreach ($character in $plain.ToCharArray()) { $password.AppendChar($character) }
+    $password.MakeReadOnly()
+    $plain = $null
+
+    # Passed back to ServiceNow as it came, as before: null when the payload has none.
+    $userSysId = $p.PSObject.Properties['usersysid']?.Value
+
+    $domain = (Get-MgDomain -All | Where-Object { $_.IsDefault }).Id
+    if (-not $domain) { throw 'No default verified domain found in the tenant.' }
     $upn = "$userName@$domain"
 
     # An OData string literal escapes a single quote by doubling it. Without this, the one
@@ -72,8 +109,8 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'C
         return
     }
 
-    $given   = "$($p.givenname)".Trim()
-    $surname = "$($p.surname)".Trim()
+    $given   = & $field $p 'givenname'
+    $surname = & $field $p 'surname'
     $display = if ($given -and $surname) { "$given $surname" } elseif ($given) { $given } else { $userName }
 
     $newUser = @{
@@ -81,7 +118,6 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'C
         UserPrincipalName = $upn
         MailNickname      = $userName
         DisplayName       = $display
-        PasswordProfile   = @{ Password = $p.password; ForceChangePasswordNextSignIn = $true }
     }
 
     # Optional attributes, added only when supplied. Sending an empty string where Graph
@@ -89,15 +125,15 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'C
     $optional = @{
         GivenName      = $given
         Surname        = $surname
-        City           = "$($p.city)".Trim()
-        CompanyName    = "$($p.company)".Trim()
-        Department     = "$($p.department)".Trim()
-        JobTitle       = "$($p.title)".Trim()
-        PostalCode     = "$($p.postalcode)".Trim()
-        StreetAddress  = "$($p.streetaddress)".Trim()
-        MobilePhone    = "$($p.mobilephone)".Trim()
-        EmployeeId     = "$($p.employeeid)".Trim()
-        OfficeLocation = "$($p.physicaldelofficename)".Trim()
+        City           = & $field $p 'city'
+        CompanyName    = & $field $p 'company'
+        Department     = & $field $p 'department'
+        JobTitle       = & $field $p 'title'
+        PostalCode     = & $field $p 'postalcode'
+        StreetAddress  = & $field $p 'streetaddress'
+        MobilePhone    = & $field $p 'mobilephone'
+        EmployeeId     = & $field $p 'employeeid'
+        OfficeLocation = & $field $p 'physicaldelofficename'
     }
     foreach ($key in $optional.Keys) {
         if (-not [string]::IsNullOrWhiteSpace($optional[$key])) { $newUser[$key] = $optional[$key] }
@@ -105,10 +141,15 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'C
 
     # BusinessPhones is a string array. The singular form is not a valid parameter and
     # caused every job in the previous version to fail at binding.
-    $businessPhone = "$($p.businessphone)".Trim()
+    $businessPhone = & $field $p 'businessphone'
     if ($businessPhone) { $newUser['BusinessPhones'] = @($businessPhone) }
 
-    $created = New-MgUser @newUser
+    # The password is text only inside this hashtable, for the length of the call, because
+    # Graph's passwordProfile takes plain text in the request body.
+    $created = New-MgUser @newUser -PasswordProfile @{
+        Password                      = [pscredential]::new('rma', $password).GetNetworkCredential().Password
+        ForceChangePasswordNextSignIn = $true
+    }
 
     # Named fields only. Never the payload object: it carries the password.
     Write-RmaLog -Level Information -Message 'Entra user created' -Data @{
@@ -116,7 +157,7 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'C
     }
 
     $writeBack = @{
-        sysid             = $p.usersysid
+        sysid             = $userSysId
         userprincipalname = $created.UserPrincipalName
         displayname       = $created.DisplayName
         objectguid        = $created.Id

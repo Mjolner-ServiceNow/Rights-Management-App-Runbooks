@@ -246,6 +246,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `rma-worker.local.json`, and `rma-worker.example.json` shows the shape.
 
 ### Fixed
+- **`Create-EntraUser` no longer fails when an optional payload field is absent.** It read
+  its fifteen payload fields as `$p.city` and so on, and under `Set-StrictMode -Version
+  Latest` a payload without one of them failed the job with a property-not-found naming no
+  ServiceNow field, although the optional ones are meant to be skipped. Every field is now
+  read through `PSObject.Properties`: an absent optional field is left out of the new user,
+  as an empty one already was, and an absent `usersysid` is written back as null, as 1.0
+  did. A missing or invalid `username` or `password` fails the job with *Payload field 'x'
+  ... Correct the ServiceNow record.* before Graph is asked anything, where the default
+  domain used to be read first; a password with a control character is refused as well.
+  The password goes from the payload into a `SecureString` and is text only inside the
+  `New-MgUser` call, as in `Set-EntraUserPassword`
+  ([#121](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/121)).
 - **The AD service account could not delete or move anything in an OU holding a protected
   OU.** `Grant-RmaAdDelegation.ps1` granted deletion only as *Delete child* on the OU, and
   protecting an OU from accidental deletion adds *Deny Everyone: Delete child* to its

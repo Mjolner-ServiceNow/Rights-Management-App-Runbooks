@@ -271,6 +271,34 @@ name it in `-Property` gets null, and every synchronised object then looks cloud
 The refusal is covered by unit tests only: the test tenant's synchronised objects are real
 accounts, not fixtures.
 
+### D17. Revoke-SignInTokens revokes a synchronised user's sessions, then fails
+
+*2026-10-13
+([#141](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/141)).*
+
+`Disable-RevokeSignInTokens` disables an Entra ID user and revokes their sign-in
+sessions. For a user synchronised from on-premises AD, the disable cannot be done in
+Entra ID: the account is mastered in AD. The runbook reads `onPremisesSyncEnabled` in its
+lookup and:
+
+- **cloud-only user:** disables, then revokes, so no new sign-in fits between the two;
+- **synchronised, enabled user:** revokes the sessions, then fails the job with a reason
+  saying the sessions were revoked but the account was not disabled, and naming
+  `Disable-ADUser`;
+- **synchronised user already disabled:** revokes and completes. The account is disabled,
+  which is what ServiceNow asked for, the same outcome `Disable-EntraUser` completes on.
+
+D16 has the Entra ID runbooks refuse a synchronised object before Graph is asked to change
+it. This runbook is the exception that does the cloud-side part first. The revoke is the
+part that cuts access off at once, and it works for a synchronised user, so refusing
+before it would be the worst outcome. Completing without the disable would tell
+ServiceNow the account is disabled when it is not; a failed row makes someone act. Even
+after `Disable-ADUser`, the change takes up to a sync cycle to reach Entra ID, so revoking
+at once is worth it.
+
+If the revoke fails, the job fails with Graph's error, not with the message that claims
+a revoke.
+
 
 ### F1. The job claim is not atomic on the instance it was tested on
 

@@ -61,7 +61,7 @@ and runs safely on forks.
 | Runbook | Started by | What it does |
 |---|---|---|
 | [`Create-EntraUser`](src/runbooks/Create-EntraUser.ps1) | The ServiceNow application, per request | The reference command runbook for Entra ID. A new Entra ID runbook starts as a copy of it. |
-| [`Disable-RevokeSignInTokens`](src/runbooks/Disable-RevokeSignInTokens.ps1) | The ServiceNow application, per request (`Revoke-SignInTokens`) | Disables an Entra ID user and revokes their sign-in sessions; a user already disabled has their sessions revoked again |
+| [`Disable-RevokeSignInTokens`](src/runbooks/Disable-RevokeSignInTokens.ps1) | The ServiceNow application, per request (`Revoke-SignInTokens`) | Disables an Entra ID user and revokes their sign-in sessions; a user already disabled has their sessions revoked again; a user synchronised from on-premises AD has their sessions revoked and the job fails, naming `Disable-ADUser` |
 | [`Disable-EntraUser`](src/runbooks/Disable-EntraUser.ps1) | The ServiceNow application, per request | Disables an Entra ID user; refuses one synchronised from on-premises AD |
 | [`Remove-EntraUser`](src/runbooks/Remove-EntraUser.ps1) | The ServiceNow application, per request | Deletes an Entra ID user (soft delete, restorable for 30 days); a user already gone completes the job |
 | [`Enable-EntraUser`](src/runbooks/Enable-EntraUser.ps1) | The ServiceNow application, per request | Enables a disabled Entra ID user |

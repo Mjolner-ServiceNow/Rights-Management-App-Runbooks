@@ -245,6 +245,32 @@ The same holds for removing a membership (`Remove-ADGroupMember`,
 the user is not a member, or the group or the user does not exist, the membership is gone
 and the job completes.
 
+### D16. Entra ID runbooks refuse objects synchronised from on-premises AD
+
+*2026-10-13. Applied in Disable-EntraUser
+([#55](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/55)),
+Remove-EntraGroup
+([#85](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/85)) and
+Set-EntraUserPassword
+([#91](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/91));
+recorded in [#161](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/161).*
+
+An Entra ID runbook that would change an object synchronised from on-premises AD
+(`onPremisesSyncEnabled` true) fails the job before Graph is asked to change it, with a
+message naming the AD runbook to use instead: `Disable-ADUser`, `Remove-ADGroup`,
+`Set-ADUserPassword`. The 1.0 runbooks passed the change to Graph.
+
+Such an object is mastered in AD. Graph refuses most changes to it, with a reason that
+does not say where the change belongs, and a change it did accept would be overwritten by
+the next sync. Failing up front tells whoever reads the ServiceNow record which runbook
+the request should have gone to.
+
+`onPremisesSyncEnabled` is not in Graph's default property set; a lookup that does not
+name it in `-Property` gets null, and every synchronised object then looks cloud-only.
+
+The refusal is covered by unit tests only: the test tenant's synchronised objects are real
+accounts, not fixtures.
+
 
 ### F1. The job claim is not atomic on the instance it was tested on
 

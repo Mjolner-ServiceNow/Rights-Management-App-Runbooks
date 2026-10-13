@@ -104,14 +104,17 @@ where:
 ## Working with Claude Code here
 
 The repository is set up for Claude Code. [CLAUDE.md](CLAUDE.md) is loaded into every
-session, and two skills live in `.claude/skills/`: `powershell-7-expert` for the house
-rules and `test-on-hybrid-worker` for trying a change on a real worker.
+session, and four skills live in `.claude/skills/`: `track-work` for issues and the board,
+`powershell-7-expert` for the house rules, `test-on-hybrid-worker` for trying a change on a
+real worker, and `migrate-runbook` for moving a 1.0 runbook onto the shared module, end to
+end, which is most of the work left under #36.
 
 Claude Code's memory files live on the machine that ran it, not in the repository.
 Everything durable from them has been moved into [docs/DECISIONS.md](docs/DECISIONS.md).
 In a worktree-isolated session Claude Code refuses to run `pwsh` at all, which in a
-PowerShell repository blocks the analyzer and the tests, so work on an ordinary feature
-branch.
+PowerShell repository blocks the analyzer and the tests. A worktree added by hand with
+`git worktree add` does not have that problem, which is how `migrate-runbook` runs several
+migrations in parallel.
 
 ## Keeping the documentation true
 

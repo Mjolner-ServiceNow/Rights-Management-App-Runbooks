@@ -227,6 +227,12 @@ Real values belong in a `*.local.json`, which is gitignored. The CI check that r
 Azure resource ids in committed parameter files went with the Bicep — until infrastructure
 returns, nothing automated guards this, so check it by hand in review.
 
+## Migrating a 1.0 runbook
+
+Invoke the `migrate-runbook` skill in `.claude/skills/`. It has the procedure from issue to
+pull request, the scripts for the end-to-end test on the test environment, and the traps
+found so far. Never give a parallel agent `isolation: "worktree"`: `pwsh` is refused there.
+
 ## Writing PowerShell here
 
 The `powershell-7-expert` skill in `.claude/skills/` carries the house rules for modern

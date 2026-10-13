@@ -218,6 +218,35 @@ Describe 'Create-EntraUser' -Tag 'Unit', 'Security' {
         $script:Sent.UserPrincipalName | Should -BeExactly "o'brien@contoso.com"
     }
 
+    It 'creates the user when the existence check finds nobody' {
+        # An empty result is how a filter says "no match"; it is not an error.
+        Mock Get-MgUser { @() }
+
+        Invoke-Body ([pscustomobject]@{ username = 'jdoe'; password = $script:Secret })
+
+        Should -Invoke Get-MgUser -Times 1 -Exactly -ParameterFilter { $PesterBoundParameters['ErrorAction'] -eq 'Stop' }
+        Should -Invoke New-MgUser -Times 1 -Exactly
+        Should -Invoke Invoke-RmaRestMethod -Times 1 -Exactly
+    }
+
+    It 'fails with Graph''s reason, before creating anything, when the existence check fails with <Code>' -ForEach @(
+        @{ Code = 'Authorization_RequestDenied'; Message = 'Insufficient privileges to complete the operation.' }
+        @{ Code = 'TooManyRequests'; Message = 'Too many requests.' }
+        @{ Code = 'InvalidAuthenticationToken'; Message = 'Lifetime validation failed, the token is expired.' }
+    ) {
+        # Raised as Graph raises it: non-terminating, which -ErrorAction SilentlyContinue
+        # used to discard, so the body read it as "no such user" and went on to create (#144).
+        $ErrorActionPreference = 'Continue'
+        Mock Get-MgUser { Write-Error -ErrorRecord (New-GraphError -Code $Code -Message $Message) }
+
+        { Invoke-Body ([pscustomobject]@{ username = 'jdoe'; password = $script:Secret }) } |
+        Should -Throw "*$Code*$Message"
+        Should -Invoke Get-MgUser -Times 1 -Exactly -ParameterFilter { $PesterBoundParameters['ErrorAction'] -eq 'Stop' }
+        Should -Invoke New-MgUser -Times 0 -Exactly
+        Should -Invoke Invoke-RmaRestMethod -Times 0 -Exactly
+        $script:Logged | Should -BeNullOrEmpty
+    }
+
     It 'completes without creating anything when the user already exists' {
         Mock Get-MgUser { [pscustomobject]@{ Id = '44444444-4444-4444-4444-444444444444' } }
 

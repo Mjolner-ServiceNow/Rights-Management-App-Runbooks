@@ -98,6 +98,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Authorization_RequestDenied` that names no reason. Needs
   `AdministrativeUnit.ReadWrite.All` and `User.Read.All`
   ([#49](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/49)).
+- **`Remove-EntraAUUserMember`**, migrated from 1.0. The payload's `ou` is the
+  administrative unit's object id and `user` the member's object id or user principal
+  name, as before; only a user is removed, as in 1.0. Both are looked up, and the
+  membership is removed by the two object ids. When the user is not a member, or the
+  administrative unit or the user does not exist, the job now completes with a warning
+  instead of failing (`docs/DECISIONS.md` D15). On the test tenant Graph answers a
+  non-member, and a membership removed a moment before, with `Request_ResourceNotFound`;
+  the `Request_BadRequest` the group endpoint gives in that case is read the same way. A
+  unit with dynamic membership fails the job before Graph is asked, as in 1.0, because
+  Graph's own answer is a misleading *Insufficient privileges*. Needs
+  `AdministrativeUnit.ReadWrite.All` and `User.Read.All`
+  ([#83](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/83)).
 - **The `migrate-runbook` skill** in `.claude/skills/` writes down how a 1.0 runbook is
   moved onto the shared module, as ten have been: which migrated runbook to copy, the
   rules reviewers check, the tests, and an end-to-end test on the test environment.

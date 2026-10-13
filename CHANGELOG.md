@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Disable-ADUser`**, migrated from 1.0 on the `Unlock-ADUser` pattern. A user who is
+  already disabled completes the job unchanged. Needs the `Users` delegation scope
+  ([#54](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/54)).
 - **`Enable-ADUser`**, migrated from 1.0 on the `Unlock-ADUser` pattern. A user who is
   already enabled completes the job unchanged; an account the domain will not enable
   fails with the directory's reason. Needs the `Users` delegation scope. The tests'

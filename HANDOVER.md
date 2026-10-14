@@ -88,18 +88,22 @@ by status (Backlog, Ready, In progress, Done) and priority (P1 blocks production
 
 ## Kept outside this repository
 
-The repository is public, so some of what the next maintainer needs cannot be here. Before
-the handover each of these must be somewhere they can reach, and this section must say
-where:
+The repository is public, so some of what the next maintainer needs cannot be here. It is
+in the private repository
+[Mjolner-ServiceNow/Rights-Management-App-Internal](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Internal).
+An owner of the `Mjolner-ServiceNow` GitHub organization grants access to it. It holds no
+secrets: those stay in Key Vault or with whoever grants the access.
 
-- **The 1.0 runbooks**, the source of every runbook still to migrate. *Location: to be
-  decided.*
+- **The 1.0 runbooks**, the source of every runbook still to migrate, are in the team's
+  Azure DevOps organization. `legacy-runbooks.md` there names the repository and who adds
+  you to it.
 - **The test environment**: subscription, resource groups, VMs, Bastion, Key Vault, the
-  ServiceNow test instance and its integration account. *Location: to be decided.*
-- **Accounts and access** the maintainer needs: GitHub repository admin, the Azure test
-  subscription, the ServiceNow test instance, and who at ServiceNow and at the customer to
-  contact. *Location: to be decided.*
-- Local test configuration: `rma-worker.local.json`, which is gitignored.
+  test Active Directory domain, the Entra tenant the Graph runbooks are tested in, and the
+  ServiceNow test instance with its integration account. `test-environment.md` there.
+- **Accounts and access** the maintainer needs, who grants each, and whom to contact at
+  ServiceNow and at the customer. `access.md` there.
+- **Local test configuration**: a copy of `rma-worker.local.json`, which is gitignored here,
+  with the paths to your own SSH key and 1.0 clone left for you to fill in.
 
 ## Working with Claude Code here
 

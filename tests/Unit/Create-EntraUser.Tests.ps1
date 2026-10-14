@@ -247,6 +247,26 @@ Describe 'Create-EntraUser' -Tag 'Unit', 'Security' {
         $script:Logged | Should -BeNullOrEmpty
     }
 
+    It 'fails with its own message when the tenant has no default domain' {
+        # (...).Id on an empty result threw a property-not-found under StrictMode (#156).
+        Mock Get-MgDomain { [pscustomobject]@{ Id = 'contoso.onmicrosoft.com'; IsDefault = $false } }
+
+        { Invoke-Body ([pscustomobject]@{ username = 'jdoe'; password = $script:Secret }) } |
+        Should -Throw 'No default verified domain found in the tenant.'
+        Should -Invoke Get-MgDomain -Times 1 -Exactly -ParameterFilter { $PesterBoundParameters['ErrorAction'] -eq 'Stop' }
+        Should -Invoke New-MgUser -Times 0 -Exactly
+    }
+
+    It 'fails with Graph''s reason, not "no default domain", when the domain lookup fails' {
+        $ErrorActionPreference = 'Continue'
+        Mock Get-MgDomain { Write-Error -ErrorRecord (New-GraphError -Code 'Authorization_RequestDenied' -Message 'Insufficient privileges to complete the operation.') }
+
+        { Invoke-Body ([pscustomobject]@{ username = 'jdoe'; password = $script:Secret }) } |
+        Should -Throw '*Authorization_RequestDenied*Insufficient privileges*'
+        Should -Invoke Get-MgUser -Times 0 -Exactly
+        Should -Invoke New-MgUser -Times 0 -Exactly
+    }
+
     It 'completes without creating anything when the user already exists' {
         Mock Get-MgUser { [pscustomobject]@{ Id = '44444444-4444-4444-4444-444444444444' } }
 

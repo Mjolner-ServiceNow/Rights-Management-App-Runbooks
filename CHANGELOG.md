@@ -255,6 +255,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the queue command `Invoke-RmaQueueLoop` is running, from `Queue loop started` to `Queue
   loop finished`, and is empty outside the loop. `runbook` is unchanged. Module 2.2.1
   ([#124](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/124)).
+- **The `migrate-runbook` skill's `Start-RmaTestJob.ps1` returns the records of failed
+  rows.** Automation stores the error stream as PowerShell's formatted error view, one
+  line per stream entry, with the JSON record wrapped onto continuation lines, so every
+  `Job failed` record failed to parse and was dropped without a word: `Errors` was always
+  empty. The new `ConvertFrom-RmaJobStream.ps1` puts each record back together from the
+  error stream before parsing it
+  ([#147](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/147)).
 - **`Create-EntraUser` fails with its own message when the tenant has no default domain.**
   The lookup read `.Id` off a pipeline that could be empty, which under StrictMode threw
   *The property 'Id' cannot be found on this object* before the runbook's *No default

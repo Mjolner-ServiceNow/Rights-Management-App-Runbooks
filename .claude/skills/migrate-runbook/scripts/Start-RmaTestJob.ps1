@@ -69,18 +69,21 @@ do {
 
 $subscription = & az account show --query id -o tsv
 $base = "https://management.azure.com/subscriptions/$subscription/resourceGroups/$($aa['ResourceGroup'])/providers/Microsoft.Automation/automationAccounts/$($aa['Name'])/jobs/$jobId"
-$texts = [System.Collections.Generic.List[string]]::new()
-$texts.Add((& az rest --method get --url "$base/output?api-version=2023-11-01" 2>$null) -join "`n")
-$streamIds = & az rest --method get --url "$base/streams?api-version=2023-11-01" --query 'value[].properties.jobStreamId' -o tsv 2>$null
-foreach ($streamId in @($streamIds)) {
-    $texts.Add((& az rest --method get --url "$base/streams/$($streamId)?api-version=2023-11-01" --query properties.streamText -o tsv 2>$null) -join "`n")
+# Each stream entry is kept with its type: an Error record is wrapped across several
+# entries and is put back together from the error stream alone (ConvertFrom-RmaJobStream).
+$output = (& az rest --method get --url "$base/output?api-version=2023-11-01" 2>$null) -join "`n"
+$entries = [System.Collections.Generic.List[pscustomobject]]::new()
+$entries.Add([pscustomobject]@{ Type = 'Output'; Text = $output })
+$streams = (& az rest --method get --url "$base/streams?api-version=2023-11-01" `
+        --query 'value[].{id: properties.jobStreamId, type: properties.streamType}' -o json 2>$null) -join "`n" | ConvertFrom-Json
+# The id ends in the entry's sequence number, so sorting by it restores the order written.
+foreach ($stream in @($streams | Sort-Object id)) {
+    $text = (& az rest --method get --url "$base/streams/$($stream.id)?api-version=2023-11-01" --query properties.streamText -o tsv 2>$null) -join "`n"
+    $entries.Add([pscustomobject]@{ Type = $stream.type; Text = $text })
 }
-$all = ($texts -join "`n") -replace '\x1b\[[0-9;]*m', ''
+$all = ($entries.Text -join "`n") -replace '\x1b\[[0-9;]*m', ''
 
-$records = foreach ($line in $all -split "`n") {
-    $at = $line.IndexOf('{"timestamp"')
-    if ($at -lt 0) { continue }
-    try { $record = $line.Substring($at) | ConvertFrom-Json } catch { continue }
+$records = foreach ($record in & (Join-Path $PSScriptRoot 'ConvertFrom-RmaJobStream.ps1') -Stream $entries) {
     # Plain null checks: '?.' does not stop the rest of a chain, so a record without data
     # would still index into null.
     $data = $record.PSObject.Properties['data']?.Value
@@ -91,11 +94,16 @@ $records = foreach ($line in $all -split "`n") {
         }
         if ($data.PSObject.Properties['error']) { $errorText = $data.PSObject.Properties['error'].Value }
     }
-    [pscustomobject]@{ Level = $record.level; Message = $record.message; SysId = $sysId; Error = $errorText }
+    [pscustomobject]@{
+        Timestamp = $record.timestamp; Level = $record.level; Message = $record.message; SysId = $sysId; Error = $errorText
+    }
 }
-# The same record reaches both the output and a stream; keep the first of each, in order.
+# The same record reaches both the output and a stream; keep the first of each. An Error
+# record is read once its last line is, so the records are put back in time order.
 $seen = [System.Collections.Generic.HashSet[string]]::new()
-$records = @($records | Where-Object { $seen.Add("$($_.Level)|$($_.Message)|$($_.SysId)|$($_.Error)") })
+$records = @($records | Sort-Object -Stable Timestamp |
+        Where-Object { $seen.Add("$($_.Timestamp)|$($_.Level)|$($_.Message)|$($_.SysId)|$($_.Error)") } |
+        Select-Object Level, Message, SysId, Error)
 
 [pscustomobject]@{
     JobId              = $jobId

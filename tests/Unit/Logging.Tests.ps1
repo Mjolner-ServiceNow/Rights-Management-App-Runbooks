@@ -150,6 +150,62 @@ Describe 'Write-RmaLog secret redaction' -Tag 'Unit', 'Security' {
     }
 }
 
+Describe 'Write-RmaLog command field' -Tag 'Unit' {
+
+    BeforeAll {
+        # In an Automation job a runbook runs from a temporary file named by a GUID, so the
+        # runbook field of its own records is that GUID (#124). The command is what finds them.
+        $script:RunbookName = [guid]::NewGuid().ToString()
+        $script:RunbookFile = Join-Path $TestDrive "$script:RunbookName.ps1"
+        Set-Content -Path $script:RunbookFile -Value @'
+param($Context, $DomainId)
+$null = Invoke-RmaQueueLoop -Context $Context -DomainId $DomainId -Command 'Unlock-ADUser' -Body {
+    Write-RmaLog -Level Information -Message 'User unlocked'
+}
+Write-RmaLog -Level Information -Message 'After the loop'
+'@
+        $script:Context = [pscustomobject]@{
+            PSTypeName = 'Rma.ServiceNowContext'
+            Instance   = 'contoso'
+            BaseUri    = 'https://contoso.service-now.com'
+            Headers    = @{}
+        }
+    }
+
+    BeforeEach {
+        $script:Served = $false
+        Mock -ModuleName RMA.Runbooks Get-RmaPendingJob {
+            if ($script:Served) { return @() }
+            $script:Served = $true
+            [pscustomobject]@{
+                sys_id = 'a' * 32
+                input  = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('{"action":"Unlock-ADUser"}'))
+            }
+        }
+        Mock -ModuleName RMA.Runbooks Request-RmaJobClaim { $true }
+        Mock -ModuleName RMA.Runbooks Set-RmaJobState {}
+
+        $script:Records = @(& $script:RunbookFile -Context $script:Context -DomainId ('b' * 32) 6>&1 |
+            ForEach-Object { "$($_.MessageData)" | ConvertFrom-Json })
+    }
+
+    It 'names the command on a record the runbook body logs from a GUID-named file' {
+        $record = $script:Records | Where-Object message -EQ 'User unlocked'
+
+        $record.runbook | Should -Be $script:RunbookName
+        $record.command | Should -Be 'Unlock-ADUser'
+    }
+
+    It 'names the command from the first record of the run to the last' {
+        ($script:Records | Where-Object message -EQ 'Queue loop started').command | Should -Be 'Unlock-ADUser'
+        ($script:Records | Where-Object message -Like 'Queue loop finished*').command | Should -Be 'Unlock-ADUser'
+    }
+
+    It 'leaves the command empty once the loop has returned' {
+        ($script:Records | Where-Object message -EQ 'After the loop').command | Should -BeNullOrEmpty
+    }
+}
+
 Describe 'A function that logs before it returns' -Tag 'Unit', 'Reliability' {
 
     It 'returns only its own value, with the real logger in place' {

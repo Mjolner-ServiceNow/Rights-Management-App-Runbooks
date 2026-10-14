@@ -20,6 +20,11 @@ function Write-RmaLog {
     .PARAMETER CorrelationId
         Defaults to the ambient correlation id set by Invoke-RmaQueueLoop, which is the
         ServiceNow job sys_id. That is what lets one ticket be traced end to end.
+    .PARAMETER Command
+        Defaults to the queue command Invoke-RmaQueueLoop is running, so every record of a
+        run can be found by it, the runbook body's own included. The runbook field cannot
+        do that: it is the file that logged, and in an Automation job a runbook runs from a
+        temporary file named by a GUID (#124).
     .EXAMPLE
         Write-RmaLog -Level Information -Message 'User created' -Data @{ upn = $upn }
     #>
@@ -36,6 +41,8 @@ function Write-RmaLog {
 
         [string] $CorrelationId = $script:RmaCorrelationId,
 
+        [string] $Command = $script:RmaCommand,
+
         [string] $Runbook = $(if ($MyInvocation.PSCommandPath) { [IO.Path]::GetFileNameWithoutExtension($MyInvocation.PSCommandPath) } else { 'unknown' })
     )
 
@@ -44,6 +51,7 @@ function Write-RmaLog {
         level         = $Level
         message       = ConvertTo-RmaSafeLogValue -InputObject $Message
         runbook       = $Runbook
+        command       = $Command
         correlationId = $CorrelationId
         worker        = [Environment]::MachineName
     }

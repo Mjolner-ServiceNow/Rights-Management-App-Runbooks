@@ -248,6 +248,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `rma-worker.local.json`, and `rma-worker.example.json` shows the shape.
 
 ### Fixed
+- **Every log record of a queue run names the command, the runbook's own records
+  included.** `Write-RmaLog` fills `runbook` from the file that logged, and in an
+  Automation job a runbook runs from a temporary file named by a GUID, so the records a
+  runbook body logged could not be told apart by runbook. A new `command` field carries
+  the queue command `Invoke-RmaQueueLoop` is running, from `Queue loop started` to `Queue
+  loop finished`, and is empty outside the loop. `runbook` is unchanged. Module 2.2.1
+  ([#124](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/124)).
 - **`Create-EntraUser` fails with its own message when the tenant has no default domain.**
   The lookup read `.Id` off a pipeline that could be empty, which under StrictMode threw
   *The property 'Id' cannot be found on this object* before the runbook's *No default

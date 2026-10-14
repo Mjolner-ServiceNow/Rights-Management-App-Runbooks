@@ -17,6 +17,8 @@ foreach ($scope in 'Private', 'Public') {
 
 # Module-scoped state. Deliberately not exported.
 $script:RmaCorrelationId = $null
+# The queue command Invoke-RmaQueueLoop is running, logged as 'command' on every record.
+$script:RmaCommand       = $null
 $script:RmaTokenCache    = @{}
 # Graph and Exchange connections, with the expiry of the token each was made with.
 # Update-RmaConnection renews them; see Connect-RmaGraph.

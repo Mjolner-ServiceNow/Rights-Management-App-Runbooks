@@ -66,7 +66,7 @@ Never call `Invoke-RestMethod` or `Invoke-WebRequest` directly against ServiceNo
 `Invoke-RmaRestMethod` (`src/RMA.Runbooks/Public/Invoke-RmaRestMethod.ps1`) wraps them with
 bounded retry, exponential backoff and jitter, retrying only 408, 429, 5xx and transport
 failures — a bare 4xx fails immediately instead of burning the job's time budget — and
-honouring `Retry-After`. Until 2.1.1 the retry never worked
+honouring `Retry-After` up to `MaxRetryAfterSeconds` (longer fails at once, from 2.3.0). Until 2.1.1 the retry never worked
 ([#24](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/24)):
 a local `$headers` overwrote the `$Headers` parameter, since PowerShell names are
 case-insensitive. Never reuse a parameter's name, in any casing, for a local variable. It is the

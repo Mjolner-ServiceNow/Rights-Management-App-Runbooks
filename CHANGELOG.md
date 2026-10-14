@@ -371,6 +371,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the process id and start time. It never falls back to a shared constant.
 
 ### Changed
+- **`Invoke-RmaRestMethod` no longer waits out a long `Retry-After`.** A throttle that asks
+  for more than the new `-MaxRetryAfterSeconds`, 120 by default, fails the request at once
+  with the status and the delay asked for. The wait had no upper bound, so a `Retry-After:
+  3600` held the job, and the run, for an hour, past the run's `MaxMinutes`. A shorter
+  `Retry-After` is waited out as before. Module 2.3.0
+  ([#117](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/117)).
 - The runbooks require `RMA.Runbooks` 2.1.0. Install it on every Hybrid Worker before
   republishing them.
 - `StaleAfterMinutes` is now measured against the heartbeat interval, not against the

@@ -371,6 +371,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the process id and start time. It never falls back to a shared constant.
 
 ### Changed
+- **The provisioning docs are checked against a real run.** Both steps were run through
+  Run Command on a fresh Windows Server 2025 VM, as `docs/INSTALLATION.md` shows them, and
+  work. Its note that the routes were untested is gone, and it names the two warnings that
+  are expected. `docs/AZURE-RESOURCES.md` now lists the hosts the run resolved: GitHub
+  downloads come from `release-assets.githubusercontent.com`, no longer
+  `objects.githubusercontent.com`; the gallery serves packages from
+  `cdn.powershellgallery.com`; and PowerShell 7.6.5 ships with the NuGet provider, so its
+  bootstrap host is not needed
+  ([#33](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/33)).
 - **`Invoke-RmaRestMethod` no longer waits out a long `Retry-After`.** A throttle that asks
   for more than the new `-MaxRetryAfterSeconds`, 120 by default, fails the request at once
   with the status and the delay asked for. The wait had no upper bound, so a `Retry-After:

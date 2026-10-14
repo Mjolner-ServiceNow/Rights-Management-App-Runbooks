@@ -83,7 +83,7 @@ by status (Backlog, Ready, In progress, Done) and priority (P1 blocks production
 - [#27](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/27) The job claim is not atomic; the call into the ServiceNow endpoint is ours.
 - [#36](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/36) Migrate the remaining 1.0 runbooks.
 - [#31](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/31) `Test-RmaHealth` does not verify Exchange.
-- [#33](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/33) Run the Run Command provisioning route and the outbound hosts on a real worker.
+- [#170](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/170) Provisioning has not been tried on a network that allows only the documented hosts.
 - [#32](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/32) Require CI to pass before merging to `main`.
 
 ## Kept outside this repository

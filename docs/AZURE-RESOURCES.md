@@ -123,15 +123,19 @@ And, to be provisioned and upgraded:
 
 | Destination | Why |
 |---|---|
-| `github.com`, HTTPS, and the `*.githubusercontent.com` host GitHub redirects release downloads to (`objects.githubusercontent.com` at the time of writing) | `Initialize-RmaWorkerHost.ps1` downloads the PowerShell MSI and its `hashes.sha256` from the PowerShell project's releases; the release-notes block downloads `Initialize-RmaWorker.ps1` and the `RMA.Runbooks` package from this repository's releases |
-| The PowerShell Gallery, `www.powershellgallery.com`, HTTPS, and the host it serves packages from | `Install-Module` in `Initialize-RmaWorker.ps1`, for every pinned module |
-| The host the NuGet package provider is bootstrapped from, HTTPS | `Install-PackageProvider` in `Initialize-RmaWorkerHost.ps1`. It is a different host from the gallery and a common firewall omission |
+| `github.com` and `release-assets.githubusercontent.com`, HTTPS | `Initialize-RmaWorkerHost.ps1` downloads the PowerShell MSI and its `hashes.sha256` from the PowerShell project's releases; the release-notes block downloads `Initialize-RmaWorker.ps1` and the `RMA.Runbooks` package from this repository's releases. GitHub redirects every release download from `github.com` to the second host |
+| `www.powershellgallery.com` and `cdn.powershellgallery.com`, HTTPS | `Install-Module` in `Initialize-RmaWorker.ps1`, for every pinned module. The gallery serves the packages themselves from the CDN host |
+| The NuGet provider's bootstrap host, HTTPS, **only if PowerShell 7 lacks the provider** | `Install-PackageProvider` in `Initialize-RmaWorkerHost.ps1`. PowerShell 7.6.5, the version `Initialize-RmaWorkerHost.ps1` installs, ships with the provider, so a fresh install fetched nothing |
 
-The gallery's package host and the provider's bootstrap host are chosen by
-`Install-Module` and `Install-PackageProvider`, not named in the scripts, so take their
-current names from Microsoft's PowerShell Gallery documentation rather than from here. The
-same goes for GitHub's download host. A blocked download host shows up as an error that
-names the module or the provider, not the host.
+These are the hosts a fresh Windows Server 2025 VM resolved while both provisioning steps
+ran through Run Command on 2026-10-14, read from the DNS client's event log
+([#33](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/33)).
+The VM also resolved Windows Update, telemetry and activation hosts, which Windows looks up
+on its own and provisioning does not need. GitHub and the gallery choose their download
+hosts, and GitHub's has changed before (it was `objects.githubusercontent.com`), so a
+blocked one shows up as a failed download that names the file, not the host. The list has
+not yet been tried on a network that allows nothing else
+([#170](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/170)).
 
 Reaching the domain controllers usually means a virtual network with a connection to the
 on-premises network, or domain controllers in Azure. That network belongs to your

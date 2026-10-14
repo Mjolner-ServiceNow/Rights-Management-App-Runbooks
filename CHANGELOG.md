@@ -248,6 +248,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `rma-worker.local.json`, and `rma-worker.example.json` shows the shape.
 
 ### Fixed
+- **`Create-EntraUser` fails with its own message when the tenant has no default domain.**
+  The lookup read `.Id` off a pipeline that could be empty, which under StrictMode threw
+  *The property 'Id' cannot be found on this object* before the runbook's *No default
+  verified domain found in the tenant.* could be reached. The lookup also stops on a Graph
+  error now, so an access denied fails with Graph's reason instead of reading as no
+  default domain
+  ([#156](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/156)).
 - **`Create-EntraUser` fails with Graph's reason when the create is refused.** `New-MgUser`
   was called without `-ErrorAction Stop`, and the runbook's preference does not reach the
   Graph cmdlets, so a user Graph refused, for a password that did not meet the complexity

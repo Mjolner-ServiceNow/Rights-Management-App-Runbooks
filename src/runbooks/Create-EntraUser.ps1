@@ -96,7 +96,12 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'C
     # Passed back to ServiceNow as it came, as before: null when the payload has none.
     $userSysId = $p.PSObject.Properties['usersysid']?.Value
 
-    $domain = (Get-MgDomain -All | Where-Object { $_.IsDefault }).Id
+    # -ErrorAction Stop: the runbook's preference does not reach the Graph cmdlets, and a
+    # failed lookup would otherwise read as "no default domain" (#157). Select-Object, not
+    # (...).Id: under StrictMode .Id on an empty result throws a property-not-found before
+    # the check below can name the cause (#156).
+    $domain = Get-MgDomain -All -ErrorAction Stop | Where-Object { $_.IsDefault } |
+    Select-Object -First 1 -ExpandProperty Id
     if (-not $domain) { throw 'No default verified domain found in the tenant.' }
     $upn = "$userName@$domain"
 

@@ -215,9 +215,12 @@ That suits 3a as it is. For 3b it means Run Command cannot be pointed at
 `pwsh.exe`, and taken from a release rather than from a checkout, since there is none on
 the VM. Both are shown below.
 
-> **The Run Command routes have not been tested end to end.** They follow from the scripts
-> and the release workflow. Read the output of the first run on a new worker rather than
-> assuming it succeeded.
+Both routes below were run end to end on 2026-10-14, on a fresh Windows Server 2025 VM
+with no public IP, with the commands exactly as shown and release v2.2.0
+([#33](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/33)). 3a
+took about two minutes and 3b about four. Each call returns only when the script has
+finished, so `az` shows nothing until then. Read the output rather than the exit code:
+Run Command reports success even when the script printed a warning.
 
 If you would rather work on the VM directly, open an elevated Windows PowerShell for 3a and
 an elevated PowerShell 7 (`pwsh`) for 3b, over Bastion or RDP.
@@ -248,7 +251,8 @@ It runs under the Windows PowerShell 5.1 that ships with the operating system, a
 - sets the machine environment variable that tells the Hybrid Worker extension where
   `pwsh.exe` is;
 - bootstraps the NuGet package provider inside PowerShell 7, so 3b does not stop to fetch
-  it from a host your firewall may not allow;
+  it from a host your firewall may not allow. PowerShell 7.6.5 ships with the provider, so
+  with it this step reports *NuGet provider already present* and fetches nothing;
 - restarts `HybridWorkerService`, which is when the environment variable takes effect.
 
 > **The environment variable is the part that is easy to miss and hard to diagnose.** An
@@ -325,6 +329,16 @@ az vm run-command invoke \
   --scripts @rma-provision.ps1 \
   --parameters 'Version=v<version>' 'ScriptSha256=<hash>' 'ModuleSha256=<hash>'
 ```
+
+Two warnings in the output are expected and harmless:
+
+- *The version '1.4.8.1' of module 'PackageManagement' is currently in use*, while
+  `ExchangeOnlineManagement` installs. `Install-Module` tries to install a dependency that
+  is already present and loaded. `ExchangeOnlineManagement` installs and imports
+  regardless.
+- In 3a, *Hybrid Worker extension not found* and *HybridWorkerService not found*, but only
+  if you provision before step 2 has registered the VM. Register it and run 3a again, so
+  the service is restarted.
 
 With a repository checkout **on the VM**, `./scripts/Initialize-RmaWorker.ps1` with no
 `-ModuleSource` installs `RMA.Runbooks` from that checkout instead. That is for a test

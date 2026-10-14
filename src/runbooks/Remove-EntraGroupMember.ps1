@@ -1,5 +1,5 @@
 #Requires -Version 7.2
-#Requires -Modules @{ ModuleName = 'RMA.Runbooks';                   RequiredVersion = '2.2.1'  }
+#Requires -Modules @{ ModuleName = 'RMA.Runbooks';                   RequiredVersion = '2.3.0'  }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Authentication'; RequiredVersion = '2.39.0' }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Users';          RequiredVersion = '2.39.0' }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Groups';         RequiredVersion = '2.39.0' }

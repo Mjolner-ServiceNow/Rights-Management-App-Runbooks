@@ -353,6 +353,38 @@ Describe 'Invoke-RmaRestMethod retry against a real HTTP response' -Tag 'Unit', 
         $script:Slept[0] | Should -BeLessOrEqual 12500
     }
 
+    It 'fails at once when Retry-After asks for more than MaxRetryAfterSeconds' {
+        # An hour-long Retry-After held the job and the run for that hour (#117).
+        Mock -ModuleName RMA.Runbooks Invoke-RestMethod {
+            throw (New-HttpFailure -Status 429 -RetryAfter ([System.Net.Http.Headers.RetryConditionHeaderValue]::new([timespan]::FromSeconds(3600))))
+        }
+
+        { Invoke-RmaRestMethod -Uri 'https://contoso.service-now.com/x' -MaxAttempts 4 } |
+        Should -Throw '*failed after 1 attempt(s) (HTTP 429): the server asked to wait 3600 s*MaxRetryAfterSeconds (120)*'
+        Should -Invoke -ModuleName RMA.Runbooks Invoke-RestMethod -Times 1 -Exactly
+        $script:Slept.Count | Should -Be 0
+    }
+
+    It 'fails at once when a Retry-After date is further away than MaxRetryAfterSeconds' {
+        Mock -ModuleName RMA.Runbooks Invoke-RestMethod {
+            $when = [System.DateTimeOffset]::UtcNow.AddMinutes(10)
+            throw (New-HttpFailure -Status 503 -RetryAfter ([System.Net.Http.Headers.RetryConditionHeaderValue]::new($when)))
+        }
+
+        { Invoke-RmaRestMethod -Uri 'https://contoso.service-now.com/x' -MaxRetryAfterSeconds 300 } |
+        Should -Throw '*(HTTP 503): the server asked to wait*MaxRetryAfterSeconds (300)*'
+        $script:Slept.Count | Should -Be 0
+    }
+
+    It 'waits out a Retry-After up to MaxRetryAfterSeconds' {
+        Mock -ModuleName RMA.Runbooks Invoke-RestMethod {
+            throw (New-HttpFailure -Status 429 -RetryAfter ([System.Net.Http.Headers.RetryConditionHeaderValue]::new([timespan]::FromSeconds(120))))
+        }
+
+        { Invoke-RmaRestMethod -Uri 'https://contoso.service-now.com/x' -MaxAttempts 2 } | Should -Throw '*failed after 2 attempt(s) (HTTP 429): Response*'
+        $script:Slept[0] | Should -BeGreaterOrEqual 120000
+    }
+
     It 'falls back to exponential backoff when there is no Retry-After' {
         Mock -ModuleName RMA.Runbooks Invoke-RestMethod { throw (New-HttpFailure -Status 502) }
 

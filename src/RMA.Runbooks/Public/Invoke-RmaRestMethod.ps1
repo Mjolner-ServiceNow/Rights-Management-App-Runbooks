@@ -14,6 +14,11 @@ function Invoke-RmaRestMethod {
         and never retries before it. Every retry sends the caller's own -Headers again.
     .PARAMETER MaxAttempts
         Total attempts including the first. 1 disables retry.
+    .PARAMETER MaxRetryAfterSeconds
+        The longest Retry-After that is waited out. A throttle that asks for more fails the
+        request at once, with the status and the delay asked for: sleeping through an hour
+        would hold the job, and the run, well past its MaxMinutes budget, and sleeping a
+        shorter time than asked only earns another 429 (#117).
     .EXAMPLE
         Invoke-RmaRestMethod -Uri $uri -Method GET -Headers $h
     #>
@@ -34,6 +39,9 @@ function Invoke-RmaRestMethod {
 
         [ValidateRange(1, 10)]
         [int] $MaxAttempts = 4,
+
+        [ValidateRange(1, 3600)]
+        [int] $MaxRetryAfterSeconds = 120,
 
         [ValidateRange(1, 300)]
         [int] $TimeoutSeconds = 60,
@@ -94,6 +102,13 @@ function Invoke-RmaRestMethod {
                 $retryAfterMs = $delta.TotalMilliseconds
             } elseif ($null -ne $date) {
                 $retryAfterMs = ($date - [System.DateTimeOffset]::UtcNow).TotalMilliseconds
+            }
+
+            if ($retryAfterMs -gt $MaxRetryAfterSeconds * 1000) {
+                $label = if ($status) { "HTTP $status" } else { 'transport failure' }
+                throw ("$Method $Uri failed after $attempt attempt(s) ($label): the server asked to wait " +
+                    "$([math]::Ceiling($retryAfterMs / 1000)) s before a retry, more than MaxRetryAfterSeconds " +
+                    "($MaxRetryAfterSeconds). $($_.Exception.Message)")
             }
 
             # Jitter prevents a fleet of workers retrying in lockstep. It may shorten our

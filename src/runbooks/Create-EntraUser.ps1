@@ -18,6 +18,9 @@
       - The payload is never logged wholesale. Only named, non-secret fields are.
       - The job cannot be executed twice, and cannot be stranded.
       - Creation is idempotent: an existing UPN is reported, not retried into a failure.
+      - A refused create fails the job with Graph's reason and nothing else. Microsoft.Graph
+        puts the whole request body, initial password included, into the TargetObject of
+        the error it raises, so that error is not rethrown as is.
 .NOTES
     Every other runbook follows this shape. Only the scriptblock body differs.
 
@@ -144,11 +147,21 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'C
     $businessPhone = & $field $p 'businessphone'
     if ($businessPhone) { $newUser['BusinessPhones'] = @($businessPhone) }
 
-    # The password is text only inside this hashtable, for the length of the call, because
-    # Graph's passwordProfile takes plain text in the request body.
-    $created = New-MgUser @newUser -PasswordProfile @{
-        Password                      = [pscredential]::new('rma', $password).GetNetworkCredential().Password
-        ForceChangePasswordNextSignIn = $true
+    try {
+        # The password is text only inside this hashtable, for the length of the call,
+        # because Graph's passwordProfile takes plain text in the request body. -ErrorAction
+        # Stop because the runbook's preference does not reach the Graph cmdlets, which run
+        # in their own module's scope: without it a refused create is a non-terminating
+        # error, and the job fails on $created.Id with a property-not-found instead (#157).
+        $created = New-MgUser @newUser -ErrorAction Stop -PasswordProfile @{
+            Password                      = [pscredential]::new('rma', $password).GetNetworkCredential().Password
+            ForceChangePasswordNextSignIn = $true
+        }
+    } catch {
+        # The SDK's error record holds the request body, password included, as its
+        # TargetObject. Only Graph's message, which does not repeat the password, leaves
+        # this block.
+        throw [System.Exception]::new($_.Exception.Message)
     }
 
     # Named fields only. Never the payload object: it carries the password.

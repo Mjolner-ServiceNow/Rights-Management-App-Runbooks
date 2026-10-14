@@ -248,6 +248,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `rma-worker.local.json`, and `rma-worker.example.json` shows the shape.
 
 ### Fixed
+- **`Create-EntraUser` fails with Graph's reason when the create is refused.** `New-MgUser`
+  was called without `-ErrorAction Stop`, and the runbook's preference does not reach the
+  Graph cmdlets, so a user Graph refused, for a password that did not meet the complexity
+  requirements for example, was a non-terminating error and the job failed on the next
+  line with *The property 'Id' cannot be found on this object*. The call now stops on the
+  error, and the job fails with Graph's message alone: the SDK puts the request body,
+  initial password included, into the error record's `TargetObject`, so that record is
+  not rethrown, as `Set-EntraUserPassword` already does for `Update-MgUser`
+  ([#157](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/157)).
 - **`Disable-RevokeSignInTokens` revokes a synchronised user's sessions, then fails the
   job.** It asked Graph to disable every enabled user, including one synchronised from
   on-premises AD, whose account is mastered there; when that failed, the job failed

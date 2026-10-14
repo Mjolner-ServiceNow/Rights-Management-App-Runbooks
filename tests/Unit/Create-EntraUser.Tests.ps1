@@ -38,6 +38,18 @@ BeforeAll {
         'givenname', 'surname', 'city', 'company', 'department', 'title', 'postalcode', 'streetaddress',
         'mobilephone', 'employeeid', 'physicaldelofficename', 'businessphone')
 
+    # Graph errors are a plain System.Exception whose error id leads with the Graph error
+    # code. For New-MgUser, the SDK puts the request body, password included, into the
+    # error's TargetObject (seen on the test tenant with SDK 2.39.0); this builds that shape.
+    function script:New-GraphError {
+        param([string] $Code, [string] $Message, [string] $Cmdlet = 'GetMgUser_List', $TargetObject = $null)
+        [System.Management.Automation.ErrorRecord]::new(
+            [System.Exception]::new("[$Code] : $Message"),
+            "$Code,Microsoft.Graph.PowerShell.Cmdlets.$Cmdlet",
+            [System.Management.Automation.ErrorCategory]::InvalidOperation,
+            $TargetObject)
+    }
+
     # The body under StrictMode Latest, as the runbook sets it before the loop runs.
     function script:Invoke-Body {
         param($Payload)
@@ -91,7 +103,10 @@ Describe 'Create-EntraUser' -Tag 'Unit', 'Security' {
         $script:Sent = $null
         Mock New-MgUser {
             $script:Sent = @{}
-            foreach ($key in $PesterBoundParameters.Keys) { $script:Sent[$key] = $PesterBoundParameters[$key] }
+            # What the runbook sends to Graph; -ErrorAction is how the call is made, not data.
+            foreach ($key in $PesterBoundParameters.Keys) {
+                if ($key -notin [System.Management.Automation.PSCmdlet]::CommonParameters) { $script:Sent[$key] = $PesterBoundParameters[$key] }
+            }
             $script:Sent['PasswordProfile'] = $PasswordProfile.Clone()
             [pscustomobject]@{
                 Id = '44444444-4444-4444-4444-444444444444'; UserPrincipalName = $UserPrincipalName
@@ -220,6 +235,37 @@ Describe 'Create-EntraUser' -Tag 'Unit', 'Security' {
         { Invoke-Body ([pscustomobject]@{ username = 'jdoe'; password = $script:Secret }) } |
         Should -Throw '*already exists*'
         Should -Invoke Invoke-RmaRestMethod -Times 0 -Exactly
+    }
+
+    It 'fails with Graph''s reason, and without the request body, when the create is refused' {
+        # A Graph cmdlet raises a refusal as a non-terminating error, and the runbook's
+        # $ErrorActionPreference does not reach it: Write-Error under Continue is that shape.
+        # Without -ErrorAction Stop the body went on to $created.Id and failed with a
+        # property-not-found (#157).
+        $ErrorActionPreference = 'Continue'
+        $script:Raised = $null
+        Mock New-MgUser {
+            $script:Raised = New-GraphError -Code 'Request_BadRequest' -Cmdlet 'NewMgUser_CreateExpanded' `
+                -Message 'The specified password does not comply with password complexity requirements. Please provide a different password.' `
+                -TargetObject @{ body = @{ userPrincipalName = $UserPrincipalName; passwordProfile = $PasswordProfile.Clone() } }
+            Write-Error -ErrorRecord $script:Raised
+        }
+
+        $record = $null
+        try { Invoke-Body ([pscustomobject]@{ username = 'jdoe'; password = $script:Secret }) } catch { $record = $_ }
+
+        # The stand-in's error does carry the password, as the SDK's does.
+        ($script:Raised.TargetObject | ConvertTo-Json -Depth 5) | Should -Match ([regex]::Escape($script:Secret))
+
+        Should -Invoke New-MgUser -Times 1 -Exactly -ParameterFilter { $PesterBoundParameters['ErrorAction'] -eq 'Stop' }
+        $record | Should -Not -BeNullOrEmpty
+        $record.Exception.Message | Should -BeExactly '[Request_BadRequest] : The specified password does not comply with password complexity requirements. Please provide a different password.'
+        $record.Exception.InnerException | Should -BeNullOrEmpty
+        $record.TargetObject | Should -BeNullOrEmpty
+        ($record | Format-List * -Force | Out-String) | Should -Not -Match ([regex]::Escape($script:Secret))
+        ($record.Exception | Format-List * -Force | Out-String) | Should -Not -Match ([regex]::Escape($script:Secret))
+        Should -Invoke Invoke-RmaRestMethod -Times 0 -Exactly
+        $script:Logged | Where-Object Message -EQ 'Entra user created' | Should -BeNullOrEmpty
     }
 
     It 'rejects <Case> before contacting Graph' -ForEach @(

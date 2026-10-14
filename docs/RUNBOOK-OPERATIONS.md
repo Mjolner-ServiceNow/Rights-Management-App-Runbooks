@@ -14,7 +14,8 @@ object:
 | `timestamp` | UTC, ISO 8601 |
 | `level` | `Debug`, `Information`, `Warning` or `Error` |
 | `message` | What happened |
-| `runbook` | Which runbook logged it |
+| `runbook` | The file that logged it: a module function such as `Invoke-RmaQueueLoop`, or the runbook. In an Automation job a runbook runs from a temporary file named by a GUID, so the runbook's own lines carry that GUID; use `command` to find them. |
+| `command` | The queue command the run is processing, such as `Unlock-ADUser`. On every line from `Queue loop started` to `Queue loop finished`, the runbook's own included. Empty before and after. |
 | `correlationId` | The ServiceNow job `sys_id` the line belongs to. Empty outside a job. |
 | `worker` | Which Hybrid Worker ran it |
 | `data` | Named fields, already redacted |

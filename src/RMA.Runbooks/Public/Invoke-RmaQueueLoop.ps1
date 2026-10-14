@@ -26,7 +26,8 @@ function Invoke-RmaQueueLoop {
                           between rows of a batch, so a large BatchSize cannot overshoot.
 
         Correlation       The job sys_id becomes the ambient correlation id, so every log
-                          line from the body is traceable to one ServiceNow ticket.
+                          line from the body is traceable to one ServiceNow ticket. The
+                          command is logged on every line of the run in the same way.
 
         Action guard      A payload whose action does not match is failed explicitly rather
                           than silently skipped while holding the claim.
@@ -133,16 +134,17 @@ function Invoke-RmaQueueLoop {
     $idleBatches = 0; $contentionBatches = 0
     $stopReason = 'drained'
 
-    Write-RmaLog -Level Information -Message 'Queue loop started' -Data @{
-        command = $Command; domainId = $DomainId; workerId = $workerId
-        maxJobs = $MaxJobs; maxMinutes = $MaxMinutes; batchSize = $BatchSize
-    }
-
     # The heartbeat thread is started on the first claim, so a run that finds the queue
     # empty never pays for it. The finally is what guarantees it is stopped on every exit,
-    # including a throw out of the poll.
+    # including a throw out of the poll, and that the ambient command is cleared.
     $heartbeat = $null
     try {
+        $script:RmaCommand = $Command
+        Write-RmaLog -Level Information -Message 'Queue loop started' -Data @{
+            command = $Command; domainId = $DomainId; workerId = $workerId
+            maxJobs = $MaxJobs; maxMinutes = $MaxMinutes; batchSize = $BatchSize
+        }
+
         :queue while ($true) {
             if ($processed -ge $MaxJobs)                  { $stopReason = 'max-jobs'; break }
             if ($sw.Elapsed.TotalMinutes -ge $MaxMinutes) { $stopReason = 'max-minutes'; break }
@@ -286,6 +288,7 @@ function Invoke-RmaQueueLoop {
         }
     } finally {
         if ($heartbeat) { Stop-RmaHeartbeat -Heartbeat $heartbeat }
+        $script:RmaCommand = $null
     }
 
     $sw.Stop()
@@ -299,7 +302,7 @@ function Invoke-RmaQueueLoop {
         StopReason = $stopReason
     }
 
-    Write-RmaLog -Level $(if ($stopReason -eq 'drained') { 'Information' } else { 'Warning' }) `
+    Write-RmaLog -Level $(if ($stopReason -eq 'drained') { 'Information' } else { 'Warning' }) -Command $Command `
         -Message "Queue loop finished ($stopReason)" -Data @{
         processed = $processed; succeeded = $succeeded; failed = $failed
         skipped = $skipped; durationSeconds = $summary.DurationSeconds

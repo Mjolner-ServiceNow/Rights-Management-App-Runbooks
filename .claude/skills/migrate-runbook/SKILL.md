@@ -128,6 +128,7 @@ $d = './.claude/skills/migrate-runbook/scripts'
 $id = & "$d/Add-RmaTestQueueRow.ps1" -Payload @{ action = '<Command>'; ... }
 $job = & "$d/Start-RmaTestJob.ps1" -Runbook <Runbook> [-ForbiddenText $secret]
 $job.Records | Format-Table Level, Message, SysId
+$job.Errors                                                              # each failed row's reason
 & "$d/Invoke-RmaTestCheck.ps1" -ScriptBlock { Get-TestQueueRow -SysId '<id>' }
 ```
 

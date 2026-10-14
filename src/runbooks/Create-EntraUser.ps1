@@ -106,8 +106,12 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'C
     $upnFilter = $upn -replace "'", "''"
 
     # Idempotency. A duplicate execution, or a retry after a partial failure, must not
-    # produce a second user or a spurious failure.
-    if (Get-MgUser -Filter "userPrincipalName eq '$upnFilter'" -ErrorAction SilentlyContinue) {
+    # produce a second user or a spurious failure. A filter that matches nothing returns
+    # an empty result; it does not throw for not-found. So any error here, throttling,
+    # access denied or an expired token, fails the job with Graph's own reason rather than
+    # reading as "no such user" (#144). The request carries no password, so the error is
+    # passed on as Graph raised it.
+    if (Get-MgUser -Filter "userPrincipalName eq '$upnFilter'" -ErrorAction Stop) {
         Write-RmaLog -Level Warning -Message 'User already exists; treating as success' -Data @{ upn = $upn }
         return
     }

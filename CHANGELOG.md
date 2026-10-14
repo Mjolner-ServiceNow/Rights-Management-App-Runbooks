@@ -257,6 +257,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   initial password included, into the error record's `TargetObject`, so that record is
   not rethrown, as `Set-EntraUserPassword` already does for `Update-MgUser`
   ([#157](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/157)).
+- **`Create-EntraUser`'s existence check no longer reads every Graph error as "no such
+  user".** It looked the user principal name up with `-ErrorAction SilentlyContinue`, so
+  throttling, an access denied or an expired token discarded the error and the runbook
+  went on to create the user, failing later with a less useful reason or racing a user
+  that did exist. A filter returns an empty result when nothing matches and does not throw
+  for not-found, so the lookup now uses `-ErrorAction Stop`, and any error fails the job
+  with Graph's own reason before anything is created. An empty result creates the user
+  and an existing one completes the job, as before
+  ([#144](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/144)).
 - **`Disable-RevokeSignInTokens` revokes a synchronised user's sessions, then fails the
   job.** It asked Graph to disable every enabled user, including one synchronised from
   on-premises AD, whose account is mastered there; when that failed, the job failed

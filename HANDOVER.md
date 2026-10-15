@@ -34,12 +34,17 @@ Every place that needed help is a gap; record it.
 
 *To be written in the last week before the handover. Until then this is a snapshot.*
 
-- **Done:** the shared module (`RMA.Runbooks` 2.5.0) with the queue loop, claim, heartbeat,
+- **Done:** the shared module (`RMA.Runbooks` 2.6.0) with the queue loop, claim, heartbeat,
   retry of a job that is not ready yet, watchdog, health check and logging; CI and the
-  release pipeline; and 22 command runbooks on it, among them the references
+  release pipeline; and 23 command runbooks on it, among them the references
   `Create-EntraUser` for Entra ID and `Unlock-ADUser` for Active Directory.
-- **Released:** 2.5.0 is the latest release (2026-10-15), installed on the test Hybrid
-  Worker, the only worker today. Since 2.2.0 it adds the `command` log field
+- **Released:** 2.6.0 is the latest release (2026-10-15), installed on the test Hybrid
+  Worker, the only worker today. It adds `Update-EntraUserHideMailbox`, the first Exchange
+  runbook, and reads Exchange Online's organization from Graph (D20,
+  [#102](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/102));
+  that runbook has not run end to end, because the test app has no Exchange role
+  ([#180](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/180)).
+  2.5.0, the release before it, added the `command` log field
   ([#124](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/124)),
   the `Retry-After` cap
   ([#117](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/117))
@@ -52,7 +57,7 @@ Every place that needed help is a gap; record it.
   before the ServiceNow application takes the runbooks from `main`.
 - **In progress:** migrating the 1.0 runbooks
   ([#36](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/36)).
-  41 are left, and all but one wait on the ServiceNow team (#106, #108, #109), among them
+  40 are left, and all of them wait on the ServiceNow team (#106, #108, #109), among them
   the live Import-Entra* commands and the four Initial-Import runbooks, whose rebuild is
   decided in
   [DECISIONS.md D12](docs/DECISIONS.md#d12-how-the-four-initial-import-runbooks-are-to-be-rebuilt).

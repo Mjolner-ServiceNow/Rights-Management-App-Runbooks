@@ -1,5 +1,5 @@
 #Requires -Version 7.2
-#Requires -Modules @{ ModuleName = 'RMA.Runbooks';                   RequiredVersion = '2.4.0'  }
+#Requires -Modules @{ ModuleName = 'RMA.Runbooks';                   RequiredVersion = '2.5.0'  }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Authentication'; RequiredVersion = '2.39.0' }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Users';          RequiredVersion = '2.39.0' }
 
@@ -16,7 +16,8 @@
     Enabling is idempotent. A user who is already enabled is logged and the job completes:
     the outcome ServiceNow asked for is already true. A user who does not exist fails the
     job, as it did in 1.0: there is nothing to enable (docs/DECISIONS.md D15 covers deletes
-    only).
+    only). It fails once the retries Invoke-RmaQueueLoop gives a user Graph may not have
+    replicated yet are used (D18).
 .NOTES
     Payload: user, the account to enable, as its user principal name or its object id.
 #>
@@ -67,7 +68,9 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'E
         # plain System.Exception. Every other failure (throttling, access denied) is
         # rethrown as is.
         if ($_.FullyQualifiedErrorId -notlike 'Request_ResourceNotFound,*') { throw }
-        throw "No Entra ID user '$identity'. Correct the ServiceNow record."
+        # Not found is retried: a job queued straight after the create can be run before
+        # Graph knows the user (D18). One that never arrives fails once the retries are used.
+        Request-RmaJobRetry -Reason "No Entra ID user '$identity'. Correct the ServiceNow record."
     }
 
     # The user acted on must be the user asked for, whatever the request path made of it.

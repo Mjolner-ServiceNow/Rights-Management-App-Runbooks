@@ -152,28 +152,74 @@ Describe 'Remove-EntraAUUserMember' -Tag 'Unit' {
         $script:Logged[-1].Data.userId | Should -Be $script:UserId
     }
 
-    It 'completes, with a warning, when the administrative unit does not exist' {
-        # docs/DECISIONS.md D15: the outcome asked for is already true.
+    It 'completes at once, with a warning, when the administrative unit is in deleted items' {
+        # docs/DECISIONS.md D15: the outcome asked for is already true. D19: deleted items
+        # tell gone from not replicated yet.
         Mock Get-MgDirectoryAdministrativeUnit { throw (New-GraphError 'Request_ResourceNotFound' 'GetMgDirectoryAdministrativeUnit_Get') }
+        Mock Test-RmaDeletedDirectoryObject { $true }
 
         { & $script:Body $script:Job ([pscustomobject]@{ ou = $script:UnitId; user = 'jdoe@contoso.com' }) } | Should -Not -Throw
 
-        Should -Invoke Get-MgUser -Times 0 -Exactly
         Should -Invoke Remove-MgDirectoryAdministrativeUnitMemberDirectoryObjectByRef -Times 0 -Exactly
+        Should -Invoke Test-RmaDeletedDirectoryObject -Times 1 -Exactly -ParameterFilter { $Id -eq $script:UnitId }
         Should -Invoke Write-RmaLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Warning' -and $Message -match 'administrative unit not found' }
-        $script:Logged[-1].Data.administrativeUnit | Should -Be $script:UnitId
-        $script:Logged[-1].Data.user | Should -Be 'jdoe@contoso.com'
+        $script:Logged[-1].Data.inDeletedItems | Should -BeTrue
         $script:Logged[-1].Data.queueSysId | Should -Be ('f' * 32)
     }
 
-    It 'completes, with a warning, when the user does not exist' {
-        Mock Get-MgUser { throw (New-GraphError 'Request_ResourceNotFound' 'GetMgUser_Get') }
+    It 'asks the loop to run it again, and to complete it then, when the administrative unit is found neither live nor in deleted items' {
+        # D19: it may have been created moments ago and not have reached Graph yet.
+        Mock Get-MgDirectoryAdministrativeUnit { throw (New-GraphError 'Request_ResourceNotFound' 'GetMgDirectoryAdministrativeUnit_Get') }
+        Mock Test-RmaDeletedDirectoryObject { $false }
 
-        { & $script:Body $script:Job ([pscustomobject]@{ ou = $script:UnitId; user = 'nobody@contoso.com' }) } | Should -Not -Throw
+        $caught = $null
+        try { & $script:Body $script:Job ([pscustomobject]@{ ou = $script:UnitId; user = 'jdoe@contoso.com' }) } catch { $caught = $_ }
+
+        $caught.FullyQualifiedErrorId | Should -BeLike 'RmaJobRetry,*'
+        $caught.Exception.Message | Should -BeLike '*administrative unit*not found; the membership does not exist'
+        $caught.TargetObject.CompleteWhenExhausted | Should -BeTrue
+        Should -Invoke Remove-MgDirectoryAdministrativeUnitMemberDirectoryObjectByRef -Times 0 -Exactly
+        Should -Invoke Write-RmaLog -Times 0 -Exactly
+    }
+
+    It 'completes at once, with a warning, when the user is in deleted items' {
+        # docs/DECISIONS.md D15: the outcome asked for is already true. D19: deleted items
+        # tell gone from not replicated yet.
+        Mock Get-MgUser { throw (New-GraphError 'Request_ResourceNotFound' 'GetMgUser_Get') }
+        Mock Test-RmaDeletedDirectoryObject { $true }
+
+        { & $script:Body $script:Job ([pscustomobject]@{ ou = $script:UnitId; user = $script:UserId }) } | Should -Not -Throw
 
         Should -Invoke Remove-MgDirectoryAdministrativeUnitMemberDirectoryObjectByRef -Times 0 -Exactly
+        Should -Invoke Test-RmaDeletedDirectoryObject -Times 1 -Exactly -ParameterFilter { $Id -eq $script:UserId }
         Should -Invoke Write-RmaLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Warning' -and $Message -match 'user not found' }
-        $script:Logged[-1].Data.user | Should -Be 'nobody@contoso.com'
+        $script:Logged[-1].Data.inDeletedItems | Should -BeTrue
+        $script:Logged[-1].Data.queueSysId | Should -Be ('f' * 32)
+    }
+
+    It 'asks the loop to run it again, and to complete it then, when the user is found neither live nor in deleted items' {
+        # D19: it may have been created moments ago and not have reached Graph yet.
+        Mock Get-MgUser { throw (New-GraphError 'Request_ResourceNotFound' 'GetMgUser_Get') }
+        Mock Test-RmaDeletedDirectoryObject { $false }
+
+        $caught = $null
+        try { & $script:Body $script:Job ([pscustomobject]@{ ou = $script:UnitId; user = $script:UserId }) } catch { $caught = $_ }
+
+        $caught.FullyQualifiedErrorId | Should -BeLike 'RmaJobRetry,*'
+        $caught.Exception.Message | Should -BeLike '*user*not found; the membership does not exist'
+        $caught.TargetObject.CompleteWhenExhausted | Should -BeTrue
+        Should -Invoke Remove-MgDirectoryAdministrativeUnitMemberDirectoryObjectByRef -Times 0 -Exactly
+        Should -Invoke Write-RmaLog -Times 0 -Exactly
+    }
+
+    It 'asks the loop to run it again without looking in deleted items for a user principal name' {
+        # Entra rewrites a deleted user's UPN, so only an object id can be looked up there.
+        Mock Get-MgUser { throw (New-GraphError 'Request_ResourceNotFound' 'GetMgUser_Get') }
+        Mock Test-RmaDeletedDirectoryObject { $true }
+
+        { & $script:Body $script:Job ([pscustomobject]@{ ou = $script:UnitId; user = 'nobody@contoso.com' }) } |
+        Should -Throw "*'nobody@contoso.com' not found; the membership does not exist" -ErrorId 'RmaJobRetry,*'
+        Should -Invoke Test-RmaDeletedDirectoryObject -Times 0 -Exactly
     }
 
     It 'refuses an administrative unit with dynamic membership before asking Graph to remove' {

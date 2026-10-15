@@ -105,7 +105,10 @@ wraps the body and owns the parts that went wrong in the library this replaces:
 - A condition that clears on its own, such as Graph not yet knowing a user created moments
   ago, is not a failure the body retries. The body calls `Request-RmaJobRetry -Reason`,
   and the loop runs it again after 15, 30 and 60 seconds, holding the claim, before it
-  fails the job with that reason (D18).
+  fails the job with that reason (D18). `-CompleteWhenExhausted` completes it instead,
+  for a delete whose object is not found and not in `Test-RmaDeletedDirectoryObject`'s
+  deleted items (D19). After three jobs in a row use up their retries, the loop stops
+  retrying for the rest of the run.
 - A background heartbeat renews `claimed_at` while a job runs, so the watchdog leaves long
   jobs alone. Runbook bodies never call `Update-RmaJobHeartbeat`.
 - Graph and Exchange sessions keep the token they were opened with. The loop calls

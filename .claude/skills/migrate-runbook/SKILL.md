@@ -93,7 +93,10 @@ Rules each of those already follows, and reviewers check:
   created moments ago, so one endpoint finds it and another answers `resourceNotFound`.
   Call `Request-RmaJobRetry -Reason <text>` for that case only, and let the loop run the
   body again; never sleep or loop in the body (`docs/DECISIONS.md` D18).
-  `Set-EntraUserAuthenticationPhoneMethod.ps1` shows it.
+  `Set-EntraUserAuthenticationPhoneMethod.ps1` shows it. A delete or removal whose object
+  is not found asks `Test-RmaDeletedDirectoryObject` first and completes at once if it is
+  there, else calls `Request-RmaJobRetry -CompleteWhenExhausted` (D19);
+  `Remove-EntraGroup.ps1` shows it.
 - The help names the delegation scope an AD runbook needs (`docs/INSTALLATION.md` step 6a).
 
 ## 4. Tests

@@ -166,21 +166,21 @@ Describe 'Create-EntraAUUserMember' -Tag 'Unit' {
         Should -Invoke Write-RmaLog -Times 0 -Exactly
     }
 
-    It 'fails when the administrative unit does not exist' {
+    It 'asks the loop to run it again, then fails, when the administrative unit is not found' {
         # Not a removal: there is nothing to add the user to (docs/DECISIONS.md D15 covers deletes only).
         Mock Get-MgDirectoryAdministrativeUnit { throw (New-GraphError 'Request_ResourceNotFound' 'GetMgDirectoryAdministrativeUnit_Get') }
 
         { & $script:Body $script:Job ([pscustomobject]@{ ou = $script:UnitId; user = 'jdoe@contoso.com' }) } |
-        Should -Throw "No Entra ID administrative unit '$script:UnitId'. Correct the ServiceNow record."
+        Should -Throw "No Entra ID administrative unit '$script:UnitId'. Correct the ServiceNow record." -ErrorId 'RmaJobRetry,*'
         Should -Invoke Get-MgUser -Times 0 -Exactly
         Should -Invoke New-MgDirectoryAdministrativeUnitMemberByRef -Times 0 -Exactly
     }
 
-    It 'fails when the user does not exist' {
+    It 'asks the loop to run it again, then fails, when the user is not found' {
         Mock Get-MgUser { throw (New-GraphError 'Request_ResourceNotFound' 'GetMgUser_Get') }
 
         { & $script:Body $script:Job ([pscustomobject]@{ ou = $script:UnitId; user = 'nobody@contoso.com' }) } |
-        Should -Throw "No Entra ID user 'nobody@contoso.com'. Correct the ServiceNow record."
+        Should -Throw "No Entra ID user 'nobody@contoso.com'. Correct the ServiceNow record." -ErrorId 'RmaJobRetry,*'
         Should -Invoke New-MgDirectoryAdministrativeUnitMemberByRef -Times 0 -Exactly
     }
 

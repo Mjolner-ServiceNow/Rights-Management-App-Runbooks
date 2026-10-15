@@ -1,5 +1,5 @@
 #Requires -Version 7.2
-#Requires -Modules @{ ModuleName = 'RMA.Runbooks';                   RequiredVersion = '2.4.0'  }
+#Requires -Modules @{ ModuleName = 'RMA.Runbooks';                   RequiredVersion = '2.5.0'  }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Authentication'; RequiredVersion = '2.39.0' }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Groups';         RequiredVersion = '2.39.0' }
 
@@ -22,14 +22,15 @@
     Deleting is idempotent: a group that does not exist is logged as a warning and the job
     completes, because the outcome ServiceNow asked for is true (docs/DECISIONS.md D15).
     1.0 failed the job instead. A group already in Deleted groups counts as gone.
+    A group found neither live nor in Deleted groups may have been created moments ago and
+    not have reached Graph yet: the job is retried, and completes as gone only once the
+    retries Invoke-RmaQueueLoop gives are used (D19).
 
     A group synchronised from on-premises Active Directory cannot be deleted in Entra ID:
     it is mastered on-premises. The job fails with that reason before Graph is asked to
     delete anything; Remove-ADGroup is the runbook for such a group.
 
-    The group is deleted by the object id Graph returned in the same job. Graph is
-    eventually consistent: a group created seconds before can still be reported as not
-    found, and that job completes with the warning and leaves the group in place.
+    The group is deleted by the object id Graph returned in the same job.
 .NOTES
     Payload: group, the group to delete, as its Entra object id, which is what 1.0 passed
     to Graph too. A display name is refused: group names are not unique.
@@ -81,8 +82,14 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'R
         $group = Get-MgGroup -GroupId $identity -Property 'id', 'displayName', 'onPremisesSyncEnabled' -ErrorAction Stop
     } catch {
         if (-not (& $isNotFound $_)) { throw }
-        & $gone @{ group = $identity; queueSysId = $job.sys_id }
-        return
+        # Not found is either gone or not replicated yet (D19). One in deleted items was
+        # deleted, and the job completes at once. Otherwise the loop runs the body again,
+        # and completes the job as gone once the retries are used.
+        if (Test-RmaDeletedDirectoryObject -Id $identity) {
+            & $gone @{ group = $identity; inDeletedItems = $true; queueSysId = $job.sys_id }
+            return
+        }
+        Request-RmaJobRetry -CompleteWhenExhausted -Reason "Entra group '$identity' not found; nothing to delete"
     }
 
     $fields = @{ displayName = $group.DisplayName; id = $group.Id; queueSysId = $job.sys_id }

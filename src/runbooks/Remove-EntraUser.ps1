@@ -1,5 +1,5 @@
 #Requires -Version 7.2
-#Requires -Modules @{ ModuleName = 'RMA.Runbooks';                   RequiredVersion = '2.4.0'  }
+#Requires -Modules @{ ModuleName = 'RMA.Runbooks';                   RequiredVersion = '2.5.0'  }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Authentication'; RequiredVersion = '2.39.0' }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Users';          RequiredVersion = '2.39.0' }
 
@@ -18,12 +18,14 @@
     Deleting is idempotent: a user who does not exist is logged as a warning and the job
     completes, because the outcome ServiceNow asked for is true (docs/DECISIONS.md D15).
     1.0 failed the job instead, which made every repeated execution fail after the first
-    had succeeded. A user already in Deleted users counts as gone.
+    had succeeded. A user already in Deleted users counts as gone. A user found neither
+    live nor in Deleted users may have been created moments ago and not have reached Graph
+    yet: the job is retried, and completes as gone only once the retries
+    Invoke-RmaQueueLoop gives are used (D19). Deleted users can only be checked by object
+    id, so a payload with a user principal name always waits out the retries.
 
     The user is deleted by its object id, read in the same job, so the delete cannot hit a
-    different object that took the name in between. Graph is eventually consistent: a user
-    created seconds before can still be reported as not found, and that job completes with
-    the warning and leaves the user in place.
+    different object that took the name in between.
 .NOTES
     Payload: user, the user to delete, as its object id or its user principal name.
 #>
@@ -73,8 +75,16 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'R
         $user = Get-MgUser -UserId $identity -Property 'id', 'userPrincipalName' -ErrorAction Stop
     } catch {
         if (-not (& $isNotFound $_)) { throw }
-        & $gone @{ user = $identity; queueSysId = $job.sys_id }
-        return
+        # Not found is either gone or not replicated yet (D19). One in deleted items was
+        # deleted, and the job completes at once. Otherwise the loop runs the body again,
+        # and completes the job as gone once the retries are used.
+        # Only an object id can be looked up there: Entra rewrites a deleted user's UPN.
+        if ($identity -match '^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\z' -and
+            (Test-RmaDeletedDirectoryObject -Id $identity)) {
+            & $gone @{ user = $identity; inDeletedItems = $true; queueSysId = $job.sys_id }
+            return
+        }
+        Request-RmaJobRetry -CompleteWhenExhausted -Reason "Entra user '$identity' not found; nothing to delete"
     }
 
     # The object deleted is the object the payload named, not one Graph resolved some

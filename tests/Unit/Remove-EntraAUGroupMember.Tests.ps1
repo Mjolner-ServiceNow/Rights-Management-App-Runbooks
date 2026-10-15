@@ -133,28 +133,64 @@ Describe 'Remove-EntraAUGroupMember' -Tag 'Unit' {
         $script:Logged[-1].Data.groupId | Should -Be $script:GroupId
     }
 
-    It 'completes, with a warning, when the administrative unit does not exist' {
-        # docs/DECISIONS.md D15: the outcome asked for is already true.
+    It 'completes at once, with a warning, when the administrative unit is in deleted items' {
+        # docs/DECISIONS.md D15: the outcome asked for is already true. D19: deleted items
+        # tell gone from not replicated yet.
         Mock Get-MgDirectoryAdministrativeUnit { throw (New-GraphError 'Request_ResourceNotFound' 'GetMgDirectoryAdministrativeUnit_Get') }
+        Mock Test-RmaDeletedDirectoryObject { $true }
 
         { & $script:Body $script:Job ([pscustomobject]@{ ou = $script:UnitId; group = $script:GroupId }) } | Should -Not -Throw
 
-        Should -Invoke Get-MgGroup -Times 0 -Exactly
         Should -Invoke Remove-MgDirectoryAdministrativeUnitMemberByRef -Times 0 -Exactly
+        Should -Invoke Test-RmaDeletedDirectoryObject -Times 1 -Exactly -ParameterFilter { $Id -eq $script:UnitId }
         Should -Invoke Write-RmaLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Warning' -and $Message -match 'administrative unit not found' }
-        $script:Logged[-1].Data.administrativeUnit | Should -Be $script:UnitId
-        $script:Logged[-1].Data.group | Should -Be $script:GroupId
+        $script:Logged[-1].Data.inDeletedItems | Should -BeTrue
         $script:Logged[-1].Data.queueSysId | Should -Be ('f' * 32)
     }
 
-    It 'completes, with a warning, when the group does not exist' {
+    It 'asks the loop to run it again, and to complete it then, when the administrative unit is found neither live nor in deleted items' {
+        # D19: it may have been created moments ago and not have reached Graph yet.
+        Mock Get-MgDirectoryAdministrativeUnit { throw (New-GraphError 'Request_ResourceNotFound' 'GetMgDirectoryAdministrativeUnit_Get') }
+        Mock Test-RmaDeletedDirectoryObject { $false }
+
+        $caught = $null
+        try { & $script:Body $script:Job ([pscustomobject]@{ ou = $script:UnitId; group = $script:GroupId }) } catch { $caught = $_ }
+
+        $caught.FullyQualifiedErrorId | Should -BeLike 'RmaJobRetry,*'
+        $caught.Exception.Message | Should -BeLike '*administrative unit*not found; the membership does not exist'
+        $caught.TargetObject.CompleteWhenExhausted | Should -BeTrue
+        Should -Invoke Remove-MgDirectoryAdministrativeUnitMemberByRef -Times 0 -Exactly
+        Should -Invoke Write-RmaLog -Times 0 -Exactly
+    }
+
+    It 'completes at once, with a warning, when the group is in deleted items' {
+        # docs/DECISIONS.md D15: the outcome asked for is already true. D19: deleted items
+        # tell gone from not replicated yet.
         Mock Get-MgGroup { throw (New-GraphError 'Request_ResourceNotFound' 'GetMgGroup_Get') }
+        Mock Test-RmaDeletedDirectoryObject { $true }
 
         { & $script:Body $script:Job ([pscustomobject]@{ ou = $script:UnitId; group = $script:GroupId }) } | Should -Not -Throw
 
         Should -Invoke Remove-MgDirectoryAdministrativeUnitMemberByRef -Times 0 -Exactly
+        Should -Invoke Test-RmaDeletedDirectoryObject -Times 1 -Exactly -ParameterFilter { $Id -eq $script:GroupId }
         Should -Invoke Write-RmaLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Warning' -and $Message -match 'group not found' }
-        $script:Logged[-1].Data.group | Should -Be $script:GroupId
+        $script:Logged[-1].Data.inDeletedItems | Should -BeTrue
+        $script:Logged[-1].Data.queueSysId | Should -Be ('f' * 32)
+    }
+
+    It 'asks the loop to run it again, and to complete it then, when the group is found neither live nor in deleted items' {
+        # D19: it may have been created moments ago and not have reached Graph yet.
+        Mock Get-MgGroup { throw (New-GraphError 'Request_ResourceNotFound' 'GetMgGroup_Get') }
+        Mock Test-RmaDeletedDirectoryObject { $false }
+
+        $caught = $null
+        try { & $script:Body $script:Job ([pscustomobject]@{ ou = $script:UnitId; group = $script:GroupId }) } catch { $caught = $_ }
+
+        $caught.FullyQualifiedErrorId | Should -BeLike 'RmaJobRetry,*'
+        $caught.Exception.Message | Should -BeLike '*group*not found; the membership does not exist'
+        $caught.TargetObject.CompleteWhenExhausted | Should -BeTrue
+        Should -Invoke Remove-MgDirectoryAdministrativeUnitMemberByRef -Times 0 -Exactly
+        Should -Invoke Write-RmaLog -Times 0 -Exactly
     }
 
     It 'refuses an administrative unit with dynamic membership before asking Graph to remove' {

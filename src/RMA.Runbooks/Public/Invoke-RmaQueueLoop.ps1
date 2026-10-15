@@ -48,7 +48,9 @@ function Invoke-RmaQueueLoop {
         Retry             A body that calls Request-RmaJobRetry, for a condition that clears
                           on its own such as Graph replication, is run again after each of
                           RetryDelaySeconds, still holding the claim. A runbook that retried
-                          itself would be rejected in review (D1, D18).
+                          itself would be rejected in review (D1, D18). Once
+                          MaxRetryExhaustedJobs jobs in a row have used up their retries,
+                          retrying is off for the rest of the run (D19).
 
         Heartbeat         A background thread renews the claim of a job that is still
                           running, every HeartbeatMinutes. Without it the watchdog requeues
@@ -86,6 +88,11 @@ function Invoke-RmaQueueLoop {
         many retries as delays, and an empty list turns retrying off. A retry that would end
         past MaxMinutes is not made. The default, 15, 30 and 60, covers the tens of seconds
         Graph took on the test tenant to know a user created moments before.
+    .PARAMETER MaxRetryExhaustedJobs
+        Consecutive jobs that use up every retry before retrying is turned off for the rest
+        of the run. A cause that does not clear, such as a domain record pointing at the
+        wrong tenant, would otherwise make every job wait out the delays: at the defaults,
+        about 25 jobs in a 45-minute run.
     .EXAMPLE
         Invoke-RmaQueueLoop -Context $ctx -DomainId $id -Command 'Create-EntraUser' -Body {
             param($job, $p)
@@ -132,7 +139,10 @@ function Invoke-RmaQueueLoop {
         [int] $HeartbeatMinutes = 5,
 
         [ValidateRange(1, 300)]
-        [int[]] $RetryDelaySeconds = @(15, 30, 60)
+        [int[]] $RetryDelaySeconds = @(15, 30, 60),
+
+        [ValidateRange(1, 100)]
+        [int] $MaxRetryExhaustedJobs = 3
     )
 
     $sw        = [Diagnostics.Stopwatch]::StartNew()
@@ -146,6 +156,10 @@ function Invoke-RmaQueueLoop {
     # the right answer rather than a misdiagnosis.
     $idleBatches = 0; $contentionBatches = 0
     $stopReason = 'drained'
+
+    # Jobs in a row that used up their retries, and whether retrying is off for the rest of
+    # the run because of them (D19).
+    $exhaustedInARow = 0; $retryOff = $false
 
     # The heartbeat thread is started on the first claim, so a run that finds the queue
     # empty never pays for it. The finally is what guarantees it is stopped on every exit,
@@ -219,7 +233,7 @@ function Invoke-RmaQueueLoop {
                 # Pre-set to Failed so an abrupt termination still reports a terminal state.
                 $state = 'Failed'
                 $err   = 'Runbook terminated before the job completed. Requeue or investigate the worker.'
-                $retries = 0
+                $retries = 0; $exhausted = $false
 
                 try {
                     # Guarded so a malformed row fails the job with a message an operator can
@@ -248,24 +262,34 @@ function Invoke-RmaQueueLoop {
 
                     # A body that calls Request-RmaJobRetry is run again after each delay,
                     # still holding the claim, which the heartbeat keeps renewed (D18). Any
-                    # other error, or a retry asked for once the delays are used up, fails
-                    # the job with the body's own error.
+                    # other error fails the job with the body's own error. So does a retry
+                    # asked for once the delays are used up, unless the body asked for the job
+                    # to be completed then (D19).
                     while ($true) {
                         try {
                             $null = & $Body $job $parameters
                             break
                         } catch {
-                            if ($_.FullyQualifiedErrorId -notlike 'RmaJobRetry,*' -or
-                                $retries -ge $RetryDelaySeconds.Count -or
-                                $sw.Elapsed.TotalSeconds + $RetryDelaySeconds[$retries] -ge $MaxMinutes * 60) { throw }
+                            if ($_.FullyQualifiedErrorId -notlike 'RmaJobRetry,*') { throw }
 
-                            Write-RmaLog -Level Warning -Message 'Job not ready yet; running it again shortly' -Data @{
-                                sysId = $sysId; retry = $retries + 1; delaySeconds = $RetryDelaySeconds[$retries]
-                                reason = $_.Exception.Message
+                            if (-not $retryOff -and $retries -lt $RetryDelaySeconds.Count -and
+                                $sw.Elapsed.TotalSeconds + $RetryDelaySeconds[$retries] -lt $MaxMinutes * 60) {
+                                Write-RmaLog -Level Warning -Message 'Job not ready yet; running it again shortly' -Data @{
+                                    sysId = $sysId; retry = $retries + 1; delaySeconds = $RetryDelaySeconds[$retries]
+                                    reason = $_.Exception.Message
+                                }
+                                Start-Sleep -Seconds $RetryDelaySeconds[$retries]
+                                $retries++
+                                Update-RmaConnection
+                                continue
                             }
-                            Start-Sleep -Seconds $RetryDelaySeconds[$retries]
-                            $retries++
-                            Update-RmaConnection
+
+                            $exhausted = $true
+                            if (-not (Get-RmaProperty -InputObject $_.TargetObject -Name 'CompleteWhenExhausted')) { throw }
+                            Write-RmaLog -Level Warning -Message 'Job still not ready after its retries; completing it, as the runbook asks' -Data @{
+                                sysId = $sysId; retries = $retries; reason = $_.Exception.Message
+                            }
+                            break
                         }
                     }
 
@@ -273,10 +297,23 @@ function Invoke-RmaQueueLoop {
                     $succeeded++
                 } catch {
                     $err = '{0} (at line {1})' -f $_.Exception.Message, $_.InvocationInfo.ScriptLineNumber
-                    if ($retries -gt 0) { $err += " Retried $retries time(s) first." }
+                    if ($retries -gt 0) {
+                        $err += " Retried $retries time(s) first."
+                    } elseif ($exhausted -and $retryOff) {
+                        $err += ' Not retried: retrying is off for the rest of this run.'
+                    }
                     $failed++
                     Write-RmaLog -Level Error -Message 'Job failed' -Data @{ sysId = $sysId; error = $err }
                 } finally {
+                    if (-not $exhausted) {
+                        $exhaustedInARow = 0
+                    } elseif (++$exhaustedInARow -ge $MaxRetryExhaustedJobs -and -not $retryOff) {
+                        $retryOff = $true
+                        Write-RmaLog -Level Warning -Message 'Retrying is off for the rest of the run: jobs in a row were still not ready after every retry' -Data @{
+                            jobs = $exhaustedInARow
+                        }
+                    }
+
                     # Cleared before the terminal state is written, so a renewal still in
                     # flight is discarded rather than reported as a lost claim.
                     $beat = Clear-RmaHeartbeatJob -Heartbeat $heartbeat

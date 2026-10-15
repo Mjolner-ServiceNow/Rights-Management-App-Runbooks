@@ -96,16 +96,45 @@ Describe 'Remove-EntraUser' -Tag 'Unit' {
         Should -Invoke Remove-MgUser -Times 1 -Exactly -ParameterFilter { $UserId -eq $script:Id }
     }
 
-    It 'completes, with a warning, when the user does not exist' {
-        # docs/DECISIONS.md D15: the outcome asked for is already true.
+    It 'completes at once, with a warning, when the user is in deleted items' {
+        # docs/DECISIONS.md D15: the outcome asked for is already true. D19: deleted items
+        # tell gone from not replicated yet.
         Mock Get-MgUser { throw (New-GraphError 'Request_ResourceNotFound' 'GetMgUser_Get') }
+        Mock Test-RmaDeletedDirectoryObject { $true }
 
-        { & $script:Body $script:Job ([pscustomobject]@{ user = 'nobody@contoso.com' }) } | Should -Not -Throw
+        { & $script:Body $script:Job ([pscustomobject]@{ user = $script:Id }) } | Should -Not -Throw
 
         Should -Invoke Remove-MgUser -Times 0 -Exactly
+        Should -Invoke Test-RmaDeletedDirectoryObject -Times 1 -Exactly -ParameterFilter { $Id -eq $script:Id }
         Should -Invoke Write-RmaLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Warning' -and $Message -match 'not found' }
-        $script:Logged[-1].Data.user | Should -Be 'nobody@contoso.com'
+        $script:Logged[-1].Data.user | Should -Be $script:Id
+        $script:Logged[-1].Data.inDeletedItems | Should -BeTrue
         $script:Logged[-1].Data.queueSysId | Should -Be ('f' * 32)
+    }
+
+    It 'asks the loop to run it again, and to complete it then, when the user is found neither live nor in deleted items' {
+        # D19: it may have been created moments ago and not have reached Graph yet.
+        Mock Get-MgUser { throw (New-GraphError 'Request_ResourceNotFound' 'GetMgUser_Get') }
+        Mock Test-RmaDeletedDirectoryObject { $false }
+
+        $caught = $null
+        try { & $script:Body $script:Job ([pscustomobject]@{ user = $script:Id }) } catch { $caught = $_ }
+
+        $caught.FullyQualifiedErrorId | Should -BeLike 'RmaJobRetry,*'
+        $caught.Exception.Message | Should -BeLike '*not found; nothing to delete'
+        $caught.TargetObject.CompleteWhenExhausted | Should -BeTrue
+        Should -Invoke Remove-MgUser -Times 0 -Exactly
+        Should -Invoke Write-RmaLog -Times 0 -Exactly
+    }
+
+    It 'asks the loop to run it again without looking in deleted items for a user principal name' {
+        # Entra rewrites a deleted user's UPN, so only an object id can be looked up there.
+        Mock Get-MgUser { throw (New-GraphError 'Request_ResourceNotFound' 'GetMgUser_Get') }
+        Mock Test-RmaDeletedDirectoryObject { $true }
+
+        { & $script:Body $script:Job ([pscustomobject]@{ user = 'nobody@contoso.com' }) } |
+        Should -Throw "Entra user 'nobody@contoso.com' not found; nothing to delete" -ErrorId 'RmaJobRetry,*'
+        Should -Invoke Test-RmaDeletedDirectoryObject -Times 0 -Exactly
     }
 
     It 'completes, with a warning, when the user is deleted between the lookup and the delete' {

@@ -1,5 +1,5 @@
 #Requires -Version 7.2
-#Requires -Modules @{ ModuleName = 'RMA.Runbooks';                   RequiredVersion = '2.4.0'  }
+#Requires -Modules @{ ModuleName = 'RMA.Runbooks';                   RequiredVersion = '2.5.0'  }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Authentication'; RequiredVersion = '2.39.0' }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Users';          RequiredVersion = '2.39.0' }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Users.Actions';  RequiredVersion = '2.39.0' }
@@ -20,7 +20,9 @@
     updated again, and the revoke still runs: revoking has no state that could already
     be true, so every run is a fresh revoke that moves signInSessionsValidFromDateTime to
     now. A disabled user cannot have obtained a token since the last one, so the repeat
-    changes nothing a user could notice. A user who does not exist fails the job.
+    changes nothing a user could notice. A user who does not exist fails the job, once the
+    retries Invoke-RmaQueueLoop gives a user Graph may not have replicated yet are used
+    (docs/DECISIONS.md D18).
 
     A user synchronised from on-premises Active Directory cannot be disabled in Entra ID:
     the account is mastered on-premises. For such a user the sessions are revoked, which
@@ -81,7 +83,9 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'R
         # The Graph SDK throws a plain System.Exception; only the error id says what Graph
         # answered. Every other failure (throttling, access denied) is rethrown as is.
         if ($_.FullyQualifiedErrorId -notlike 'Request_ResourceNotFound,*') { throw }
-        throw "No Entra ID user '$identity' in the tenant. Correct the ServiceNow record."
+        # Not found is retried: a job queued straight after the create can be run before
+        # Graph knows the user (D18). One that never arrives fails once the retries are used.
+        Request-RmaJobRetry -Reason "No Entra ID user '$identity' in the tenant. Correct the ServiceNow record."
     }
 
     $fields = @{ userPrincipalName = $user.UserPrincipalName; id = $user.Id; queueSysId = $job.sys_id }

@@ -1,5 +1,5 @@
 #Requires -Version 7.2
-#Requires -Modules @{ ModuleName = 'RMA.Runbooks';                                 RequiredVersion = '2.4.0'  }
+#Requires -Modules @{ ModuleName = 'RMA.Runbooks';                                 RequiredVersion = '2.5.0'  }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Authentication';               RequiredVersion = '2.39.0' }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Groups';                       RequiredVersion = '2.39.0' }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Identity.DirectoryManagement'; RequiredVersion = '2.39.0' }
@@ -19,16 +19,21 @@
     completes with a Warning saying which, since the outcome ServiceNow asked for is true
     (docs/DECISIONS.md D15). 1.0 failed the job in all three cases.
 
+    An administrative unit or group found neither live nor in deleted items may have been
+    created moments ago and not have reached Graph yet: the job is retried, and completes
+    with the warning only once the retries Invoke-RmaQueueLoop gives are used (D19).
+
     An administrative unit with dynamic membership fails the job before Graph is asked to
     change it, as 1.0 failed it and as Create-EntraAUUserMember and Remove-EntraAUUserMember
     do: a membership job naming a dynamic unit means the ServiceNow record names the wrong
     unit (#159).
 
-    The administrative unit and the group are looked up first and the membership is
-    removed by the two object ids that came back, so the removal cannot hit a different
-    object. Graph is eventually consistent: a membership added seconds before can still be
-    reported as not found, and that job completes with the warning and leaves the group in
-    the administrative unit.
+    The administrative unit and the group are looked up first and the membership is removed
+    by the two object ids that came back, so the removal cannot hit a different object.
+    Graph is eventually consistent: a membership added seconds before can still be reported
+    as not found, and that job completes with the warning and leaves the group in the
+    administrative unit. Nothing tells that apart from a membership that never existed, so
+    it is not retried (D19).
 .NOTES
     Payload:
       ou      the administrative unit, as its object id
@@ -86,8 +91,14 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'R
             -Property 'id', 'displayName', 'membershipType' -ErrorAction Stop
     } catch {
         if (-not (& $isNotFound $_)) { throw }
-        Write-RmaLog -Level Warning -Message 'Entra administrative unit not found; the membership does not exist' -Data $absent
-        return
+        # Not found is either gone or not replicated yet (D19). One in deleted items was
+        # deleted, and the job completes at once. Otherwise the loop runs the body again,
+        # and completes the job once the retries are used.
+        if (Test-RmaDeletedDirectoryObject -Id $unitId) {
+            Write-RmaLog -Level Warning -Message 'Entra administrative unit not found; the membership does not exist' -Data ($absent + @{ inDeletedItems = $true })
+            return
+        }
+        Request-RmaJobRetry -CompleteWhenExhausted -Reason "Entra administrative unit '$unitId' not found; the membership does not exist"
     }
     # Refused as the two user runbooks refuse it (#159). Graph would answer a group with the
     # same not-found as any other non-member (test tenant), which would hide that the record
@@ -99,8 +110,14 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'R
         $group = Get-MgGroup -GroupId $groupId -Property 'id', 'displayName' -ErrorAction Stop
     } catch {
         if (-not (& $isNotFound $_)) { throw }
-        Write-RmaLog -Level Warning -Message 'Entra group not found; the membership does not exist' -Data $absent
-        return
+        # Not found is either gone or not replicated yet (D19). One in deleted items was
+        # deleted, and the job completes at once. Otherwise the loop runs the body again,
+        # and completes the job once the retries are used.
+        if (Test-RmaDeletedDirectoryObject -Id $groupId) {
+            Write-RmaLog -Level Warning -Message 'Entra group not found; the membership does not exist' -Data ($absent + @{ inDeletedItems = $true })
+            return
+        }
+        Request-RmaJobRetry -CompleteWhenExhausted -Reason "Entra group '$groupId' not found; the membership does not exist"
     }
 
     # The objects changed are the objects the payload named, not ones Graph resolved some

@@ -137,28 +137,74 @@ Describe 'Remove-EntraGroupMember' -Tag 'Unit' {
         $script:Logged[-1].Data.userId | Should -Be $script:UserId
     }
 
-    It 'completes, with a warning, when the group does not exist' {
-        # docs/DECISIONS.md D15: the outcome asked for is already true.
+    It 'completes at once, with a warning, when the group is in deleted items' {
+        # docs/DECISIONS.md D15: the outcome asked for is already true. D19: deleted items
+        # tell gone from not replicated yet.
         Mock Get-MgGroup { throw (New-GraphError 'Request_ResourceNotFound' 'GetMgGroup_Get') }
+        Mock Test-RmaDeletedDirectoryObject { $true }
 
         { & $script:Body $script:Job ([pscustomobject]@{ group = $script:GroupId; user = 'jdoe@contoso.com' }) } | Should -Not -Throw
 
-        Should -Invoke Get-MgUser -Times 0 -Exactly
         Should -Invoke Remove-MgGroupMemberByRef -Times 0 -Exactly
+        Should -Invoke Test-RmaDeletedDirectoryObject -Times 1 -Exactly -ParameterFilter { $Id -eq $script:GroupId }
         Should -Invoke Write-RmaLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Warning' -and $Message -match 'group not found' }
-        $script:Logged[-1].Data.group | Should -Be $script:GroupId
-        $script:Logged[-1].Data.user | Should -Be 'jdoe@contoso.com'
+        $script:Logged[-1].Data.inDeletedItems | Should -BeTrue
         $script:Logged[-1].Data.queueSysId | Should -Be ('f' * 32)
     }
 
-    It 'completes, with a warning, when the user does not exist' {
-        Mock Get-MgUser { throw (New-GraphError 'Request_ResourceNotFound' 'GetMgUser_Get') }
+    It 'asks the loop to run it again, and to complete it then, when the group is found neither live nor in deleted items' {
+        # D19: it may have been created moments ago and not have reached Graph yet.
+        Mock Get-MgGroup { throw (New-GraphError 'Request_ResourceNotFound' 'GetMgGroup_Get') }
+        Mock Test-RmaDeletedDirectoryObject { $false }
 
-        { & $script:Body $script:Job ([pscustomobject]@{ group = $script:GroupId; user = 'nobody@contoso.com' }) } | Should -Not -Throw
+        $caught = $null
+        try { & $script:Body $script:Job ([pscustomobject]@{ group = $script:GroupId; user = 'jdoe@contoso.com' }) } catch { $caught = $_ }
+
+        $caught.FullyQualifiedErrorId | Should -BeLike 'RmaJobRetry,*'
+        $caught.Exception.Message | Should -BeLike '*group*not found; the membership does not exist'
+        $caught.TargetObject.CompleteWhenExhausted | Should -BeTrue
+        Should -Invoke Remove-MgGroupMemberByRef -Times 0 -Exactly
+        Should -Invoke Write-RmaLog -Times 0 -Exactly
+    }
+
+    It 'completes at once, with a warning, when the user is in deleted items' {
+        # docs/DECISIONS.md D15: the outcome asked for is already true. D19: deleted items
+        # tell gone from not replicated yet.
+        Mock Get-MgUser { throw (New-GraphError 'Request_ResourceNotFound' 'GetMgUser_Get') }
+        Mock Test-RmaDeletedDirectoryObject { $true }
+
+        { & $script:Body $script:Job ([pscustomobject]@{ group = $script:GroupId; user = $script:UserId }) } | Should -Not -Throw
 
         Should -Invoke Remove-MgGroupMemberByRef -Times 0 -Exactly
+        Should -Invoke Test-RmaDeletedDirectoryObject -Times 1 -Exactly -ParameterFilter { $Id -eq $script:UserId }
         Should -Invoke Write-RmaLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Warning' -and $Message -match 'user not found' }
-        $script:Logged[-1].Data.user | Should -Be 'nobody@contoso.com'
+        $script:Logged[-1].Data.inDeletedItems | Should -BeTrue
+        $script:Logged[-1].Data.queueSysId | Should -Be ('f' * 32)
+    }
+
+    It 'asks the loop to run it again, and to complete it then, when the user is found neither live nor in deleted items' {
+        # D19: it may have been created moments ago and not have reached Graph yet.
+        Mock Get-MgUser { throw (New-GraphError 'Request_ResourceNotFound' 'GetMgUser_Get') }
+        Mock Test-RmaDeletedDirectoryObject { $false }
+
+        $caught = $null
+        try { & $script:Body $script:Job ([pscustomobject]@{ group = $script:GroupId; user = $script:UserId }) } catch { $caught = $_ }
+
+        $caught.FullyQualifiedErrorId | Should -BeLike 'RmaJobRetry,*'
+        $caught.Exception.Message | Should -BeLike '*user*not found; the membership does not exist'
+        $caught.TargetObject.CompleteWhenExhausted | Should -BeTrue
+        Should -Invoke Remove-MgGroupMemberByRef -Times 0 -Exactly
+        Should -Invoke Write-RmaLog -Times 0 -Exactly
+    }
+
+    It 'asks the loop to run it again without looking in deleted items for a user principal name' {
+        # Entra rewrites a deleted user's UPN, so only an object id can be looked up there.
+        Mock Get-MgUser { throw (New-GraphError 'Request_ResourceNotFound' 'GetMgUser_Get') }
+        Mock Test-RmaDeletedDirectoryObject { $true }
+
+        { & $script:Body $script:Job ([pscustomobject]@{ group = $script:GroupId; user = 'nobody@contoso.com' }) } |
+        Should -Throw "*'nobody@contoso.com' not found; the membership does not exist" -ErrorId 'RmaJobRetry,*'
+        Should -Invoke Test-RmaDeletedDirectoryObject -Times 0 -Exactly
     }
 
     It 'fails when the <Cmdlet> lookup fails for any other reason' -ForEach @(

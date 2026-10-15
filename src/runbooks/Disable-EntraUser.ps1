@@ -1,5 +1,5 @@
 #Requires -Version 7.2
-#Requires -Modules @{ ModuleName = 'RMA.Runbooks';                   RequiredVersion = '2.4.0'  }
+#Requires -Modules @{ ModuleName = 'RMA.Runbooks';                   RequiredVersion = '2.5.0'  }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Authentication'; RequiredVersion = '2.39.0' }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Users';          RequiredVersion = '2.39.0' }
 
@@ -14,7 +14,8 @@
 
     Disabling is idempotent. A user who is already disabled is logged and the job
     completes: the outcome ServiceNow asked for is already true. A user who does not exist
-    fails the job. Disabling does not end sessions the user already has; it stops new
+    fails the job, once the retries Invoke-RmaQueueLoop gives a user Graph may not have
+    replicated yet are used (docs/DECISIONS.md D18). Disabling does not end sessions the user already has; it stops new
     sign-ins.
 
     A user synchronised from on-premises Active Directory cannot be disabled in Entra ID:
@@ -68,7 +69,9 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'D
         # Matched by error id: Microsoft.Graph raises a plain System.Exception, so there is
         # no type to catch. Every other failure (throttling, access denied) is rethrown as is.
         if ($_.FullyQualifiedErrorId -notlike 'Request_ResourceNotFound,*') { throw }
-        throw "No Entra ID user '$identity'. Correct the ServiceNow record."
+        # Not found is retried: a job queued straight after the create can be run before
+        # Graph knows the user (D18). One that never arrives fails once the retries are used.
+        Request-RmaJobRetry -Reason "No Entra ID user '$identity'. Correct the ServiceNow record."
     }
 
     $fields = @{ userPrincipalName = $user.UserPrincipalName; id = $user.Id; queueSysId = $job.sys_id }

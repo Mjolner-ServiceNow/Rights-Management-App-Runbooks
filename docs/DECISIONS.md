@@ -245,6 +245,9 @@ The same holds for removing a membership (`Remove-ADGroupMember`,
 the user is not a member, or the group or the user does not exist, the membership is gone
 and the job completes.
 
+*Amended by D19 for Entra ID:* an object found neither live nor in deleted items is retried
+before the job completes, because it may not have reached Graph yet.
+
 ### D16. Entra ID runbooks refuse objects synchronised from on-premises AD
 
 *2026-10-13. Applied in Disable-EntraUser
@@ -341,6 +344,43 @@ per job at the defaults, and only when the condition actually occurs. In a burst
 follow-ups for users created together, the first jobs wait and the later ones find the
 users ready. D1 still holds: the runbook says that the job is not ready; the module
 decides when to try again.
+
+### D19. Entra ID runbooks retry an object they cannot find, and deleted items say when not to
+
+*2026-10-15
+([#173](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/173)).*
+
+D18 found that Graph can answer *not found* for an object created within the same second.
+Every Entra ID runbook that looks up an object another job may have just created now
+treats *not found* as possibly not there yet:
+
+- **An action on an object that must exist** (`Disable-EntraUser`, `Enable-EntraUser`,
+  `Disable-RevokeSignInTokens`, `Set-EntraUserPassword`,
+  `Set-EntraUserAuthenticationPhoneMethod`, `Create-EntraAUUserMember`) calls
+  `Request-RmaJobRetry`. A record that names an object that does not exist fails once the
+  retries are used, with the same reason as before.
+- **A delete or a membership removal** (`Remove-EntraUser`, `Remove-EntraGroup`,
+  `Remove-EntraAdministrativeUnit`, `Remove-EntraGroupMember`, `Remove-EntraAUUserMember`,
+  `Remove-EntraAUGroupMember`) first asks `Test-RmaDeletedDirectoryObject` whether the
+  object id is in the directory's deleted items. If it is, the object was deleted, and the
+  job completes at once with D15's Warning: this is the repeated delete D15 exists for,
+  which comes minutes after the first. If it is not, the runbook calls
+  `Request-RmaJobRetry -CompleteWhenExhausted`. The job completes with the Warning once the
+  retries are used. Without this, a delete queued straight after the create completed and
+  deleted nothing.
+
+A user principal name cannot be looked up in deleted items, because Entra rewrites a
+deleted user's. A payload that names a user by UPN therefore waits out the retries before a
+delete completes. *Not a member* is left final: nothing tells a membership added seconds
+before from one that never existed, and adding and removing the same membership within
+seconds is rare.
+
+The cost is time spent on records that name nothing: about 105 seconds each at the
+defaults. So that a cause that will not clear, such as a domain record pointing at the
+wrong tenant, does not make every job wait, `Invoke-RmaQueueLoop` turns retrying off for
+the rest of the run once `MaxRetryExhaustedJobs` jobs in a row, 3 by default, have used up
+their retries. After that, a job that asks fails at once, or completes at once if it asked
+for that.
 
 ### F1. The job claim is not atomic on the instance it was tested on
 

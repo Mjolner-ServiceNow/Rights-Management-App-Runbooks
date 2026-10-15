@@ -260,6 +260,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `rma-worker.local.json`, and `rma-worker.example.json` shows the shape.
 
 ### Fixed
+- **Entra ID runbooks no longer take an object Graph has not replicated yet for one that
+  does not exist.** A job queued straight after the create could be told by Graph that a
+  user created within the same second did not exist. `Disable-EntraUser`,
+  `Enable-EntraUser`, `Disable-RevokeSignInTokens`, `Set-EntraUserPassword` and
+  `Create-EntraAUUserMember` now ask for a retry (`Request-RmaJobRetry`) and fail with the
+  same reason only once the retries are used. `Remove-EntraUser`, `Remove-EntraGroup`,
+  `Remove-EntraAdministrativeUnit` and the three membership removals completed such a job
+  with D15's *not found* Warning and deleted nothing. They now complete at once only when
+  the object id is in deleted items, through the new `Test-RmaDeletedDirectoryObject`.
+  Otherwise they retry, and complete with the Warning once the retries are used, through
+  the new `Request-RmaJobRetry -CompleteWhenExhausted`. So that a cause that does not clear
+  does not make every job wait, `Invoke-RmaQueueLoop` turns retrying off for the rest of
+  the run once the new `-MaxRetryExhaustedJobs` jobs in a row, 3 by default, have used up
+  their retries (`docs/DECISIONS.md` D19). Module 2.5.0
+  ([#173](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/173)).
 - **Every log record of a queue run names the command, the runbook's own records
   included.** `Write-RmaLog` fills `runbook` from the file that logged, and in an
   Automation job a runbook runs from a temporary file named by a GUID, so the records a

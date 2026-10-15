@@ -167,6 +167,7 @@ are merged, the README, CHANGELOG and checklist conflicts are always "keep both"
 | A multi-word variable reaches a command as one argument | The Bash tool runs zsh, which does not split `$var`; use PowerShell or arrays |
 | `Access is denied` on delete or move, though the scope is granted | A protected OU below denies Delete Child on its parent; the scope's Delete grant (#131) must be applied, run `Grant-RmaAdDelegation.ps1` again |
 | `Access is denied` on any write | The service account lacks the scope on that OU (#123) |
-| A job's `runbook` log field is a GUID | Automation runs the runbook from a temp file (#124); filter on `Message` |
+| A job's `runbook` log field is a GUID | Automation runs the runbook from a temp file (#124); filter on `command`, which every record of a run carries from 2.2.1 |
 | GraphQL `API rate limit exceeded` from `gh project` | Use REST for issues, pull requests and comments; leave board fields for later |
 | The analyzer flags `$p` as unused | A nested scriptblock reads it; pass it as a parameter |
+| A deleted test administrative unit stays in deleted items, and purging it answers 404 `Request_ResourceNotFound` | Graph cannot permanently delete an administrative unit: Microsoft's *Permanently delete item* page says so, and Entra removes it 30 days after the delete (#155). Delete it and leave it there; it is not live. Create a unit only to test creating or deleting one, and for a membership test reuse one fixture unit and remove the members afterwards |

@@ -339,4 +339,93 @@ Describe 'Invoke-RmaQueueLoop' -Tag 'Unit', 'Concurrency' {
             ($firstTouched | Select-Object -Unique).Count | Should -BeGreaterThan 1
         }
     }
+
+    Context 'a body that asks to be run again (#146)' {
+
+        BeforeEach {
+            $job = New-TestJob -SysId ('e' * 32) -Action 'Set-EntraUserAuthenticationPhoneMethod'
+            Mock -ModuleName RMA.Runbooks Get-RmaPendingJob { if ($script:Served) { @() } else { $script:Served = $true; @($job) } }
+            Mock -ModuleName RMA.Runbooks Request-RmaJobClaim { $true }
+            $script:Served = $false
+            $script:Runs = 0
+            $script:Slept = [System.Collections.Generic.List[int]]::new()
+            Mock -ModuleName RMA.Runbooks Start-Sleep { $script:Slept.Add($Seconds) }
+        }
+
+        It 'runs it again after a delay and completes the job once it succeeds' {
+            $result = Invoke-RmaQueueLoop -Context $script:Context -DomainId $script:DomainId `
+                -Command 'Set-EntraUserAuthenticationPhoneMethod' -Body {
+                $script:Runs++
+                if ($script:Runs -eq 1) { Request-RmaJobRetry -Reason 'Graph does not know the user yet.' }
+            }
+
+            $result.Succeeded | Should -Be 1
+            $script:Runs | Should -Be 2
+            $script:Slept | Should -Be @(15)
+            $script:States[0].State | Should -Be 'Completed'
+        }
+
+        It 'fails the job with the reason once every delay is used' {
+            $result = Invoke-RmaQueueLoop -Context $script:Context -DomainId $script:DomainId `
+                -Command 'Set-EntraUserAuthenticationPhoneMethod' -Body {
+                $script:Runs++
+                Request-RmaJobRetry -Reason 'Graph does not know the user yet.'
+            }
+
+            $result.Failed | Should -Be 1
+            $script:Runs | Should -Be 4
+            $script:Slept | Should -Be @(15, 30, 60)
+            $script:States[0].State | Should -Be 'Failed'
+            $script:States[0].Error | Should -Match '^Graph does not know the user yet\. \(at line \d+\) Retried 3 time\(s\) first\.$'
+        }
+
+        It 'uses the delays it is given, and none when the list is empty' -ForEach @(
+            @{ Delays = @(1, 2); Runs = 3 }
+            @{ Delays = @(); Runs = 1 }
+        ) {
+            $null = Invoke-RmaQueueLoop -Context $script:Context -DomainId $script:DomainId -RetryDelaySeconds $Delays `
+                -Command 'Set-EntraUserAuthenticationPhoneMethod' -Body {
+                $script:Runs++
+                Request-RmaJobRetry -Reason 'not yet'
+            }
+
+            $script:Runs | Should -Be $Runs
+            $script:Slept.Count | Should -Be $Delays.Count
+            $script:States[0].State | Should -Be 'Failed'
+        }
+
+        It 'does not retry past MaxMinutes' {
+            $null = Invoke-RmaQueueLoop -Context $script:Context -DomainId $script:DomainId -MaxMinutes 1 -RetryDelaySeconds 61 `
+                -Command 'Set-EntraUserAuthenticationPhoneMethod' -Body {
+                $script:Runs++
+                Request-RmaJobRetry -Reason 'not yet'
+            }
+
+            $script:Runs | Should -Be 1
+            $script:Slept.Count | Should -Be 0
+        }
+
+        It 'does not retry any other error' {
+            $null = Invoke-RmaQueueLoop -Context $script:Context -DomainId $script:DomainId `
+                -Command 'Set-EntraUserAuthenticationPhoneMethod' -Body {
+                $script:Runs++
+                throw 'not yet, but said the ordinary way'
+            }
+
+            $script:Runs | Should -Be 1
+            $script:Slept.Count | Should -Be 0
+            $script:States[0].Error | Should -Not -Match 'Retried'
+        }
+    }
+}
+
+Describe 'Request-RmaJobRetry' -Tag 'Unit' {
+
+    It 'throws its reason under the error id Invoke-RmaQueueLoop looks for' {
+        $caught = $null
+        try { Request-RmaJobRetry -Reason 'Graph does not know the user yet.' } catch { $caught = $_ }
+
+        $caught.Exception.Message | Should -Be 'Graph does not know the user yet.'
+        $caught.FullyQualifiedErrorId | Should -BeLike 'RmaJobRetry,*'
+    }
 }

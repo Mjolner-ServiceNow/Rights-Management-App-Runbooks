@@ -89,6 +89,11 @@ Rules each of those already follows, and reviewers check:
   permissions (#123).
 - **Entra ID:** `Connect-RmaGraph` before the loop; the loop renews it (#30). Graph modules
   are `#Requires`d at the version `scripts/Initialize-RmaWorker.ps1` pins.
+- **Not ready yet:** a follow-up command can arrive while Graph still replicates an object
+  created moments ago, so one endpoint finds it and another answers `resourceNotFound`.
+  Call `Request-RmaJobRetry -Reason <text>` for that case only, and let the loop run the
+  body again; never sleep or loop in the body (`docs/DECISIONS.md` D18).
+  `Set-EntraUserAuthenticationPhoneMethod.ps1` shows it.
 - The help names the delegation scope an AD runbook needs (`docs/INSTALLATION.md` step 6a).
 
 ## 4. Tests

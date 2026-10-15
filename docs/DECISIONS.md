@@ -300,6 +300,48 @@ If the revoke fails, the job fails with Graph's error, not with the message that
 a revoke.
 
 
+### D18. The module retries a job that is not ready yet; the runbook only says so
+
+*2026-10-15
+([#146](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/146)).*
+
+Graph does not learn of a new user everywhere at once. On the test tenant,
+`Get-MgUser` found a user created seconds earlier while the authentication-methods
+endpoint still answered `resourceNotFound` for tens of seconds. On 2026-10-15 a job run
+within a second of the create was told by `Get-MgUser` itself that the user did not exist.
+A follow-up job that ServiceNow queues straight after `Create-EntraUser`, such as setting
+the user's phone method, could therefore fail on a user that exists.
+
+A runbook body calls `Request-RmaJobRetry -Reason <text>` for such a condition.
+`Invoke-RmaQueueLoop` recognises it, keeps the job claimed, and runs the body again after
+each of `RetryDelaySeconds`, 15, 30 and 60 by default. If the body asks once more after
+the last delay, or a retry would end past `MaxMinutes`, the job fails with the reason and
+`Retried <n> time(s) first.` Any other error fails the job at once, as before.
+
+Two alternatives were turned down:
+
+- **Put the job back to Pending.** Runs are started by ServiceNow when it queues a row, so
+  a requeued row waits for the next request of the same command and domain, which for a
+  follow-up command can be hours away. It would also need a bound, such as the row's age,
+  so a user that never arrives is not requeued for ever.
+- **Leave it to ServiceNow**, by queuing follow-up jobs only after the create completed,
+  with a delay, or by requeuing jobs that failed with the message. That adds work for a
+  team that already holds most of this repository's blockers, and a delay chosen there
+  would be a guess at Graph's lag.
+
+A lookup that finds nothing cannot tell an object that is not there yet from one that
+never will be, so `Set-EntraUserAuthenticationPhoneMethod` retries its user lookup too.
+A record that names a user who does not exist now fails after the retries instead of at
+once, with the same reason. Each Entra ID runbook that acts on an object another job may
+have just created needs the same choice; that is
+[#173](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/173).
+
+The cost is that the rest of the run waits while a body is retried: at most 105 seconds
+per job at the defaults, and only when the condition actually occurs. In a burst of
+follow-ups for users created together, the first jobs wait and the later ones find the
+users ready. D1 still holds: the runbook says that the job is not ready; the module
+decides when to try again.
+
 ### F1. The job claim is not atomic on the instance it was tested on
 
 *2026-09-30, ServiceNow test instance. Unresolved.*

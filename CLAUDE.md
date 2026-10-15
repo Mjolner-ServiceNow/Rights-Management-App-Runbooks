@@ -102,6 +102,10 @@ wraps the body and owns the parts that went wrong in the library this replaces:
 - `try`/`finally` writes a terminal state. Throwing from the body fails the job; returning
   normally completes it. If that write itself fails, the job stays at Work in Progress until
   the watchdog requeues it.
+- A condition that clears on its own, such as Graph not yet knowing a user created moments
+  ago, is not a failure the body retries. The body calls `Request-RmaJobRetry -Reason`,
+  and the loop runs it again after 15, 30 and 60 seconds, holding the claim, before it
+  fails the job with that reason (D18).
 - A background heartbeat renews `claimed_at` while a job runs, so the watchdog leaves long
   jobs alone. Runbook bodies never call `Update-RmaJobHeartbeat`.
 - Graph and Exchange sessions keep the token they were opened with. The loop calls

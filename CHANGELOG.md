@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Request-RmaJobRetry`, for a job that is not ready yet.** A runbook body calls it for
+  a condition that clears on its own, and `Invoke-RmaQueueLoop` runs the body again after
+  each of its new `-RetryDelaySeconds`, 15, 30 and 60 by default, holding the claim. If the
+  body still asks after the last delay, the job fails with the reason and `Retried <n>
+  time(s) first.` Any other error fails the job at once, as before.
+  `Set-EntraUserAuthenticationPhoneMethod` uses it when Graph does not yet know a user
+  created seconds earlier: its authentication methods took tens of seconds on the test
+  tenant, and a job run within a second of the create was told by `Get-MgUser` that the
+  user did not exist. Before, that job failed and had to be queued again by hand. A record
+  naming a user who really does not exist now fails after the retries, with the same
+  reason (`docs/DECISIONS.md` D18). Module 2.4.0
+  ([#146](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/146)).
 - **`Remove-EntraAdministrativeUnit`**, migrated from 1.0, with the same payload field,
   `organizationalunit`, which must be the administrative unit's Entra object id, as 1.0
   already passed it to Graph; a display name or anything that could change the Graph

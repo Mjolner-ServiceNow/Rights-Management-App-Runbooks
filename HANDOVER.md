@@ -34,23 +34,28 @@ Every place that needed help is a gap; record it.
 
 *To be written in the last week before the handover. Until then this is a snapshot.*
 
-- **Done:** the shared module (`RMA.Runbooks` 2.2.0) with the queue loop, claim, heartbeat,
-  watchdog, health check and logging; CI and the release pipeline; the reference runbook
-  `Create-EntraUser`, and its Active Directory counterpart `Unlock-ADUser`.
-- **Released:** 2.2.0 is the latest release, installed on the test Hybrid Worker, the
-  only worker today. 2.1.1 fixed the retry
-  ([#24](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/24)),
-  2.1.2 the log redaction
-  ([#29](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/29)),
-  2.2.0 renews Graph and Exchange sessions during a run
-  ([#30](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/30)).
-  2.1.0 was drafted and never published. Every module change bumps the version, so each
-  merge to `main` that touches the module needs its release published and installed on
-  every worker before the ServiceNow application takes the runbooks from `main`.
-- **Not started:** migrating the remaining 1.0 runbooks, including the live Import-Entra*
-  commands and the four Initial-Import runbooks, whose rebuild is decided in
-  [DECISIONS.md D12](docs/DECISIONS.md#d12-how-the-four-initial-import-runbooks-are-to-be-rebuilt)
+- **Done:** the shared module (`RMA.Runbooks` 2.5.0) with the queue loop, claim, heartbeat,
+  retry of a job that is not ready yet, watchdog, health check and logging; CI and the
+  release pipeline; and 22 command runbooks on it, among them the references
+  `Create-EntraUser` for Entra ID and `Unlock-ADUser` for Active Directory.
+- **Released:** 2.5.0 is the latest release (2026-10-15), installed on the test Hybrid
+  Worker, the only worker today. Since 2.2.0 it adds the `command` log field
+  ([#124](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/124)),
+  the `Retry-After` cap
+  ([#117](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/117))
+  and the retry of objects Graph has not replicated yet (D18, D19,
+  [#146](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/146),
+  [#173](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/173)).
+  2.2.1 to 2.4.0 were drafted and deleted unpublished, because 2.5.0 holds them; 2.1.0 was
+  never published either. Every module change bumps the version, so each merge to `main`
+  that touches the module needs its release published and installed on every worker
+  before the ServiceNow application takes the runbooks from `main`.
+- **In progress:** migrating the 1.0 runbooks
   ([#36](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/36)).
+  41 are left, and all but one wait on the ServiceNow team (#106, #108, #109), among them
+  the live Import-Entra* commands and the four Initial-Import runbooks, whose rebuild is
+  decided in
+  [DECISIONS.md D12](docs/DECISIONS.md#d12-how-the-four-initial-import-runbooks-are-to-be-rebuilt).
 - **Never run end to end:** a job created by the ServiceNow application, claimed and
   completed by a runbook on a worker. The queue columns `worker_id` and `claimed_at` exist
   on the test instance since 2026-09-30.

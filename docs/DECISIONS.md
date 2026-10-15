@@ -137,8 +137,7 @@ Password Policy. To supply D7's parameters:
 | Entra ID Setup | Certificate Thumbprint, Client secret Credentials | **remove** | none |
 
 `Instance` needs no field: ServiceNow knows its own name. Exchange's `Organization`
-(`*.onmicrosoft.com`), which `Connect-RmaExchange` requires, has neither a field nor a
-parameter yet, because no Exchange runbook has been migrated.
+(`*.onmicrosoft.com`) needs none either: `Connect-RmaExchange` reads it from Graph (D20).
 
 ### D10. The watchdog is started by ServiceNow, not by an Automation schedule
 
@@ -381,6 +380,28 @@ wrong tenant, does not make every job wait, `Invoke-RmaQueueLoop` turns retrying
 the rest of the run once `MaxRetryExhaustedJobs` jobs in a row, 3 by default, have used up
 their retries. After that, a job that asks fails at once, or completes at once if it asked
 for that.
+
+### D20. Exchange Online's organization comes from Graph, and a mailbox is hidden through Exchange
+
+*2026-10-15
+([#102](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/102)).*
+
+`Connect-RmaExchange` needs the tenant's `*.onmicrosoft.com` name as `-Organization`, and
+the domain record was to get a field for it (#108). Instead, when `-Organization` is left
+out, `Connect-RmaExchange` reads the tenant's initial domain from Graph (`GET /domains`,
+`isInitial`), with the `Domain.Read.All` the app already has. Every tenant has exactly one
+initial domain, and it cannot be renamed or removed, so the value cannot drift from the
+tenant the app signs in to. 1.0 read the default domain from Graph in the same way. A
+runbook that uses Exchange therefore connects Graph first. The ServiceNow application has
+one value fewer to supply, and the Exchange runbooks no longer wait on #108 for it.
+
+`Update-EntraUserHideMailbox` is the first Exchange runbook. In 1.0 it set the user's
+`showInAddressList` to **true** through Graph. That shows the user rather than hiding them,
+and Microsoft documents the property as not to be used from Graph and as out of sync with
+Exchange, so the 1.0 runbook hid nothing. 2.0 hides the mailbox with `Set-Mailbox
+-HiddenFromAddressListsEnabled $true`, as the command's name says. A user synchronised from
+on-premises AD fails the job (D16): for such a user the setting is mastered on-premises, in
+`msExchHideFromAddressLists`.
 
 ### F1. The job claim is not atomic on the instance it was tested on
 

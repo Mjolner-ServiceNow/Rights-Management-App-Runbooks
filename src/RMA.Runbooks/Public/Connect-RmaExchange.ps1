@@ -12,9 +12,16 @@ function Connect-RmaExchange {
 
         Like Connect-RmaGraph, the session keeps its token and expires with it, so the
         connection is registered for Update-RmaConnection to renew (#30).
+    .PARAMETER Organization
+        The tenant's *.onmicrosoft.com domain. Leave it out to have it read from Microsoft
+        Graph, which needs Connect-RmaGraph first and Domain.Read.All; that is how the
+        runbooks connect, so the ServiceNow domain record needs no field for it
+        (docs/DECISIONS.md D20). The domain found is kept for renewals.
     .PARAMETER Force
         Mint a new token instead of reusing the cached one, and close the existing session
         first. Update-RmaConnection uses it.
+    .EXAMPLE
+        Connect-RmaExchange -Context $context -TenantId $TenantId -ApplicationId $ApplicationId
     .EXAMPLE
         Connect-RmaExchange -Context $context -TenantId $TenantId -ApplicationId $ApplicationId -Organization 'contoso.onmicrosoft.com'
     #>
@@ -24,13 +31,15 @@ function Connect-RmaExchange {
         [Parameter(Mandatory)] [PSTypeName('Rma.Context')] $Context,
         [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F-]{36}$')] [string] $TenantId,
         [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F-]{36}$')] [string] $ApplicationId,
-        [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9-]+\.onmicrosoft\.com$')] [string] $Organization,
+        [ValidatePattern('^[A-Za-z0-9-]+\.onmicrosoft\.com$')] [string] $Organization,
         [switch] $Force
     )
 
     if (-not (Get-Command Connect-ExchangeOnline -ErrorAction SilentlyContinue)) {
         throw 'ExchangeOnlineManagement is not available. Declare it with #Requires in the runbook.'
     }
+
+    if (-not $Organization) { $Organization = Get-RmaInitialDomain }
 
     $token = Get-RmaAccessToken -Federated -Resource 'https://outlook.office365.com/.default' `
         -ManagedIdentityClientId $Context.ManagedIdentityClientId `

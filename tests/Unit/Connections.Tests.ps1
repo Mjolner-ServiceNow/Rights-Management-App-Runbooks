@@ -32,6 +32,11 @@ BeforeAll {
             Justification = 'Stand-in for a cmdlet this runner does not have installed. The parameters exist so the mock can bind them.')]
         param($AccessToken, $Organization, [switch] $ShowBanner)
     }
+    function global:Invoke-MgGraphRequest {
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '',
+            Justification = 'Stand-in for a cmdlet this runner does not have installed. The parameters exist so the mock can bind them.')]
+        param($Method, $Uri)
+    }
     function global:Disconnect-ExchangeOnline {
         [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '',
             Justification = 'Stand-in for a cmdlet this runner does not have installed. The parameters exist so the mock can bind them.')]
@@ -41,7 +46,8 @@ BeforeAll {
 }
 
 AfterAll {
-    Remove-Item -Path Function:\Connect-MgGraph, Function:\Connect-ExchangeOnline, Function:\Disconnect-ExchangeOnline -ErrorAction SilentlyContinue
+    Remove-Item -Path Function:\Connect-MgGraph, Function:\Connect-ExchangeOnline, Function:\Disconnect-ExchangeOnline,
+    Function:\Invoke-MgGraphRequest -ErrorAction SilentlyContinue
 }
 
 Describe 'Get-RmaTokenExpiry' -Tag 'Unit', 'Reliability' {
@@ -208,5 +214,55 @@ Describe 'Invoke-RmaQueueLoop renews connections' -Tag 'Unit', 'Reliability' {
         $result.Failed | Should -Be 2
         $script:Order.Count | Should -Be 0
         $script:States[0].Error | Should -Match 'token exchange failed'
+    }
+}
+
+Describe 'Connect-RmaExchange without -Organization (#102)' -Tag 'Unit' {
+
+    BeforeEach {
+        InModuleScope RMA.Runbooks { $script:RmaSessions.Clear() }
+        Mock -ModuleName RMA.Runbooks Write-RmaLog {}
+        Mock -ModuleName RMA.Runbooks Connect-ExchangeOnline {}
+        Mock -ModuleName RMA.Runbooks Get-RmaAccessToken { New-TestJwt -ExpiresInMinutes 70 }
+    }
+
+    It 'connects to the tenant''s initial domain, read from Graph, and keeps it for renewals' {
+        # docs/DECISIONS.md D20: the domain record needs no field for it.
+        Mock -ModuleName RMA.Runbooks Invoke-MgGraphRequest {
+            @{ value = @(
+                    @{ id = 'contoso.com'; isInitial = $false }
+                    @{ id = 'contoso.onmicrosoft.com'; isInitial = $true }
+                ) 
+            }
+        }
+
+        Connect-RmaExchange -Context $script:Context -TenantId $script:TenantId -ApplicationId $script:AppId
+
+        Should -Invoke -ModuleName RMA.Runbooks Invoke-MgGraphRequest -Times 1 -Exactly -ParameterFilter {
+            $Method -eq 'GET' -and $Uri -like 'v1.0/domains*'
+        }
+        Should -Invoke -ModuleName RMA.Runbooks Connect-ExchangeOnline -Times 1 -Exactly -ParameterFilter {
+            $Organization -eq 'contoso.onmicrosoft.com'
+        }
+        InModuleScope RMA.Runbooks { $script:RmaSessions['Exchange'].Parameters.Organization } | Should -Be 'contoso.onmicrosoft.com'
+    }
+
+    It 'asks Graph nothing when -Organization is given' {
+        Mock -ModuleName RMA.Runbooks Invoke-MgGraphRequest { throw 'not expected' }
+
+        Connect-RmaExchange -Context $script:Context -TenantId $script:TenantId -ApplicationId $script:AppId -Organization 'contoso.onmicrosoft.com'
+
+        Should -Invoke -ModuleName RMA.Runbooks Invoke-MgGraphRequest -Times 0 -Exactly
+    }
+
+    It 'refuses to connect when Graph does not return exactly one initial domain: <Case>' -ForEach @(
+        @{ Case = 'none'; Domains = @(@{ id = 'contoso.com'; isInitial = $false }) }
+        @{ Case = 'not onmicrosoft.com'; Domains = @(@{ id = 'contoso.com'; isInitial = $true }) }
+    ) {
+        Mock -ModuleName RMA.Runbooks Invoke-MgGraphRequest { @{ value = $Domains } }
+
+        { Connect-RmaExchange -Context $script:Context -TenantId $script:TenantId -ApplicationId $script:AppId } |
+        Should -Throw '*initial domain*'
+        Should -Invoke -ModuleName RMA.Runbooks Connect-ExchangeOnline -Times 0 -Exactly
     }
 }

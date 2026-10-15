@@ -246,7 +246,7 @@ is what gets created, so change both together.
 |---|---|---|
 | Microsoft Graph | `AdministrativeUnit.ReadWrite.All` | Reading and writing administrative units and their members |
 | Microsoft Graph | `Directory.Read.All` | Reading directory data |
-| Microsoft Graph | `Domain.Read.All` | Reading the tenant's domains |
+| Microsoft Graph | `Domain.Read.All` | Reading the tenant's domains, including the initial domain Exchange Online connects to (D20) |
 | Microsoft Graph | `Group.ReadWrite.All` | Reading and writing all groups and their membership |
 | Microsoft Graph | `GroupMember.ReadWrite.All` | Reading and writing group memberships |
 | Microsoft Graph | `Organization.Read.All` | Reading organization information |
@@ -353,6 +353,6 @@ The application also needs these to reach Azure at all. They are not runbook par
 | `hwg-rma-prod` | The `RunOn` of every job it starts |
 | ServiceNow's app registration: client ID, tenant ID, and its secret or certificate | What it signs in as |
 
-`Connect-RmaExchange` takes the tenant's `*.onmicrosoft.com` name as a mandatory
-`-Organization`. No runbook in this repository connects to Exchange Online yet, so it is
-not in the parameter list, and which parameter will carry it is not decided.
+Exchange Online's `-Organization`, the tenant's `*.onmicrosoft.com` name, is not in the
+list: `Connect-RmaExchange` reads it from the tenant's initial domain in Graph
+([DECISIONS.md D20](DECISIONS.md)).

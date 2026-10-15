@@ -70,7 +70,7 @@ is an issue owned by the ServiceNow team, with the `servicenow` label, as a sub-
 | Issue | What | Why it matters |
 |---|---|---|
 | [#106](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/106) | The `/insertMultiple` contract and the resource names | Every runbook that writes to ServiceNow, including the Initial-Import runbooks ([D12](docs/DECISIONS.md#d12-how-the-four-initial-import-runbooks-are-to-be-rebuilt)) |
-| [#108](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/108) | Domain record fields and job parameters, including Exchange `Organization` | ServiceNow cannot supply the runbook parameters ([D9](docs/DECISIONS.md#d9-changes-to-the-servicenow-domain-record)); no Exchange runbook can connect |
+| [#108](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/108) | Domain record fields and job parameters | ServiceNow cannot supply the runbook parameters ([D9](docs/DECISIONS.md#d9-changes-to-the-servicenow-domain-record)); no Exchange runbook can connect |
 | [#27](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/27) | A server-side compare-and-set for the job claim (Scripted REST) | Without it two executions can run the same job ([F1](docs/DECISIONS.md#f1-the-job-claim-is-not-atomic-on-the-instance-it-was-tested-on)) |
 | [#23](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/23) | Fix the health endpoint's resource script | Every `Test-RmaHealth` job fails |
 | [#107](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/107) | Run `/cleanup` on their side, skipped after a failed import | Until then the runbook has to do it |

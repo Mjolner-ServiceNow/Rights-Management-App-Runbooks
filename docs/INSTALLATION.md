@@ -116,9 +116,8 @@ Automation Account with `RunOn` set to that Hybrid Worker Group. Hand them all t
 configures the application, which is the ServiceNow team. The full list of
 runbook parameters is under *Runbook parameters* in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
-`Connect-RmaExchange` also takes the tenant's `*.onmicrosoft.com` name as a mandatory
-`-Organization`. No runbook in this repository connects to Exchange Online yet, so nothing
-passes it today, and which parameter will carry it is not decided. Record the name anyway.
+Exchange Online's organization, the tenant's `*.onmicrosoft.com` name, needs no value:
+`Connect-RmaExchange` reads it from the tenant in Graph ([DECISIONS.md D20](DECISIONS.md)).
 
 > **The two managed identity GUIDs are different and are not interchangeable.** The client
 > ID is what a runbook uses to request a token. The principal ID is what the federated
@@ -416,8 +415,10 @@ Two manual actions, deliberately left to a person.
    → select the application's service principal.
 
    Recipient Administrator covers every Exchange operation the Exchange runbooks perform.
-   None of them has been migrated into this repository yet, so nothing exercises this role
-   today; it is assigned now so that the installation does not change when they arrive.
+   `Update-EntraUserHideMailbox` is the first of them to be migrated. Without a role,
+   Exchange Online refuses the connection itself: `Connect-ExchangeOnline` fails with *The
+   role assigned to application … isn't supported in this scenario* (test tenant,
+   2026-10-15), and every job of the run is left Pending.
    Exchange Administrator and Global Administrator both work and both grant far more than is
    needed.
 
@@ -590,8 +591,8 @@ Two limits on what a pass means:
 
 - **Exchange Online is not checked.** The Graph check proves the federated token exchange
   and nothing about Exchange, so admin consent for `Exchange.ManageAsApp` and the Exchange
-  Recipient Administrator role from step 5 are unverified until an Exchange runbook runs —
-  and none has been migrated yet. Confirm both by eye in Entra.
+  Recipient Administrator role from step 5 are unverified until an Exchange runbook, such
+  as `Update-EntraUserHideMailbox`, runs. Confirm both by eye in Entra.
 - **The report to ServiceNow currently fails.** The health endpoint returns HTTP 500 from
   its own resource script
   ([#23](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/23)),

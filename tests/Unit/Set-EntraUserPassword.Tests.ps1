@@ -113,11 +113,11 @@ Describe 'Set-EntraUserPassword' -Tag 'Unit', 'Security' {
         $script:Sent.forceChangePasswordNextSignIn | Should -BeExactly $false
     }
 
-    It 'fails with an actionable message when the user does not exist' {
+    It 'asks the loop to run it again, with an actionable reason, when the user is not found' {
         Mock Get-MgUser { throw (New-GraphError -Code 'Request_ResourceNotFound' -Message "Resource 'nobody@contoso.com' does not exist.") }
 
         { & $script:Body $script:Job ([pscustomobject]@{ user = 'nobody@contoso.com'; password = $script:Secret }) } |
-        Should -Throw "No Entra ID user 'nobody@contoso.com'. Correct the ServiceNow record."
+        Should -Throw "No Entra ID user 'nobody@contoso.com'. Correct the ServiceNow record." -ErrorId 'RmaJobRetry,*'
         Should -Invoke Update-MgUser -Times 0 -Exactly
     }
 

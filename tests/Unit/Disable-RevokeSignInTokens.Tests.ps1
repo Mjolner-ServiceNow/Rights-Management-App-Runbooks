@@ -157,11 +157,11 @@ Describe 'Disable-RevokeSignInTokens' -Tag 'Unit' {
         }
     }
 
-    It 'fails with an actionable message when the user does not exist' {
+    It 'asks the loop to run it again, with an actionable reason, when the user is not found' {
         Mock Get-MgUser { throw $script:NotFound }
 
         { & $script:Body $script:Job ([pscustomobject]@{ user = 'nobody@contoso.com' }) } |
-        Should -Throw "No Entra ID user 'nobody@contoso.com' in the tenant*"
+        Should -Throw "No Entra ID user 'nobody@contoso.com' in the tenant*" -ErrorId 'RmaJobRetry,*'
         Should -Invoke Update-MgUser -Times 0 -Exactly
         Should -Invoke Revoke-MgUserSignInSession -Times 0 -Exactly
     }

@@ -1,5 +1,5 @@
 #Requires -Version 7.2
-#Requires -Modules @{ ModuleName = 'RMA.Runbooks';                   RequiredVersion = '2.4.0'  }
+#Requires -Modules @{ ModuleName = 'RMA.Runbooks';                   RequiredVersion = '2.5.0'  }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Authentication'; RequiredVersion = '2.39.0' }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Users';          RequiredVersion = '2.39.0' }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Groups';         RequiredVersion = '2.39.0' }
@@ -23,11 +23,18 @@
     a Warning saying which, since the outcome ServiceNow asked for is true
     (docs/DECISIONS.md D15). 1.0 failed the job in all three cases.
 
+    A group or user found neither live nor in deleted items may have been created moments
+    ago and not have reached Graph yet: the job is retried, and completes with the warning
+    only once the retries Invoke-RmaQueueLoop gives are used (D19). A user named by user
+    principal name cannot be looked up in deleted items, so that case always waits out the
+    retries.
+
     The group and the user are looked up first and the membership is removed by the two
     object ids that came back, so the removal cannot hit a different object that took the
     name in between. Graph is eventually consistent: a membership added seconds before can
-    still be reported as not found, and that job completes with the warning and leaves
-    the user in the group.
+    still be reported as not found, and that job completes with the warning and leaves the
+    user in the group. Nothing tells that apart from a membership that never existed, so it
+    is not retried (D19).
 .NOTES
     Payload:
       group   the group, as its object id
@@ -87,15 +94,29 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'R
         $group = Get-MgGroup -GroupId $groupId -Property 'id', 'displayName' -ErrorAction Stop
     } catch {
         if (-not (& $isNotFound $_)) { throw }
-        Write-RmaLog -Level Warning -Message 'Entra group not found; the membership does not exist' -Data $absent
-        return
+        # Not found is either gone or not replicated yet (D19). One in deleted items was
+        # deleted, and the job completes at once. Otherwise the loop runs the body again,
+        # and completes the job once the retries are used.
+        if (Test-RmaDeletedDirectoryObject -Id $groupId) {
+            Write-RmaLog -Level Warning -Message 'Entra group not found; the membership does not exist' -Data ($absent + @{ inDeletedItems = $true })
+            return
+        }
+        Request-RmaJobRetry -CompleteWhenExhausted -Reason "Entra group '$groupId' not found; the membership does not exist"
     }
     try {
         $user = Get-MgUser -UserId $userIdentity -Property 'id', 'userPrincipalName' -ErrorAction Stop
     } catch {
         if (-not (& $isNotFound $_)) { throw }
-        Write-RmaLog -Level Warning -Message 'Entra user not found; the membership does not exist' -Data $absent
-        return
+        # Not found is either gone or not replicated yet (D19). One in deleted items was
+        # deleted, and the job completes at once. Otherwise the loop runs the body again,
+        # and completes the job once the retries are used.
+        # Only an object id can be looked up there: Entra rewrites a deleted user's UPN.
+        if ($userIdentity -match '^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\z' -and
+            (Test-RmaDeletedDirectoryObject -Id $userIdentity)) {
+            Write-RmaLog -Level Warning -Message 'Entra user not found; the membership does not exist' -Data ($absent + @{ inDeletedItems = $true })
+            return
+        }
+        Request-RmaJobRetry -CompleteWhenExhausted -Reason "Entra user '$userIdentity' not found; the membership does not exist"
     }
 
     # The objects changed are the objects the payload named, not ones Graph resolved some

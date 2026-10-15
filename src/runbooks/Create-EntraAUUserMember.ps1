@@ -1,5 +1,5 @@
 #Requires -Version 7.2
-#Requires -Modules @{ ModuleName = 'RMA.Runbooks';                                 RequiredVersion = '2.4.0'  }
+#Requires -Modules @{ ModuleName = 'RMA.Runbooks';                                 RequiredVersion = '2.5.0'  }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Authentication';               RequiredVersion = '2.39.0' }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Users';                        RequiredVersion = '2.39.0' }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Identity.DirectoryManagement'; RequiredVersion = '2.39.0' }
@@ -20,7 +20,9 @@
     Adding is idempotent: a user who is already a member is logged and the job completes,
     since the outcome ServiceNow asked for is already true. An administrative unit or a
     user that does not exist fails the job, as it did in 1.0: there is nothing to add to,
-    or nothing to add (docs/DECISIONS.md D15 covers deletes only). So does an
+    or nothing to add (docs/DECISIONS.md D15 covers deletes only). It fails once the
+    retries Invoke-RmaQueueLoop gives an object Graph may not have replicated yet are used
+    (D18). So does an
     administrative unit with dynamic membership, also as in 1.0: its members come from its
     rule, and Graph would refuse the addition with an access-denied that names no reason.
 
@@ -86,7 +88,10 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'C
             -Property 'id', 'displayName', 'membershipType' -ErrorAction Stop
     } catch {
         if (-not (& $isNotFound $_)) { throw }
-        throw "No Entra ID administrative unit '$unitId'. Correct the ServiceNow record."
+        # Not found is retried: a job queued straight after the unit or the user was created
+        # can be run before Graph knows it (D18). One that never arrives fails once the
+        # retries are used.
+        Request-RmaJobRetry -Reason "No Entra ID administrative unit '$unitId'. Correct the ServiceNow record."
     }
 
     # Graph answers an addition to a dynamic unit with Authorization_RequestDenied and
@@ -100,7 +105,7 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'C
         $user = Get-MgUser -UserId $userIdentity -Property 'id', 'userPrincipalName' -ErrorAction Stop
     } catch {
         if (-not (& $isNotFound $_)) { throw }
-        throw "No Entra ID user '$userIdentity'. Correct the ServiceNow record."
+        Request-RmaJobRetry -Reason "No Entra ID user '$userIdentity'. Correct the ServiceNow record."
     }
 
     # The objects changed are the objects the payload named, not ones Graph resolved some

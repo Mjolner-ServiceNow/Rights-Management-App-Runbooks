@@ -88,16 +88,35 @@ Describe 'Remove-EntraGroup' -Tag 'Unit' {
         Should -Invoke Remove-MgGroup -Times 1 -Exactly
     }
 
-    It 'completes, with a warning, when the group does not exist' {
-        # docs/DECISIONS.md D15: the outcome asked for is already true.
+    It 'completes at once, with a warning, when the group is in deleted items' {
+        # docs/DECISIONS.md D15: the outcome asked for is already true. D19: deleted items
+        # tell gone from not replicated yet.
         Mock Get-MgGroup { throw (New-GraphError 'Request_ResourceNotFound' 'GetMgGroup_Get') }
+        Mock Test-RmaDeletedDirectoryObject { $true }
 
         { & $script:Body $script:Job ([pscustomobject]@{ group = $script:Id }) } | Should -Not -Throw
 
         Should -Invoke Remove-MgGroup -Times 0 -Exactly
+        Should -Invoke Test-RmaDeletedDirectoryObject -Times 1 -Exactly -ParameterFilter { $Id -eq $script:Id }
         Should -Invoke Write-RmaLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Warning' -and $Message -match 'not found' }
         $script:Logged[-1].Data.group | Should -Be $script:Id
+        $script:Logged[-1].Data.inDeletedItems | Should -BeTrue
         $script:Logged[-1].Data.queueSysId | Should -Be ('f' * 32)
+    }
+
+    It 'asks the loop to run it again, and to complete it then, when the group is found neither live nor in deleted items' {
+        # D19: it may have been created moments ago and not have reached Graph yet.
+        Mock Get-MgGroup { throw (New-GraphError 'Request_ResourceNotFound' 'GetMgGroup_Get') }
+        Mock Test-RmaDeletedDirectoryObject { $false }
+
+        $caught = $null
+        try { & $script:Body $script:Job ([pscustomobject]@{ group = $script:Id }) } catch { $caught = $_ }
+
+        $caught.FullyQualifiedErrorId | Should -BeLike 'RmaJobRetry,*'
+        $caught.Exception.Message | Should -BeLike '*not found; nothing to delete'
+        $caught.TargetObject.CompleteWhenExhausted | Should -BeTrue
+        Should -Invoke Remove-MgGroup -Times 0 -Exactly
+        Should -Invoke Write-RmaLog -Times 0 -Exactly
     }
 
     It 'completes, with a warning, when the group is deleted between the lookup and the delete' {

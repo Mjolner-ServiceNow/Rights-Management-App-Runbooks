@@ -405,6 +405,22 @@ Describe 'Invoke-RmaQueueLoop' -Tag 'Unit', 'Concurrency' {
             $script:Slept.Count | Should -Be 0
         }
 
+        It 'completes the job with a warning once every delay is used, when the body asks for that' {
+            $result = Invoke-RmaQueueLoop -Context $script:Context -DomainId $script:DomainId `
+                -Command 'Set-EntraUserAuthenticationPhoneMethod' -Body {
+                $script:Runs++
+                Request-RmaJobRetry -CompleteWhenExhausted -Reason 'Entra user not found; nothing to delete'
+            }
+
+            $result.Succeeded | Should -Be 1
+            $script:Runs | Should -Be 4
+            $script:States[0].State | Should -Be 'Completed'
+            Should -Invoke -ModuleName RMA.Runbooks Write-RmaLog -Times 1 -Exactly -ParameterFilter {
+                $Level -eq 'Warning' -and $Message -like 'Job still not ready after its retries*' -and
+                $Data.reason -eq 'Entra user not found; nothing to delete' -and $Data.retries -eq 3
+            }
+        }
+
         It 'does not retry any other error' {
             $null = Invoke-RmaQueueLoop -Context $script:Context -DomainId $script:DomainId `
                 -Command 'Set-EntraUserAuthenticationPhoneMethod' -Body {
@@ -417,6 +433,51 @@ Describe 'Invoke-RmaQueueLoop' -Tag 'Unit', 'Concurrency' {
             $script:States[0].Error | Should -Not -Match 'Retried'
         }
     }
+
+    Context 'jobs in a row that use up their retries (#173)' {
+
+        BeforeEach {
+            $script:Jobs = @(foreach ($c in '1', '2', '3', '4') { New-TestJob -SysId ($c * 32) -Action 'Remove-EntraUser' })
+            Mock -ModuleName RMA.Runbooks Get-RmaPendingJob { if ($script:Served) { @() } else { $script:Served = $true; $script:Jobs } }
+            Mock -ModuleName RMA.Runbooks Request-RmaJobClaim { $true }
+            Mock -ModuleName RMA.Runbooks Get-Random { 0 }
+            $script:Served = $false
+            $script:Slept = [System.Collections.Generic.List[int]]::new()
+            Mock -ModuleName RMA.Runbooks Start-Sleep { $script:Slept.Add($Seconds) }
+        }
+
+        It 'turns retrying off for the rest of the run, so a cause that will not clear does not hold every job' {
+            $result = Invoke-RmaQueueLoop -Context $script:Context -DomainId $script:DomainId -RetryDelaySeconds 5 -MaxRetryExhaustedJobs 2 `
+                -Command 'Remove-EntraUser' -Body { Request-RmaJobRetry -Reason 'No Entra ID user. Correct the ServiceNow record.' }
+
+            $result.Failed | Should -Be 4
+            $script:Slept | Should -Be @(5, 5)
+            $script:States[1].Error | Should -Match 'Retried 1 time\(s\) first\.$'
+            $script:States[2].Error | Should -Match 'Not retried: retrying is off for the rest of this run\.$'
+            $script:States[3].Error | Should -Match 'Not retried'
+            Should -Invoke -ModuleName RMA.Runbooks Write-RmaLog -Times 1 -Exactly -ParameterFilter { $Message -like 'Retrying is off*' }
+        }
+
+        It 'completes at once, without the delays, a job that asks to be completed once retrying is off' {
+            $result = Invoke-RmaQueueLoop -Context $script:Context -DomainId $script:DomainId -RetryDelaySeconds 5 -MaxRetryExhaustedJobs 1 `
+                -Command 'Remove-EntraUser' -Body { Request-RmaJobRetry -CompleteWhenExhausted -Reason 'Entra user not found; nothing to delete' }
+
+            $result.Succeeded | Should -Be 4
+            $script:Slept | Should -Be @(5)
+        }
+
+        It 'counts only jobs in a row: one that is ready resets the count' {
+            $script:Ready = @{ ('2' * 32) = $true; ('4' * 32) = $true }
+            $null = Invoke-RmaQueueLoop -Context $script:Context -DomainId $script:DomainId -RetryDelaySeconds 5 -MaxRetryExhaustedJobs 2 `
+                -Command 'Remove-EntraUser' -Body {
+                param($job)
+                if (-not $script:Ready[$job.sys_id]) { Request-RmaJobRetry -Reason 'not yet' }
+            }
+
+            $script:Slept | Should -Be @(5, 5)
+            ($script:States | Where-Object State -EQ 'Failed').Error | Should -Not -Match 'Not retried'
+        }
+    }
 }
 
 Describe 'Request-RmaJobRetry' -Tag 'Unit' {
@@ -427,5 +488,50 @@ Describe 'Request-RmaJobRetry' -Tag 'Unit' {
 
         $caught.Exception.Message | Should -Be 'Graph does not know the user yet.'
         $caught.FullyQualifiedErrorId | Should -BeLike 'RmaJobRetry,*'
+    }
+}
+
+Describe 'Test-RmaDeletedDirectoryObject' -Tag 'Unit' {
+
+    BeforeAll {
+        # Microsoft.Graph.Authentication is not installed on the CI runner.
+        function global:Invoke-MgGraphRequest {
+            [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '', Justification = 'Stand-in for a cmdlet this runner does not have installed. The parameters exist so the mock can bind them.')]
+            [CmdletBinding()]
+            param($Method, $Uri)
+        }
+        function script:New-GraphHttpFailure([System.Net.HttpStatusCode] $Status) {
+            [Microsoft.PowerShell.Commands.HttpResponseException]::new("Response status code does not indicate success: $Status",
+                [System.Net.Http.HttpResponseMessage]::new($Status))
+        }
+        $script:Id = '11111111-2222-3333-4444-555555555555'
+    }
+
+    AfterAll { Remove-Item -Path Function:\Invoke-MgGraphRequest -ErrorAction SilentlyContinue }
+
+    It 'is true for an id in deleted items, and asks Graph for that id only' {
+        Mock -ModuleName RMA.Runbooks Invoke-MgGraphRequest { @{ id = $script:Id } }
+
+        Test-RmaDeletedDirectoryObject -Id $script:Id | Should -BeTrue
+        Should -Invoke -ModuleName RMA.Runbooks Invoke-MgGraphRequest -Times 1 -Exactly -ParameterFilter {
+            $Method -eq 'GET' -and $Uri -eq "v1.0/directory/deletedItems/$($script:Id)"
+        }
+    }
+
+    It 'is false when Graph answers not found' {
+        Mock -ModuleName RMA.Runbooks Invoke-MgGraphRequest { throw (New-GraphHttpFailure -Status NotFound) }
+
+        Test-RmaDeletedDirectoryObject -Id $script:Id | Should -BeFalse
+    }
+
+    It 'throws any other failure as it is' {
+        Mock -ModuleName RMA.Runbooks Invoke-MgGraphRequest { throw (New-GraphHttpFailure -Status Forbidden) }
+
+        { Test-RmaDeletedDirectoryObject -Id $script:Id } | Should -Throw '*Forbidden*'
+    }
+
+    It 'refuses anything but an object id' {
+        { Test-RmaDeletedDirectoryObject -Id 'jdoe@contoso.com' } | Should -Throw
+        { Test-RmaDeletedDirectoryObject -Id "$($script:Id)/owners" } | Should -Throw
     }
 }

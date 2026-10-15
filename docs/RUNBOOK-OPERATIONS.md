@@ -80,6 +80,19 @@ thread, so the watchdog leaves long jobs alone. The loop reports on it in the jo
   a '…' runbook`**. The job is set to Failed with that message. The first points at the
   ServiceNow business rule that populates `input`, the second at the application's mapping
   from command to runbook.
+- **`Job not ready yet; running it again shortly`** (Warning). The runbook asked for its
+  job to be run again, usually because Graph does not know an object created moments ago.
+  `reason`, `retry` and `delaySeconds` say why and when. Expected now and then; nothing to
+  do (`docs/DECISIONS.md` D18).
+- **`Job still not ready after its retries; completing it, as the runbook asks`**
+  (Warning). A delete or membership removal whose object was found neither live nor in
+  deleted items after every retry. The job is Completed, as D15 completes a delete whose
+  object is gone (D19).
+- **`Retrying is off for the rest of the run`** (Warning). Several jobs in a row used up
+  their retries, so the rest of the run fails or completes such jobs at once; their
+  exception ends *Not retried: retrying is off for the rest of this run.* Many at once
+  usually means the domain record points at the wrong tenant, or the app lacks a read
+  permission, rather than replication.
 - **`Could not write terminal state; job will be requeued by the watchdog`** (Error). The
   body finished but the status could not be written, so the job stays at Work in Progress
   and the watchdog will requeue it, *after which it runs again*. `intendedState` says how

@@ -78,16 +78,35 @@ Describe 'Remove-EntraAdministrativeUnit' -Tag 'Unit' {
         Should -Invoke Remove-MgDirectoryAdministrativeUnit -Times 1 -Exactly -ParameterFilter { $AdministrativeUnitId -eq $script:Id }
     }
 
-    It 'completes, with a warning, when the administrative unit does not exist' {
-        # docs/DECISIONS.md D15: the outcome asked for is already true.
+    It 'completes at once, with a warning, when the administrative unit is in deleted items' {
+        # docs/DECISIONS.md D15: the outcome asked for is already true. D19: deleted items
+        # tell gone from not replicated yet.
         Mock Get-MgDirectoryAdministrativeUnit { throw (New-GraphError 'Request_ResourceNotFound' 'GetMgDirectoryAdministrativeUnit_Get') }
+        Mock Test-RmaDeletedDirectoryObject { $true }
 
         { & $script:Body $script:Job ([pscustomobject]@{ organizationalunit = $script:Id }) } | Should -Not -Throw
 
         Should -Invoke Remove-MgDirectoryAdministrativeUnit -Times 0 -Exactly
+        Should -Invoke Test-RmaDeletedDirectoryObject -Times 1 -Exactly -ParameterFilter { $Id -eq $script:Id }
         Should -Invoke Write-RmaLog -Times 1 -Exactly -ParameterFilter { $Level -eq 'Warning' -and $Message -match 'not found' }
         $script:Logged[-1].Data.administrativeUnit | Should -Be $script:Id
+        $script:Logged[-1].Data.inDeletedItems | Should -BeTrue
         $script:Logged[-1].Data.queueSysId | Should -Be ('f' * 32)
+    }
+
+    It 'asks the loop to run it again, and to complete it then, when the administrative unit is found neither live nor in deleted items' {
+        # D19: it may have been created moments ago and not have reached Graph yet.
+        Mock Get-MgDirectoryAdministrativeUnit { throw (New-GraphError 'Request_ResourceNotFound' 'GetMgDirectoryAdministrativeUnit_Get') }
+        Mock Test-RmaDeletedDirectoryObject { $false }
+
+        $caught = $null
+        try { & $script:Body $script:Job ([pscustomobject]@{ organizationalunit = $script:Id }) } catch { $caught = $_ }
+
+        $caught.FullyQualifiedErrorId | Should -BeLike 'RmaJobRetry,*'
+        $caught.Exception.Message | Should -BeLike '*not found; nothing to delete'
+        $caught.TargetObject.CompleteWhenExhausted | Should -BeTrue
+        Should -Invoke Remove-MgDirectoryAdministrativeUnit -Times 0 -Exactly
+        Should -Invoke Write-RmaLog -Times 0 -Exactly
     }
 
     It 'completes, with a warning, when the administrative unit is deleted between the lookup and the delete' {

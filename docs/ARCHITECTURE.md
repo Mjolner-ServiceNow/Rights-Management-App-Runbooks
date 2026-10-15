@@ -103,11 +103,10 @@ Fields marked *new* or *replaces* are changes the application needs for this rel
 application is maintained outside this repository, so check its own guide for the final
 field names.
 
-One value has no row yet. `Connect-RmaExchange` takes a mandatory `-Organization`, the
-tenant's `*.onmicrosoft.com` name, and Exchange Online will not connect without it. No
-runbook declares it and the domain record has no field for it, because no Exchange runbook
-has been migrated yet. Which field supplies it is an open point in
-[HANDOVER.md](../HANDOVER.md).
+Exchange Online's `-Organization`, the tenant's `*.onmicrosoft.com` name, has no row on
+purpose. `Connect-RmaExchange` reads it from the tenant's initial domain in Graph when it is
+not given, which is how the runbooks connect, so the domain record needs no field for it
+([DECISIONS.md D20](DECISIONS.md)).
 
 Some fields on the form do not become parameters:
 

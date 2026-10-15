@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Update-EntraUserHideMailbox`**, migrated from 1.0, with the same payload field, `user`,
+  as an Entra object id or a user principal name. It is the first runbook that connects to
+  Exchange Online. It hides the mailbox with `Set-Mailbox -HiddenFromAddressListsEnabled`.
+  1.0 set the user's `showInAddressList` to true through Graph instead, which Microsoft
+  documents as out of sync with Exchange, so it hid nothing. A mailbox already hidden
+  completes the job; a user without a mailbox, or one synchronised from on-premises AD,
+  fails it (`docs/DECISIONS.md` D16, D20). `Connect-RmaExchange` no longer needs
+  `-Organization`: left out, it reads the tenant's initial domain from Graph, so the
+  ServiceNow domain record needs no field for it (D20). Needs `User.Read.All`,
+  `Domain.Read.All`, `Exchange.ManageAsApp` and the Exchange Recipient Administrator role.
+  Not yet run end to end (#180). Module 2.6.0
+  ([#102](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/102)).
 - **`Request-RmaJobRetry`, for a job that is not ready yet.** A runbook body calls it for
   a condition that clears on its own, and `Invoke-RmaQueueLoop` runs the body again after
   each of its new `-RetryDelaySeconds`, 15, 30 and 60 by default, holding the claim. If the

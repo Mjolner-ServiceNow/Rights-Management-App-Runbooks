@@ -73,6 +73,7 @@ and runs safely on forks.
 | [`Remove-EntraAdministrativeUnit`](src/runbooks/Remove-EntraAdministrativeUnit.ps1) | The ServiceNow application, per request | Deletes an Entra ID administrative unit by object id (soft delete, to deleted items); its members stay. One already gone completes the job |
 | [`Remove-EntraAUUserMember`](src/runbooks/Remove-EntraAUUserMember.ps1) | The ServiceNow application, per request | Removes a user from an Entra ID administrative unit; a membership already gone completes the job, a unit with dynamic membership is refused |
 | [`Remove-EntraAUGroupMember`](src/runbooks/Remove-EntraAUGroupMember.ps1) | The ServiceNow application, per request | Removes a group from an Entra ID administrative unit; a membership already gone completes the job, a unit with dynamic membership is refused |
+| [`Update-EntraUserHideMailbox`](src/runbooks/Update-EntraUserHideMailbox.ps1) | The ServiceNow application, per request | Hides a user's Exchange Online mailbox from the address lists. The first runbook that connects to Exchange Online, with the organization read from Graph (D20). |
 | [`Unlock-ADUser`](src/runbooks/Unlock-ADUser.ps1) | The ServiceNow application, per request | Unlocks a locked-out AD user. The reference for Active Directory runbooks: the service account from Key Vault, `-Server` and `-Credential` on every AD cmdlet. |
 | [`Enable-ADUser`](src/runbooks/Enable-ADUser.ps1) | The ServiceNow application, per request | Enables a disabled AD user |
 | [`Disable-ADUser`](src/runbooks/Disable-ADUser.ps1) | The ServiceNow application, per request | Disables an AD user |
@@ -95,7 +96,7 @@ Every runbook is the same setup plus a body. Copy
 view of it:
 
 ```powershell
-#Requires -Modules @{ ModuleName = 'RMA.Runbooks'; RequiredVersion = '2.5.0' }
+#Requires -Modules @{ ModuleName = 'RMA.Runbooks'; RequiredVersion = '2.6.0' }
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest

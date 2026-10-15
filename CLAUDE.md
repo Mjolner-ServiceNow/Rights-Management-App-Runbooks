@@ -194,9 +194,15 @@ Both gaps the docs used to overstate are now wired in
   must be greater. `release.yml` still compares the `v*` tag against the manifest at
   release time; that is now a backstop rather than the first time anyone finds out.
 
-None of it blocks a merge. The `main` ruleset has no required status checks and requires 0
-approvals, so a red CI run can still be merged. Passing CI is a convention; enforcing it is
-an open point in [HANDOVER.md](HANDOVER.md).
+Since 2026-10-15 it blocks a merge. The `main` ruleset requires the three CI jobs, *Static
+analysis*, *Module contract* and *Unit tests* (coverage included), each reported by GitHub
+Actions, so a pull request merges only once they are green. A plain `gh pr merge` on a
+pull request whose checks are still running is refused; wait for them. Repository admins
+can bypass the checks on a pull request (`gh pr merge --admin`) for an emergency such as
+GitHub Actions being down, and that bypass is logged; do not use it to skip a red run.
+The branch need not be up to date with `main`, CodeQL is not required, and 0 approvals
+are, because there is one maintainer
+([#32](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/32)).
 
 One thing is still checked only by eye: nothing automated rejects customer-identifying
 values in committed files. See *This repository is public* below.

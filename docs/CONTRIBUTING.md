@@ -97,9 +97,12 @@ CI runs all five, the formatter in `-Check` mode, plus a check that `ModuleVersi
 bumped when the module changed. CI has no Azure access, so it runs on forks and
 first-time contributors without exposing anything.
 
-Nothing stops a red pull request from merging. The `main` ruleset requires no status checks
-and no approvals, so a passing CI run is a convention, not a gate. Do not merge on red.
-Making it a gate is an open point in [HANDOVER.md](../HANDOVER.md).
+A pull request merges into `main` only once CI is green: the `main` ruleset requires
+*Static analysis*, *Module contract* and *Unit tests*, as reported by GitHub Actions. It
+requires no approvals while there is one maintainer, and the branch need not be up to date
+with `main`. Repository admins can bypass the checks on a pull request for an emergency,
+such as GitHub Actions being down; the bypass is logged, and it is not for skipping a red
+run ([#32](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/32)).
 
 From a shell rather than inside a `pwsh` session, use the `-Command` form for
 `Invoke-Analysis.ps1`: `pwsh -File` passes `-FailOn Error,Warning` as one literal string.

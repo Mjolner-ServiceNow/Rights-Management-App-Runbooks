@@ -398,6 +398,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the process id and start time. It never falls back to a shared constant.
 
 ### Changed
+- **A pull request merges into `main` only once CI is green.** The `main` ruleset now
+  requires *Static analysis*, *Module contract* and *Unit tests*, as reported by GitHub
+  Actions. Repository admins can bypass them on a pull request for an emergency, and the
+  bypass is logged. Before, passing CI was a convention
+  ([#32](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/32)).
 - **`HANDOVER.md` says where the material kept outside this repository is:** the private
   `Rights-Management-App-Internal` repository in the same GitHub organization, which
   points on to the 1.0 runbooks in Azure DevOps

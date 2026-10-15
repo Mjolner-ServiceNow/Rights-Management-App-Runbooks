@@ -151,11 +151,11 @@ Describe 'Set-EntraUserAuthenticationPhoneMethod' -Tag 'Unit' {
         Should -Invoke Update-MgUserAuthenticationPhoneMethod -Times 1 -Exactly
     }
 
-    It 'fails with an actionable message when the user does not exist' {
+    It 'asks the loop to run it again, with an actionable reason, when the user is not found' {
         Mock Get-MgUser { throw (New-GraphError -Code 'Request_ResourceNotFound' -Message "Resource 'nobody@contoso.com' does not exist.") }
 
         { & $script:Body $script:Job ([pscustomobject]@{ useridforauth = 'nobody@contoso.com'; mobile = $script:Number }) } |
-        Should -Throw "No Entra ID user 'nobody@contoso.com'. Correct the ServiceNow record."
+        Should -Throw "No Entra ID user 'nobody@contoso.com'. Correct the ServiceNow record." -ErrorId 'RmaJobRetry,*'
         Should -Invoke Get-MgUserAuthenticationPhoneMethod -Times 0 -Exactly
         Should -Invoke New-MgUserAuthenticationPhoneMethod -Times 0 -Exactly
     }
@@ -168,17 +168,17 @@ Describe 'Set-EntraUserAuthenticationPhoneMethod' -Tag 'Unit' {
         Should -Invoke New-MgUserAuthenticationPhoneMethod -Times 0 -Exactly
     }
 
-    It 'says to queue again when Graph''s authentication methods do not know the user yet' {
+    It 'asks the loop to run it again when Graph''s authentication methods do not know the user yet' {
         Mock Get-MgUserAuthenticationPhoneMethod {
             throw (New-GraphError -Code 'resourceNotFound' -Message 'The specified user could not be found.' -Cmdlet 'GetMgUserAuthenticationPhoneMethod_List')
         }
 
         { & $script:Body $script:Job ([pscustomobject]@{ useridforauth = 'jdoe@contoso.com'; mobile = $script:Number }) } |
-        Should -Throw "*'jdoe@contoso.com' exists*queue the job again."
+        Should -Throw "*'jdoe@contoso.com' exists*queue the job again." -ErrorId 'RmaJobRetry,*'
         Should -Invoke New-MgUserAuthenticationPhoneMethod -Times 0 -Exactly
     }
 
-    It 'says to queue again when Graph''s authentication methods refuse the <Case> for a user they do not know yet' -ForEach @(
+    It 'asks the loop to run it again when Graph''s authentication methods refuse the <Case> for a user they do not know yet' -ForEach @(
         @{ Case = 'add'; Existing = $null }
         @{ Case = 'change'; Existing = '+1 5555550100' }
     ) {
@@ -190,7 +190,7 @@ Describe 'Set-EntraUserAuthenticationPhoneMethod' -Tag 'Unit' {
         Mock Update-MgUserAuthenticationPhoneMethod $missing
 
         { & $script:Body $script:Job ([pscustomobject]@{ useridforauth = 'jdoe@contoso.com'; mobile = $script:Number }) } |
-        Should -Throw "*'jdoe@contoso.com' exists*queue the job again."
+        Should -Throw "*'jdoe@contoso.com' exists*queue the job again." -ErrorId 'RmaJobRetry,*'
         $script:Logged.Count | Should -Be 0
     }
 

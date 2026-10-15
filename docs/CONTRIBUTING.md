@@ -237,7 +237,9 @@ is a review responsibility.
    for Active Directory.
 2. Change the `#Requires` set to what you actually call, nothing more.
 3. Change the `-Command` string to the ServiceNow command name.
-4. Write the body. Throw to fail the job; return normally to complete it.
+4. Write the body. Throw to fail the job; return normally to complete it. For a condition
+   that clears on its own within a minute or two, call `Request-RmaJobRetry -Reason`
+   instead of throwing; the loop runs the body again (`docs/DECISIONS.md` D18).
 5. Add an idempotency pre-check if a repeat execution would write twice.
 6. Read payload fields as `$p.PSObject.Properties['name']?.Value`. The runbook runs under
    `Set-StrictMode -Version Latest`, where `$p.name` on a payload without the field throws a

@@ -220,6 +220,7 @@ all the checks pass, and the job output is the only record.
    Work in Progress (2)
                 │  try { body } catch { record } finally { set terminal state }
                 │  heartbeat renews claimed_at every HeartbeatMinutes while the body runs
+                │  body calls Request-RmaJobRetry ──▶ run again after 15, 30, 60 s, still claimed
                 ▼
    Completed (4)  or  Failed (3)
 
@@ -400,6 +401,7 @@ queue intact and the next run continues.
 | Terminal state write fails | Logged as Error, loop continues, watchdog requeues |
 | ServiceNow transient 5xx, 408 or 429 | `Invoke-RmaRestMethod` retry with backoff and jitter, honouring `Retry-After`. Working from module 2.1.1 ([#24](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/24)). From 2.3.0 a `Retry-After` longer than `MaxRetryAfterSeconds`, 120 by default, fails the request at once instead of holding the run ([#117](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/117)) |
 | Token expires mid-run | `Get-RmaAccessToken` re-mints inside a five-minute margin for any call that asks it for a token, such as a Key Vault read. Graph and Exchange keep the token they were connected with, so `Connect-RmaGraph` and `Connect-RmaExchange` register it with its expiry and `Invoke-RmaQueueLoop` calls `Update-RmaConnection` before every job, which reconnects any session within 15 minutes of expiry. A single job longer than that, such as a full import, calls `Update-RmaConnection` between pages ([#30](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/30)) |
+| Graph does not yet know an object created moments ago | The body calls `Request-RmaJobRetry`; the loop runs it again after each of `RetryDelaySeconds`, holding the claim, then fails the job with the reason. From 2.4.0 ([#146](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/146), D18 in [DECISIONS.md](DECISIONS.md)) |
 | Payload action mismatch | Job explicitly Failed, never silently skipped |
 | Runaway loop | `MaxJobs` and `MaxMinutes`; the run ends with a Warning naming the limit |
 | Mass stranding | Watchdog refuses to act above `MaxRequeue` and raises |

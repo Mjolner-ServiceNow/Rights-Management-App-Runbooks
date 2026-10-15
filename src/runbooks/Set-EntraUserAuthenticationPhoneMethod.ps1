@@ -1,5 +1,5 @@
 #Requires -Version 7.2
-#Requires -Modules @{ ModuleName = 'RMA.Runbooks';                     RequiredVersion = '2.3.0'  }
+#Requires -Modules @{ ModuleName = 'RMA.Runbooks';                     RequiredVersion = '2.4.0'  }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Authentication';   RequiredVersion = '2.39.0' }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Users';            RequiredVersion = '2.39.0' }
 #Requires -Modules @{ ModuleName = 'Microsoft.Graph.Identity.SignIns'; RequiredVersion = '2.39.0' }
@@ -84,9 +84,11 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'S
     } catch {
         # Matched on Graph's error code, which leads the error id; the exception itself is a
         # plain System.Exception. Every other failure (throttling, access denied) is
-        # rethrown as is.
+        # rethrown as is. Not found is retried: a job queued straight after Create-EntraUser
+        # was run before Get-MgUser knew the new user (#146). A user that never arrives
+        # fails the job with this reason once the retries are used.
         if ($_.FullyQualifiedErrorId -notlike 'Request_ResourceNotFound,*') { throw }
-        throw "No Entra ID user '$identity'. Correct the ServiceNow record."
+        Request-RmaJobRetry -Reason "No Entra ID user '$identity'. Correct the ServiceNow record."
     }
 
     # The user acted on must be the user asked for, whatever the request path made of it.
@@ -107,7 +109,7 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'S
         Where-Object PhoneType -EQ 'mobile' | Select-Object -First 1
     } catch {
         if ($_.FullyQualifiedErrorId -notlike 'resourceNotFound,*') { throw }
-        throw $notYet
+        Request-RmaJobRetry -Reason $notYet
     }
 
     # Graph stores its own spelling (+1 5555550100 x12), so both sides are reduced to the
@@ -129,7 +131,7 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'S
             $done = 'Mobile phone authentication method added'
         }
     } catch {
-        if ($_.FullyQualifiedErrorId -like 'resourceNotFound,*') { throw $notYet }
+        if ($_.FullyQualifiedErrorId -like 'resourceNotFound,*') { Request-RmaJobRetry -Reason $notYet }
         # Graph's refusals (invalidPhoneNumber) do not quote the number. Should one ever do,
         # it is cut out here, so it reaches neither the job log nor ServiceNow; any other
         # error is rethrown as is.

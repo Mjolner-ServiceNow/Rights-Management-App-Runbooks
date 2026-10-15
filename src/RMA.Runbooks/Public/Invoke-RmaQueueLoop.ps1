@@ -45,6 +45,11 @@ function Invoke-RmaQueueLoop {
                           token is within 15 minutes of expiry. Their SDKs keep the token
                           they were given, so a run that outlived it failed part-way.
 
+        Retry             A body that calls Request-RmaJobRetry, for a condition that clears
+                          on its own such as Graph replication, is run again after each of
+                          RetryDelaySeconds, still holding the claim. A runbook that retried
+                          itself would be rejected in review (D1, D18).
+
         Heartbeat         A background thread renews the claim of a job that is still
                           running, every HeartbeatMinutes. Without it the watchdog requeues
                           any job older than its StaleAfterMinutes, so a full directory
@@ -76,6 +81,11 @@ function Invoke-RmaQueueLoop {
     .PARAMETER HeartbeatMinutes
         Interval between claim renewals for a job that is still running. The watchdog's
         StaleAfterMinutes must be comfortably above it; the defaults are 5 and 30.
+    .PARAMETER RetryDelaySeconds
+        The wait before each new run of a body that called Request-RmaJobRetry. There are as
+        many retries as delays, and an empty list turns retrying off. A retry that would end
+        past MaxMinutes is not made. The default, 15, 30 and 60, covers the tens of seconds
+        Graph took on the test tenant to know a user created moments before.
     .EXAMPLE
         Invoke-RmaQueueLoop -Context $ctx -DomainId $id -Command 'Create-EntraUser' -Body {
             param($job, $p)
@@ -119,7 +129,10 @@ function Invoke-RmaQueueLoop {
         # How often a running job's claim is renewed. Keep it well below the watchdog's
         # StaleAfterMinutes: a third of it or less leaves room for two failed renewals.
         [ValidateRange(1, 60)]
-        [int] $HeartbeatMinutes = 5
+        [int] $HeartbeatMinutes = 5,
+
+        [ValidateRange(1, 300)]
+        [int[]] $RetryDelaySeconds = @(15, 30, 60)
     )
 
     $sw        = [Diagnostics.Stopwatch]::StartNew()
@@ -206,6 +219,7 @@ function Invoke-RmaQueueLoop {
                 # Pre-set to Failed so an abrupt termination still reports a terminal state.
                 $state = 'Failed'
                 $err   = 'Runbook terminated before the job completed. Requeue or investigate the worker.'
+                $retries = 0
 
                 try {
                     # Guarded so a malformed row fails the job with a message an operator can
@@ -232,12 +246,34 @@ function Invoke-RmaQueueLoop {
                     # Inside the try: if it cannot be renewed, this job fails with the reason.
                     Update-RmaConnection
 
-                    $null = & $Body $job $parameters
+                    # A body that calls Request-RmaJobRetry is run again after each delay,
+                    # still holding the claim, which the heartbeat keeps renewed (D18). Any
+                    # other error, or a retry asked for once the delays are used up, fails
+                    # the job with the body's own error.
+                    while ($true) {
+                        try {
+                            $null = & $Body $job $parameters
+                            break
+                        } catch {
+                            if ($_.FullyQualifiedErrorId -notlike 'RmaJobRetry,*' -or
+                                $retries -ge $RetryDelaySeconds.Count -or
+                                $sw.Elapsed.TotalSeconds + $RetryDelaySeconds[$retries] -ge $MaxMinutes * 60) { throw }
+
+                            Write-RmaLog -Level Warning -Message 'Job not ready yet; running it again shortly' -Data @{
+                                sysId = $sysId; retry = $retries + 1; delaySeconds = $RetryDelaySeconds[$retries]
+                                reason = $_.Exception.Message
+                            }
+                            Start-Sleep -Seconds $RetryDelaySeconds[$retries]
+                            $retries++
+                            Update-RmaConnection
+                        }
+                    }
 
                     $state = 'Completed'; $err = $null
                     $succeeded++
                 } catch {
                     $err = '{0} (at line {1})' -f $_.Exception.Message, $_.InvocationInfo.ScriptLineNumber
+                    if ($retries -gt 0) { $err += " Retried $retries time(s) first." }
                     $failed++
                     Write-RmaLog -Level Error -Message 'Job failed' -Data @{ sysId = $sysId; error = $err }
                 } finally {

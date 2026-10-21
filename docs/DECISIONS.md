@@ -183,7 +183,10 @@ Keep `StaleAfterMinutes` at three heartbeats or more.
   it upserts on `objectguid`, the Graph object id, ignoring case, writes to
   `x_autps_active_dir_azure_ad_user`, and treats `""`, `null` and absent fields as
   `aduser` does. Send `office_phone`, not 1.0's `officephone`: the endpoint takes both, but
-  `officephone: ""` does not clear the field. `/entraiduser/cleanup` does not exist yet.
+  `officephone: ""` does not clear the field. `/entraiduser/cleanup` does not exist yet
+  ([#192](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/192)).
+  `username` is cut to 40 characters, which the local part of a guest's user principal
+  name often exceeds.
 - **Import-EntraUsers, the hourly import, calls no `/cleanup`.** It imports only the users
   created in the last day, as 1.0 did, and a cleanup after it would remove every other
   user. 1.0 called one all the same. Cleanup belongs to the full import

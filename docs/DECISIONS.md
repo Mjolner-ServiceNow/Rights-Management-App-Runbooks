@@ -178,10 +178,19 @@ Keep `StaleAfterMinutes` at three heartbeats or more.
   value. So an empty value is sent as `""`, or a value cleared in AD is never cleared in
   ServiceNow ([#186](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/186)).
   The Entra ID user endpoint, `/domain/{DomainId}/entraiduser/insertMultiple`, followed
-  the same day. It has not been probed yet: its upsert key, fields and `/cleanup` are open
-  in [#106](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/106).
-- **The MFA phone (`mfasms`) is dropped** from Initial-Import-EntraUsers.
-  Import-EntraMFA owns it.
+  the same day and behaves the same way
+  ([#106](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/106)):
+  it upserts on `objectguid`, the Graph object id, ignoring case, writes to
+  `x_autps_active_dir_azure_ad_user`, and treats `""`, `null` and absent fields as
+  `aduser` does. Send `office_phone`, not 1.0's `officephone`: the endpoint takes both, but
+  `officephone: ""` does not clear the field. `/entraiduser/cleanup` does not exist yet.
+- **Import-EntraUsers, the hourly import, calls no `/cleanup`.** It imports only the users
+  created in the last day, as 1.0 did, and a cleanup after it would remove every other
+  user. 1.0 called one all the same. Cleanup belongs to the full import
+  ([#71](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/71)).
+- **The MFA phone (`mfasms`) is dropped** from Initial-Import-EntraUsers, and from
+  Import-EntraUsers ([#71](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/71)).
+  Import-EntraMFA owns it. The imports leave the field out, so the value it wrote is kept.
 - **Group members are restored** in the initial group imports, with the 1.0 monolith's
   field names (`groupguid`, `objectguid`, ...), not the broken `group` / `member` rename.
 - API naming in the ServiceNow application: `user` and `group` are Active Directory;

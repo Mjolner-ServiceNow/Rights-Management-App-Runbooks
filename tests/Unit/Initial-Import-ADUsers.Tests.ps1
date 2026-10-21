@@ -27,6 +27,16 @@ BeforeAll {
             Justification = 'Stand-in for a cmdlet this runner does not have installed. The parameters exist so the mock can bind them.')]
         param($Server, [pscredential] $Credential)
     }
+    function global:Get-ADRootDSE {
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '',
+            Justification = 'Stand-in for a cmdlet this runner does not have installed. The parameters exist so the mock can bind them.')]
+        param($Server, [pscredential] $Credential)
+    }
+    function global:Get-ADObject {
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '',
+            Justification = 'Stand-in for a cmdlet this runner does not have installed. The parameters exist so the mock can bind them.')]
+        param($SearchBase, $LDAPFilter, $Properties, $Server, [pscredential] $Credential)
+    }
     function global:Get-ADOptionalFeature {
         [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '',
             Justification = 'Stand-in for a cmdlet this runner does not have installed. The parameters exist so the mock can bind them.')]
@@ -54,7 +64,7 @@ BeforeAll {
 }
 
 AfterAll {
-    Remove-Item -Path Function:\Get-ADUser, Function:\Get-ADDomain, Function:\Get-ADForest,
+    Remove-Item -Path Function:\Get-ADUser, Function:\Get-ADDomain, Function:\Get-ADForest, Function:\Get-ADRootDSE, Function:\Get-ADObject,
     Function:\Get-ADOptionalFeature -ErrorAction SilentlyContinue
 }
 
@@ -88,6 +98,9 @@ Describe 'Initial-Import-ADUsers' -Tag 'Unit' {
         Mock Get-ADDomain { [pscustomobject]@{ DomainMode = 'Windows2016Domain'; Name = 'contoso' } }
         Mock Get-ADForest { [pscustomobject]@{ ForestMode = 'Windows2016Forest'; Name = 'contoso.com' } }
         Mock Get-ADOptionalFeature { [pscustomobject]@{ Name = 'Privileged Access Management Feature'; EnabledScopes = @() } }
+        # A forest without the Exchange schema: no extensionAttribute* at all.
+        Mock Get-ADRootDSE { [pscustomobject]@{ schemaNamingContext = 'CN=Schema,CN=Configuration,DC=contoso,DC=com' } }
+        Mock Get-ADObject {}
 
         # Answers each PUT the way the endpoint does: every user inserted. $script:Status
         # overrides the status per samaccountname.
@@ -150,7 +163,7 @@ Describe 'Initial-Import-ADUsers' -Tag 'Unit' {
 
         Should -Invoke Get-ADUser -Times 1 -Exactly -ParameterFilter {
             $Filter -eq '*' -and $Server -eq 'dc01.contoso.com' -and $Credential.UserName -eq 'CONTOSO\svc-rma' -and
-            $Properties -contains 'lastLogon' -and $Properties -contains 'mail'
+            $Properties -contains 'lastLogon' -and $Properties -contains 'mail' -and -not ($Properties -like 'extensionAttribute*')
         }
         foreach ($cmdlet in 'Get-ADDomain', 'Get-ADForest', 'Get-ADOptionalFeature') {
             Should -Invoke $cmdlet -Times 1 -Exactly -ParameterFilter { $Server -eq 'dc01.contoso.com' }
@@ -171,6 +184,38 @@ Describe 'Initial-Import-ADUsers' -Tag 'Unit' {
         $adam.enabled | Should -BeTrue
         $script:Calls[1].Body[1].lastlogon | Should -BeNullOrEmpty -Because 'lastLogon 0 means never'
         $script:Calls[2].Body[0].lastlogon | Should -BeNullOrEmpty -Because 'the largest FILETIME means never too'
+    }
+
+    It 'sends the extension attributes the schema has, and asks only for those' {
+        Mock Get-ADObject {
+            foreach ($name in 'extensionAttribute10', 'extensionAttribute1', 'extensionAttribute2', 'extensionAttribute16', 'extensionAttributeX') {
+                [pscustomobject]@{ lDAPDisplayName = $name }
+            }
+        }
+        $script:Users = @(
+            New-TestUser -Sam 'adam' -Override @{ extensionAttribute1 = 'Afdeling 7'; extensionAttribute2 = $null; extensionAttribute10 = 'Kostcenter 10' }
+        )
+
+        & $script:Body $script:Job ([pscustomobject]@{})
+
+        Should -Invoke Get-ADObject -Times 1 -Exactly -ParameterFilter {
+            $SearchBase -eq 'CN=Schema,CN=Configuration,DC=contoso,DC=com' -and $LDAPFilter -eq '(lDAPDisplayName=extensionAttribute*)' -and
+            $Server -eq 'dc01.contoso.com'
+        }
+        Should -Invoke Get-ADUser -Times 1 -Exactly -ParameterFilter {
+            $Properties -contains 'extensionAttribute1' -and $Properties -contains 'extensionAttribute2' -and
+            $Properties -contains 'extensionAttribute10' -and $Properties -notcontains 'extensionAttribute16' -and
+            $Properties -notcontains 'extensionAttributeX'
+        }
+        $adam = $script:Calls[1].Body[0]
+        $adam.PSObject.Properties.Name.Count | Should -Be 37
+        $adam.extensionattribute1 | Should -Be 'Afdeling 7'
+        $adam.extensionattribute10 | Should -Be 'Kostcenter 10'
+        # Sent as null, not left out, so a value cleared in AD is cleared in ServiceNow.
+        $adam.PSObject.Properties.Name | Should -Contain 'extensionattribute2'
+        $adam.extensionattribute2 | Should -BeNullOrEmpty
+        $adam.PSObject.Properties.Name | Should -Not -Contain 'extensionattribute16'
+        ($script:Logged | Where-Object Message -EQ 'Extension attributes in the schema').Data.count | Should -Be 3
     }
 
     It 'reports PAM as enabled when the feature has an enabled scope' {

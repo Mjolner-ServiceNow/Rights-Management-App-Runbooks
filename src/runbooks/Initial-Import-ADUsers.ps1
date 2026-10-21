@@ -32,6 +32,12 @@
     lastLogon is converted from the directory's FILETIME: 1.0 sent the number itself, which
     ServiceNow stored as a date in the year 9260. emailaddress is the mail attribute, which
     is what 1.0 meant by preferring mail over EmailAddress; they are the same attribute.
+
+    extensionAttribute1 to 15 are sent as well, as extensionattribute1 to 15, which 1.0 did
+    not. They exist only in a forest whose schema was extended for Exchange, and asking
+    Get-ADUser for an attribute the schema lacks fails the whole read. So the schema is read
+    first, and only the ones it has are asked for and sent. An attribute that is empty in AD
+    is sent as null, so a value cleared in AD is cleared in ServiceNow.
 .PARAMETER DomainController
     Host name or IP address of a domain controller for the domain.
 .PARAMETER AdUserName
@@ -119,46 +125,57 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'I
             pam_enabled = [bool] @($pam | Where-Object { @($_.PSObject.Properties['EnabledScopes']?.Value).Count -gt 0 }).Count
         }
 
+        # Only the extension attributes this forest's schema has. See the help.
+        $schema = (Get-ADRootDSE @server).schemaNamingContext
+        $extensions = @(Get-ADObject -SearchBase $schema -LDAPFilter '(lDAPDisplayName=extensionAttribute*)' `
+                -Properties lDAPDisplayName @server |
+            ForEach-Object { $_.lDAPDisplayName } |
+            Where-Object { $_ -match '^extensionAttribute([1-9]|1[0-5])$' } |
+            Sort-Object { [int] ($_ -replace '\D') })
+        Write-RmaLog -Level Information -Message 'Extension attributes in the schema' -Data @{ count = $extensions.Count }
+
         # Read everything first, as compact records, so the enumeration is not held open
         # while ServiceNow is written to. See the help.
         $records = [System.Collections.Generic.List[object]]::new()
-        Get-ADUser -Filter * -Properties $properties @server | ForEach-Object {
-            $records.Add([ordered]@{
-                    accountexpirationdate = & $glide $_.AccountExpirationDate
-                    accountlockouttime    = & $glide $_.AccountLockoutTime
-                    cannotchangepassword  = $_.CannotChangePassword
-                    city                  = $_.City
-                    company               = $_.Company
-                    country               = $_.Country
-                    department            = $_.Department
-                    description           = $_.Description
-                    displayname           = $_.DisplayName
-                    distinguishedname     = $_.DistinguishedName
-                    domain                = $DomainId
-                    emailaddress          = $_.mail
-                    employeeid            = $_.EmployeeID
-                    employeenumber        = $_.EmployeeNumber
-                    employeetype          = $_.EmployeeType
-                    enabled               = $_.Enabled
-                    givenname             = $_.GivenName
-                    lastlogon             = & $fromFileTime $_.lastLogon
-                    lockedout             = $_.LockedOut
-                    mobilephone           = $_.MobilePhone
-                    name                  = $_.Name
-                    objectclass           = $_.ObjectClass
-                    objectguid            = "$($_.ObjectGUID)"
-                    office                = $_.Office
-                    officephone           = $_.OfficePhone
-                    passwordexpired       = $_.PasswordExpired
-                    passwordneverexpires  = $_.PasswordNeverExpires
-                    postalcode            = $_.PostalCode
-                    preferredlanguage     = $_.PreferredLanguage
-                    samaccountname        = $_.SamAccountName
-                    streetaddress         = $_.StreetAddress
-                    surname               = $_.Surname
-                    title                 = $_.Title
-                    userprincipalname     = $_.UserPrincipalName
-                })
+        Get-ADUser -Filter * -Properties ($properties + $extensions) @server | ForEach-Object {
+            $record = [ordered]@{
+                accountexpirationdate = & $glide $_.AccountExpirationDate
+                accountlockouttime    = & $glide $_.AccountLockoutTime
+                cannotchangepassword  = $_.CannotChangePassword
+                city                  = $_.City
+                company               = $_.Company
+                country               = $_.Country
+                department            = $_.Department
+                description           = $_.Description
+                displayname           = $_.DisplayName
+                distinguishedname     = $_.DistinguishedName
+                domain                = $DomainId
+                emailaddress          = $_.mail
+                employeeid            = $_.EmployeeID
+                employeenumber        = $_.EmployeeNumber
+                employeetype          = $_.EmployeeType
+                enabled               = $_.Enabled
+                givenname             = $_.GivenName
+                lastlogon             = & $fromFileTime $_.lastLogon
+                lockedout             = $_.LockedOut
+                mobilephone           = $_.MobilePhone
+                name                  = $_.Name
+                objectclass           = $_.ObjectClass
+                objectguid            = "$($_.ObjectGUID)"
+                office                = $_.Office
+                officephone           = $_.OfficePhone
+                passwordexpired       = $_.PasswordExpired
+                passwordneverexpires  = $_.PasswordNeverExpires
+                postalcode            = $_.PostalCode
+                preferredlanguage     = $_.PreferredLanguage
+                samaccountname        = $_.SamAccountName
+                streetaddress         = $_.StreetAddress
+                surname               = $_.Surname
+                title                 = $_.Title
+                userprincipalname     = $_.UserPrincipalName
+            }
+            foreach ($name in $extensions) { $record[$name.ToLowerInvariant()] = $_.$name }
+            $records.Add($record)
         }
         $read = $records.Count
         Write-RmaLog -Level Information -Message 'AD users read' -Data @{ users = $read; queueSysId = $job.sys_id }

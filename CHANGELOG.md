@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Initial-Import-ADUsers`**, migrated from 1.0 and rebuilt as `docs/DECISIONS.md` D12
+  agreed. It writes the users in batches of `ImportBatchSize` (200) to
+  `PUT /domain/{DomainId}/aduser/insertMultiple`, which upserts on `objectguid`, instead of
+  one `PUT` per user. A user the endpoint does not report as inserted or updated fails the
+  job, and `/aduser/cleanup` then is not called, so a partial import cannot delete good
+  records. The domain's sync state is `updating` while the import runs and `ready`
+  afterwards, also after a failure; 1.0 set it to `ready` before the import started. Dates
+  are sent as ServiceNow Date/Time and `lastLogon` is converted from FILETIME; 1.0 sent
+  ISO 8601, stored as midnight, and the raw number, stored as a date in the year 9260. The
+  directory is read in full before anything is written, so the Active Directory Web
+  Services enumeration is not held open for the length of the import
+  ([#73](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/73)).
 - **`Update-EntraUserHideMailbox`**, migrated from 1.0, with the same payload field, `user`,
   as an Entra object id or a user principal name. It is the first runbook that connects to
   Exchange Online. It hides the mailbox with `Set-Mailbox -HiddenFromAddressListsEnabled`.

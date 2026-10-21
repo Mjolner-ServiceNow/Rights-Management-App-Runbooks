@@ -83,6 +83,7 @@ and runs safely on forks.
 | [`Move-ADGroupToOrganizationalUnit`](src/runbooks/Move-ADGroupToOrganizationalUnit.ps1) | The ServiceNow application, per request | Moves an AD group to another OU |
 | [`Remove-ADOrganizationalUnit`](src/runbooks/Remove-ADOrganizationalUnit.ps1) | The ServiceNow application, per request | Deletes an empty, unprotected OU; refuses a protected or non-empty one |
 | [`Set-ADUserPassword`](src/runbooks/Set-ADUserPassword.ps1) | The ServiceNow application, per request | Resets an AD user's password; optionally requires a change at next logon and unlocks |
+| [`Initial-Import-ADUsers`](src/runbooks/Initial-Import-ADUsers.ps1) | The ServiceNow application, per domain | Imports every AD user into ServiceNow through `/aduser/insertMultiple`, then calls `/aduser/cleanup` only if every user was written |
 | [`Invoke-RmaQueueWatchdog`](src/runbooks/Invoke-RmaQueueWatchdog.ps1) | The ServiceNow application, on a cadence, per domain | Requeues jobs stranded in Work in Progress |
 | [`Test-RmaHealth`](src/runbooks/Test-RmaHealth.ps1) | The ServiceNow application | Proves every dependency end to end and reports the result to ServiceNow |
 

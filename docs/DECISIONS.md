@@ -167,6 +167,13 @@ Keep `StaleAfterMinutes` at three heartbeats or more.
 - **`/insertMultiple`** exists on the ServiceNow side (confirmed by the ServiceNow team)
   and replaces one `PUT` per record. Its exact URL, body, upsert semantics and response
   were not known when this was written; groups need `sync_policy` per record.
+  *Update 2026-10-21:* the Active Directory user endpoint is live and was probed on the
+  test instance ([#106](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/106)):
+  `PUT /domain/{DomainId}/aduser/insertMultiple` takes a non-empty array of 1.0's per-user
+  fields, upserts on `objectguid`, and answers
+  `{"result":{"total","inserted","updated","failed","results":[{"index","objectguid","status","sys_id"}]}}`.
+  It writes to the AD user table, `x_autps_active_dir_user`. Initial-Import-ADUsers uses it
+  ([#73](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/73)).
 - **The MFA phone (`mfasms`) is dropped** from Initial-Import-EntraUsers.
   Import-EntraMFA owns it.
 - **Group members are restored** in the initial group imports, with the 1.0 monolith's
@@ -199,6 +206,13 @@ Every resource under `/api/x_autps_active_dir/domain/{DomainId}/` is now named
 
 Users are settled: `/entraIdUser/insertMultiple` and `/adUser/insertMultiple`. The rest
 follow the same rule; the ServiceNow team confirms the final spelling.
+
+*Update 2026-10-21:* the first endpoint the ServiceNow team delivered is
+`/aduser/insertMultiple`, in lower case, for **Active Directory**. Paths are
+case-sensitive: `/adUser/insertMultiple` answers 400. So the AD user resource keeps 1.0's
+lower-case style but now means Active Directory, the reverse of 1.0's `aduser`. The final
+spelling of the others is asked in
+[#106](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/106).
 
 | 1.0 resource | Directory | 2.0 resource |
 |---|---|---|

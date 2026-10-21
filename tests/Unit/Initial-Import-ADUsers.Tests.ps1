@@ -174,7 +174,8 @@ Describe 'Initial-Import-ADUsers' -Tag 'Unit' {
         & $script:Body $script:Job ([pscustomobject]@{})
 
         $adam = $script:Calls[1].Body[0]
-        $adam.PSObject.Properties.Name.Count | Should -Be 34
+        $adam.PSObject.Properties.Name.Count | Should -Be 33
+        $adam.PSObject.Properties.Name | Should -Not -Contain 'displayname' -Because 'ServiceNow has no such field (#188)'
         $adam.domain | Should -Be ('d' * 32)
         $adam.objectguid | Should -Be "$($script:Users[0].ObjectGUID)"
         $adam.emailaddress | Should -Be 'adam@contoso.com'
@@ -184,6 +185,23 @@ Describe 'Initial-Import-ADUsers' -Tag 'Unit' {
         $adam.enabled | Should -BeTrue
         $script:Calls[1].Body[1].lastlogon | Should -BeExactly '' -Because 'lastLogon 0 means never'
         $script:Calls[2].Body[0].lastlogon | Should -BeExactly '' -Because 'the largest FILETIME means never too'
+    }
+
+    It 'sends the display name as name, and the CN for a user without one' {
+        # The ServiceNow team's decision: the display name goes in name (#188).
+        $script:Users = @(
+            New-TestUser -Sam 'adam' -Override @{ Name = 'adam (CN)'; DisplayName = 'Adam Display' }
+            New-TestUser -Sam 'krbtgt' -Override @{ DisplayName = $null }
+            New-TestUser -Sam 'blank' -Override @{ DisplayName = '  ' }
+        )
+
+        & $script:Body $script:Job ([pscustomobject]@{})
+
+        $sent = @($script:Calls | Where-Object Method -EQ 'PUT' | ForEach-Object { $_.Body })
+        $sent[0].name | Should -Be 'Adam Display'
+        $sent[0].samaccountname | Should -Be 'adam'
+        $sent[1].name | Should -Be 'krbtgt' -Because 'a user without a display name keeps its CN'
+        $sent[2].name | Should -Be 'blank' -Because 'a blank display name counts as none'
     }
 
     It 'sends every empty value as an empty string, never as null' {
@@ -221,7 +239,7 @@ Describe 'Initial-Import-ADUsers' -Tag 'Unit' {
             $Properties -notcontains 'extensionAttributeX'
         }
         $adam = $script:Calls[1].Body[0]
-        $adam.PSObject.Properties.Name.Count | Should -Be 37
+        $adam.PSObject.Properties.Name.Count | Should -Be 36
         $adam.extensionattribute1 | Should -Be 'Afdeling 7'
         $adam.extensionattribute10 | Should -Be 'Kostcenter 10'
         # Sent as an empty string, not null or left out, so a value cleared in AD is cleared

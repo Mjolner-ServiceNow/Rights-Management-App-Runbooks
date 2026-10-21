@@ -177,6 +177,9 @@ Keep `StaleAfterMinutes` at three heartbeats or more.
   A field given an empty string is cleared; a field given `null`, or left out, keeps its
   value. So an empty value is sent as `""`, or a value cleared in AD is never cleared in
   ServiceNow ([#186](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/186)).
+  The Entra ID user endpoint, `/domain/{DomainId}/entraiduser/insertMultiple`, followed
+  the same day. It has not been probed yet: its upsert key, fields and `/cleanup` are open
+  in [#106](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/106).
 - **The MFA phone (`mfasms`) is dropped** from Initial-Import-EntraUsers.
   Import-EntraMFA owns it.
 - **Group members are restored** in the initial group imports, with the 1.0 monolith's
@@ -207,20 +210,20 @@ Every resource under `/api/x_autps_active_dir/domain/{DomainId}/` is now named
 `entraId<Resource>` or `ad<Resource>`, and the operations under it are the same for each:
 `/insertMultiple` for writing records (D12) and `/cleanup`.
 
-Users are settled: `/entraIdUser/insertMultiple` and `/adUser/insertMultiple`. The rest
-follow the same rule; the ServiceNow team confirms the final spelling.
-
-*Update 2026-10-21:* the first endpoint the ServiceNow team delivered is
-`/aduser/insertMultiple`, in lower case, for **Active Directory**. Paths are
-case-sensitive: `/adUser/insertMultiple` answers 400. So the AD user resource keeps 1.0's
-lower-case style but now means Active Directory, the reverse of 1.0's `aduser`. The final
-spelling of the others is asked in
+*Update 2026-10-21:* both user endpoints are delivered, and both are **lower case**:
+`/aduser/insertMultiple` for Active Directory and `/entraiduser/insertMultiple` for Entra
+ID. Paths are case-sensitive: `/adUser/insertMultiple` answers 400. So `aduser` now means
+Active Directory, the reverse of 1.0's `aduser`. The table gives the delivered spelling
+for those two and the agreed name for the rest, which the ServiceNow team has not
+delivered yet; if they follow the users, they arrive in lower case too. The final
+spelling is asked in
 [#106](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/106).
+Use a resource from this table only once its endpoint answers.
 
 | 1.0 resource | Directory | 2.0 resource |
 |---|---|---|
-| `user` | Active Directory | `adUser` |
-| `aduser` | Entra ID | `entraIdUser` |
+| `user` | Active Directory | `aduser` (delivered) |
+| `aduser` | Entra ID | `entraiduser` (delivered) |
 | `group` | Active Directory | `adGroup` |
 | `adgroup` | Entra ID | `entraIdGroup` |
 | `groupmember` | Active Directory | `adGroupMember` |

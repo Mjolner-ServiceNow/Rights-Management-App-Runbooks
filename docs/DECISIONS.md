@@ -174,6 +174,9 @@ Keep `StaleAfterMinutes` at three heartbeats or more.
   `{"result":{"total","inserted","updated","failed","results":[{"index","objectguid","status","sys_id"}]}}`.
   It writes to the AD user table, `x_autps_active_dir_user`. Initial-Import-ADUsers uses it
   ([#73](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/73)).
+  A field given an empty string is cleared; a field given `null`, or left out, keeps its
+  value. So an empty value is sent as `""`, or a value cleared in AD is never cleared in
+  ServiceNow ([#186](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/186)).
 - **The MFA phone (`mfasms`) is dropped** from Initial-Import-EntraUsers.
   Import-EntraMFA owns it.
 - **Group members are restored** in the initial group imports, with the 1.0 monolith's

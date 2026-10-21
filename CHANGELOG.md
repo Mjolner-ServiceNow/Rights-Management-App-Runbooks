@@ -11,8 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `extensionattribute1` to `15`, which the ServiceNow AD user table already has and
   neither 1.0 nor #73 filled. The attributes exist only in a forest whose schema was
   extended for Exchange, and asking `Get-ADUser` for one the schema lacks fails the whole
-  read, so the runbook reads the schema first and asks only for those it has. An empty
-  attribute is sent as null, so a value cleared in AD is cleared in ServiceNow
+  read, so the runbook reads the schema first and asks only for those it has. Every
+  value that is empty in AD, of any field, is now sent as an empty string instead of null:
+  `/aduser/insertMultiple` clears a field given an empty string but keeps it given null,
+  so a title, an expiry date or an extension attribute cleared in AD stayed in ServiceNow
   ([#186](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/186)).
 - **`Initial-Import-ADUsers`**, migrated from 1.0 and rebuilt as `docs/DECISIONS.md` D12
   agreed. It writes the users in batches of `ImportBatchSize` (200) to

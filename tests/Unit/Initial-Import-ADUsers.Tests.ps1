@@ -180,10 +180,23 @@ Describe 'Initial-Import-ADUsers' -Tag 'Unit' {
         $adam.emailaddress | Should -Be 'adam@contoso.com'
         $adam.accountexpirationdate | Should -Be '2027-01-31 23:00:00'
         $adam.lastlogon | Should -Be '2026-10-01 08:30:00'
-        $adam.accountlockouttime | Should -BeNullOrEmpty
+        $adam.accountlockouttime | Should -BeExactly ''
         $adam.enabled | Should -BeTrue
-        $script:Calls[1].Body[1].lastlogon | Should -BeNullOrEmpty -Because 'lastLogon 0 means never'
-        $script:Calls[2].Body[0].lastlogon | Should -BeNullOrEmpty -Because 'the largest FILETIME means never too'
+        $script:Calls[1].Body[1].lastlogon | Should -BeExactly '' -Because 'lastLogon 0 means never'
+        $script:Calls[2].Body[0].lastlogon | Should -BeExactly '' -Because 'the largest FILETIME means never too'
+    }
+
+    It 'sends every empty value as an empty string, never as null' {
+        # /aduser/insertMultiple leaves a field given null as it was, so a value cleared in
+        # AD would never be cleared in ServiceNow (#186).
+        & $script:Body $script:Job ([pscustomobject]@{})
+
+        $sent = @($script:Calls | Where-Object Method -EQ 'PUT' | ForEach-Object { $_.Body })
+        $sent.Count | Should -Be 3
+        foreach ($record in $sent) {
+            @($record.PSObject.Properties | Where-Object { $null -eq $_.Value } | ForEach-Object Name) | Should -BeNullOrEmpty
+        }
+        $sent[1].description | Should -BeExactly '' -Because 'bertha has no description in AD'
     }
 
     It 'sends the extension attributes the schema has, and asks only for those' {
@@ -211,9 +224,10 @@ Describe 'Initial-Import-ADUsers' -Tag 'Unit' {
         $adam.PSObject.Properties.Name.Count | Should -Be 37
         $adam.extensionattribute1 | Should -Be 'Afdeling 7'
         $adam.extensionattribute10 | Should -Be 'Kostcenter 10'
-        # Sent as null, not left out, so a value cleared in AD is cleared in ServiceNow.
+        # Sent as an empty string, not null or left out, so a value cleared in AD is cleared
+        # in ServiceNow.
         $adam.PSObject.Properties.Name | Should -Contain 'extensionattribute2'
-        $adam.extensionattribute2 | Should -BeNullOrEmpty
+        $adam.extensionattribute2 | Should -BeExactly ''
         $adam.PSObject.Properties.Name | Should -Not -Contain 'extensionattribute16'
         ($script:Logged | Where-Object Message -EQ 'Extension attributes in the schema').Data.count | Should -Be 3
     }

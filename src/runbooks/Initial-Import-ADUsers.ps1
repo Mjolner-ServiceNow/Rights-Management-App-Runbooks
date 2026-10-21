@@ -36,8 +36,12 @@
     extensionAttribute1 to 15 are sent as well, as extensionattribute1 to 15, which 1.0 did
     not. They exist only in a forest whose schema was extended for Exchange, and asking
     Get-ADUser for an attribute the schema lacks fails the whole read. So the schema is read
-    first, and only the ones it has are asked for and sent. An attribute that is empty in AD
-    is sent as null, so a value cleared in AD is cleared in ServiceNow.
+    first, and only the ones it has are asked for and sent.
+
+    Every value that is empty in AD is sent as an empty string, never as null.
+    /aduser/insertMultiple clears a field given an empty string, but leaves a field given
+    null as it was (found on the test instance, #186), so a value cleared in AD, such as a
+    title or an expiry date, would otherwise stay in ServiceNow for ever.
 .PARAMETER DomainController
     Host name or IP address of a domain controller for the domain.
 .PARAMETER AdUserName
@@ -175,6 +179,8 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'I
                 userprincipalname     = $_.UserPrincipalName
             }
             foreach ($name in $extensions) { $record[$name.ToLowerInvariant()] = $_.$name }
+            # An empty string clears the field in ServiceNow; null would leave it as it was.
+            foreach ($key in @($record.Keys)) { if ($null -eq $record[$key]) { $record[$key] = '' } }
             $records.Add($record)
         }
         $read = $records.Count

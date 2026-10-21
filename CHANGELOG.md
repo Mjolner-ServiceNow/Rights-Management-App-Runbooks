@@ -19,6 +19,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   called cleanup and flipped the domain's sync state for every single user; 2.0 does
   neither. A 429 that outlasts the Graph SDK's own retries is run again by the loop
   ([#69](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/69)).
+- **`Initial-Import-EntraUsers`**, migrated from 1.0 and rebuilt as `docs/DECISIONS.md` D12
+  agreed. It reads the tenant's users from Graph a page of `ImportBatchSize` (200) at a
+  time, renewing the Graph connection between pages, and writes each page to
+  `PUT /domain/{DomainId}/entraiduser/insertMultiple`, which upserts on `objectguid`, the
+  Graph object id. 1.0 wrote one `PUT` per user to `/aduser`, which is now Active
+  Directory's (D14). A user the endpoint does not report as inserted or updated fails the
+  job. The domain's sync state is `updating` while the import runs and `ready` afterwards,
+  also after a failure; 1.0 never set it back. The MFA phone is no longer read or sent
+  (Import-EntraMFA owns it), `employeehiredate` is ServiceNow Date/Time in UTC, the office
+  phone goes to `office_phone` and the office location to `officelocation`, and every
+  empty value is sent as an empty string. No cleanup is called: `/entraiduser/cleanup`
+  does not exist yet
+  ([#192](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/192),
+  [#193](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/193)),
+  so a user deleted from Entra ID stays in ServiceNow
+  ([#75](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/75)).
 - **`Initial-Import-ADUsers` sends the display name as `name`.** The ServiceNow AD user
   table has no `displayname` field, so the display name was dropped. The ServiceNow team
   decided it belongs in `name`. A user without a display name, such as a built-in

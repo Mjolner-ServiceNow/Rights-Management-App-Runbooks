@@ -178,8 +178,16 @@ Keep `StaleAfterMinutes` at three heartbeats or more.
   value. So an empty value is sent as `""`, or a value cleared in AD is never cleared in
   ServiceNow ([#186](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/186)).
   The Entra ID user endpoint, `/domain/{DomainId}/entraiduser/insertMultiple`, followed
-  the same day. It has not been probed yet: its upsert key, fields and `/cleanup` are open
-  in [#106](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/106).
+  the same day and was probed the same way
+  ([#106](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/106#issuecomment-6314843155)):
+  it upserts on `objectguid`, which holds the Graph object id, writes to
+  `x_autps_active_dir_azure_ad_user`, answers as `aduser` does, and treats `""` and `null`
+  as `aduser` does. The office phone field is `office_phone`; 1.0's `officephone` sets it
+  but cannot clear it. **`/entraiduser/cleanup` does not exist**, so Initial-Import-EntraUsers
+  ([#75](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/75))
+  imports without cleanup until the ServiceNow team adds it
+  ([#192](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/192),
+  [#193](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/193)).
 - **The MFA phone (`mfasms`) is dropped** from Initial-Import-EntraUsers.
   Import-EntraMFA owns it. *Update 2026-10-21
   ([#69](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/69)):*

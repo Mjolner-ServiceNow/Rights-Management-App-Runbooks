@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Initial-Import-ADUsers` sends the display name as `name`.** The ServiceNow AD user
+  table has no `displayname` field, so the display name was dropped. The ServiceNow team
+  decided it belongs in `name`. A user without a display name, such as a built-in
+  account, gets AD's `Name` (the CN), as before. `displayname` is no longer sent
+  ([#188](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/188)).
 - **`Initial-Import-ADUsers` sends `extensionAttribute1` to `15`** as
   `extensionattribute1` to `15`, which the ServiceNow AD user table already has and
   neither 1.0 nor #73 filled. The attributes exist only in a forest whose schema was

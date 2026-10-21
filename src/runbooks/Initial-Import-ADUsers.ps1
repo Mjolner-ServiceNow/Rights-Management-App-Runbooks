@@ -27,11 +27,15 @@
       - The import holds the job for as long as it runs. Invoke-RmaQueueLoop's heartbeat
         keeps the claim, so the watchdog does not requeue it.
 
-    The fields are 1.0's, with three corrections. Dates are sent as ServiceNow Date/Time
+    The fields are 1.0's, with four corrections. Dates are sent as ServiceNow Date/Time
     (UTC, 'yyyy-MM-dd HH:mm:ss'): 1.0 sent ISO 8601, which ServiceNow stores as midnight.
     lastLogon is converted from the directory's FILETIME: 1.0 sent the number itself, which
     ServiceNow stored as a date in the year 9260. emailaddress is the mail attribute, which
     is what 1.0 meant by preferring mail over EmailAddress; they are the same attribute.
+    name is the display name: the ServiceNow AD user table has no displayname field, and
+    the ServiceNow team decided the display name goes in name (#188). A user without a
+    display name, such as a built-in account, gets AD's Name (the CN) instead, so the field
+    is never left empty. 1.0 sent the CN as name and a displayname that was dropped.
 
     extensionAttribute1 to 15 are sent as well, as extensionattribute1 to 15, which 1.0 did
     not. They exist only in a forest whose schema was extended for Exchange, and asking
@@ -151,7 +155,6 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'I
                 country               = $_.Country
                 department            = $_.Department
                 description           = $_.Description
-                displayname           = $_.DisplayName
                 distinguishedname     = $_.DistinguishedName
                 domain                = $DomainId
                 emailaddress          = $_.mail
@@ -163,7 +166,7 @@ $summary = Invoke-RmaQueueLoop -Context $context -DomainId $DomainId -Command 'I
                 lastlogon             = & $fromFileTime $_.lastLogon
                 lockedout             = $_.LockedOut
                 mobilephone           = $_.MobilePhone
-                name                  = $_.Name
+                name                  = [string]::IsNullOrWhiteSpace($_.DisplayName) ? $_.Name : $_.DisplayName
                 objectclass           = $_.ObjectClass
                 objectguid            = "$($_.ObjectGUID)"
                 office                = $_.Office

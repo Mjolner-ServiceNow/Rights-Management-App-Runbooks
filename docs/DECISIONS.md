@@ -180,16 +180,23 @@ Keep `StaleAfterMinutes` at three heartbeats or more.
   The Entra ID user endpoint, `/domain/{DomainId}/entraiduser/insertMultiple`, followed
   the same day and was probed the same way
   ([#106](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/106#issuecomment-6314843155)):
-  it upserts on `objectguid`, which holds the Graph object id, writes to
-  `x_autps_active_dir_azure_ad_user`, answers as `aduser` does, and treats `""` and `null`
-  as `aduser` does. The office phone field is `office_phone`; 1.0's `officephone` sets it
-  but cannot clear it. **`/entraiduser/cleanup` does not exist**, so Initial-Import-EntraUsers
+  it upserts on `objectguid`, which holds the Graph object id, ignoring case, writes to
+  `x_autps_active_dir_azure_ad_user`, answers as `aduser` does, and treats `""`, `null` and
+  absent fields as `aduser` does. The office phone field is `office_phone`; 1.0's
+  `officephone` sets it but cannot clear it. `username` is cut to 40 characters, which the
+  local part of a guest's user principal name often exceeds. **`/entraiduser/cleanup` does
+  not exist**, so Initial-Import-EntraUsers
   ([#75](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/75))
   imports without cleanup until the ServiceNow team adds it
   ([#192](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/192),
   [#193](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/193)).
-- **The MFA phone (`mfasms`) is dropped** from Initial-Import-EntraUsers.
-  Import-EntraMFA owns it.
+- **Import-EntraUsers, the hourly import, calls no `/cleanup`.** It imports only the users
+  created in the last day, as 1.0 did, and a cleanup after it would remove every other
+  user. 1.0 called one all the same. Cleanup belongs to the full import
+  ([#71](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/71)).
+- **The MFA phone (`mfasms`) is dropped** from Initial-Import-EntraUsers, and from
+  Import-EntraUsers ([#71](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/71)).
+  Import-EntraMFA owns it. The imports leave the field out, so the value it wrote is kept.
 - **Group members are restored** in the initial group imports, with the 1.0 monolith's
   field names (`groupguid`, `objectguid`, ...), not the broken `group` / `member` rename.
 - API naming in the ServiceNow application: `user` and `group` are Active Directory;

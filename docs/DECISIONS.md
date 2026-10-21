@@ -181,7 +181,13 @@ Keep `StaleAfterMinutes` at three heartbeats or more.
   the same day. It has not been probed yet: its upsert key, fields and `/cleanup` are open
   in [#106](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/106).
 - **The MFA phone (`mfasms`) is dropped** from Initial-Import-EntraUsers.
-  Import-EntraMFA owns it.
+  Import-EntraMFA owns it. *Update 2026-10-21
+  ([#69](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/69)):*
+  it owns that one field and nothing else. It sends `objectguid` and `mfasms` only, which
+  `/entraiduser/insertMultiple` upserts while keeping every field left out (#106), calls
+  no cleanup and leaves the sync state alone: which users exist is the user imports'
+  business. `mfasms` is the mobile authentication method's number, the one Entra sends
+  SMS codes to.
 - **Group members are restored** in the initial group imports, with the 1.0 monolith's
   field names (`groupguid`, `objectguid`, ...), not the broken `group` / `member` rename.
 - API naming in the ServiceNow application: `user` and `group` are Active Directory;

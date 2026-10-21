@@ -86,6 +86,7 @@ and runs safely on forks.
 | [`Set-ADUserPassword`](src/runbooks/Set-ADUserPassword.ps1) | The ServiceNow application, per request | Resets an AD user's password; optionally requires a change at next logon and unlocks |
 | [`Initial-Import-ADUsers`](src/runbooks/Initial-Import-ADUsers.ps1) | The ServiceNow application, per domain | Imports every AD user into ServiceNow through `/aduser/insertMultiple`, then calls `/aduser/cleanup` only if every user was written |
 | [`Import-EntraUsers`](src/runbooks/Import-EntraUsers.ps1) | The ServiceNow application, hourly, per domain | Imports the Entra ID users created in the last 24 hours into ServiceNow through `/entraiduser/insertMultiple`. No cleanup: it imports only the new users |
+| [`Import-EntraMFA`](src/runbooks/Import-EntraMFA.ps1) | The ServiceNow application, per domain or per user (`Id`) | Writes every Entra ID user's SMS phone number (the mobile authentication method) to `mfasms` through `/entraiduser/insertMultiple`, a page at a time, and nothing else; no cleanup |
 | [`Invoke-RmaQueueWatchdog`](src/runbooks/Invoke-RmaQueueWatchdog.ps1) | The ServiceNow application, on a cadence, per domain | Requeues jobs stranded in Work in Progress |
 | [`Test-RmaHealth`](src/runbooks/Test-RmaHealth.ps1) | The ServiceNow application | Proves every dependency end to end and reports the result to ServiceNow |
 

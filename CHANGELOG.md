@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Import-EntraMFA`**, migrated from 1.0. It writes each Entra ID user's SMS phone
+  number, the number of their mobile authentication method, to `mfasms` through
+  `PUT /domain/{DomainId}/entraiduser/insertMultiple`, sending only `objectguid` and
+  `mfasms`, which the endpoint upserts while keeping every other field. A user without a
+  mobile method gets an empty string, which clears the field. Without `Id` in the
+  payload it imports every user in the tenant, a Graph page of `ImportBatchSize` (200)
+  users and one request at a time, renewing the Graph connection between pages; with
+  `Id` it imports that one user, as 1.0 did. 1.0 sent the whole user again to the
+  endpoint that now means Active Directory, sent every phone number the user had, and
+  called cleanup and flipped the domain's sync state for every single user; 2.0 does
+  neither. A 429 that outlasts the Graph SDK's own retries is run again by the loop
+  ([#69](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/69)).
 - **`Initial-Import-EntraUsers`**, migrated from 1.0 and rebuilt as `docs/DECISIONS.md` D12
   agreed. It reads the tenant's users from Graph a page of `ImportBatchSize` (200) at a
   time, renewing the Graph connection between pages, and writes each page to

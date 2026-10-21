@@ -177,6 +177,9 @@ Keep `StaleAfterMinutes` at three heartbeats or more.
   A field given an empty string is cleared; a field given `null`, or left out, keeps its
   value. So an empty value is sent as `""`, or a value cleared in AD is never cleared in
   ServiceNow ([#186](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/186)).
+  The Entra ID user endpoint, `/domain/{DomainId}/entraiduser/insertMultiple`, followed
+  the same day. It has not been probed yet: its upsert key, fields and `/cleanup` are open
+  in [#106](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/106).
 - **The MFA phone (`mfasms`) is dropped** from Initial-Import-EntraUsers.
   Import-EntraMFA owns it.
 - **Group members are restored** in the initial group imports, with the 1.0 monolith's
@@ -204,33 +207,32 @@ In 1.0 the `ad` prefix meant Entra ID (`aduser`, `adgroup`) and no prefix meant 
 Directory (`user`, `group`). That caught 1.0 twice (D12) and 2.0's Create-EntraUser once
 ([#40](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/40)).
 Every resource under `/api/x_autps_active_dir/domain/{DomainId}/` is now named
-`entraId<Resource>` or `ad<Resource>`, and the operations under it are the same for each:
-`/insertMultiple` for writing records (D12) and `/cleanup`.
+`entraid<resource>` or `ad<resource>`, **all in lower case**, and the operations under it
+are the same for each: `/insertMultiple` for writing records (D12) and `/cleanup`.
 
-Users are settled: `/entraIdUser/insertMultiple` and `/adUser/insertMultiple`. The rest
-follow the same rule; the ServiceNow team confirms the final spelling.
-
-*Update 2026-10-21:* the first endpoint the ServiceNow team delivered is
-`/aduser/insertMultiple`, in lower case, for **Active Directory**. Paths are
-case-sensitive: `/adUser/insertMultiple` answers 400. So the AD user resource keeps 1.0's
-lower-case style but now means Active Directory, the reverse of 1.0's `aduser`. The final
-spelling of the others is asked in
-[#106](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/106).
+*Update 2026-10-21:* the names were first agreed in camel case (`entraIdUser`,
+`adUser`). The ServiceNow team delivered the user endpoints in lower case,
+`/aduser/insertMultiple` and `/entraiduser/insertMultiple`, so lower case is the rule for
+every resource. Paths are case-sensitive: `/adUser/insertMultiple` answers 400. Note that
+`aduser` and `adgroup` now mean Active Directory, the reverse of 1.0.
 
 | 1.0 resource | Directory | 2.0 resource |
 |---|---|---|
-| `user` | Active Directory | `adUser` |
-| `aduser` | Entra ID | `entraIdUser` |
-| `group` | Active Directory | `adGroup` |
-| `adgroup` | Entra ID | `entraIdGroup` |
-| `groupmember` | Active Directory | `adGroupMember` |
-| `adgroupmember` | Entra ID | `entraIdGroupMember` |
-| `ou` | Active Directory | `adOrganizationalUnit` |
-| `aadou` | Entra ID (administrative unit) | `entraIdAdministrativeUnit` |
-| `adoumember` | Entra ID (administrative unit member) | `entraIdAdministrativeUnitMember` |
-| `usermanager` | Active Directory | `adUserManager` |
-| `useradmanager` | Entra ID | `entraIdUserManager` |
-| `useradsponsors` | Entra ID | `entraIdUserSponsor` |
+| `user` | Active Directory | `aduser` |
+| `aduser` | Entra ID | `entraiduser` |
+| `group` | Active Directory | `adgroup` |
+| `adgroup` | Entra ID | `entraidgroup` |
+| `groupmember` | Active Directory | `adgroupmember` |
+| `adgroupmember` | Entra ID | `entraidgroupmember` |
+| `ou` | Active Directory | `adorganizationalunit` |
+| `aadou` | Entra ID (administrative unit) | `entraidadministrativeunit` |
+| `adoumember` | Entra ID (administrative unit member) | `entraidadministrativeunitmember` |
+| `usermanager` | Active Directory | `adusermanager` |
+| `useradmanager` | Entra ID | `entraidusermanager` |
+| `useradsponsors` | Entra ID | `entraidusersponsor` |
+
+Delivered so far: `aduser` and `entraiduser`
+([#106](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/106)).
 
 `health` and `syncstate` belong to the domain, not to a directory, and keep their names.
 Still open in

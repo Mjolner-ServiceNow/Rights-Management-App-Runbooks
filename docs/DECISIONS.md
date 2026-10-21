@@ -178,15 +178,18 @@ Keep `StaleAfterMinutes` at three heartbeats or more.
   value. So an empty value is sent as `""`, or a value cleared in AD is never cleared in
   ServiceNow ([#186](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/186)).
   The Entra ID user endpoint, `/domain/{DomainId}/entraiduser/insertMultiple`, followed
-  the same day and behaves the same way
-  ([#106](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/106)):
-  it upserts on `objectguid`, the Graph object id, ignoring case, writes to
-  `x_autps_active_dir_azure_ad_user`, and treats `""`, `null` and absent fields as
-  `aduser` does. Send `office_phone`, not 1.0's `officephone`: the endpoint takes both, but
-  `officephone: ""` does not clear the field. `/entraiduser/cleanup` does not exist yet
-  ([#192](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/192)).
-  `username` is cut to 40 characters, which the local part of a guest's user principal
-  name often exceeds.
+  the same day and was probed the same way
+  ([#106](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/106#issuecomment-6314843155)):
+  it upserts on `objectguid`, which holds the Graph object id, ignoring case, writes to
+  `x_autps_active_dir_azure_ad_user`, answers as `aduser` does, and treats `""`, `null` and
+  absent fields as `aduser` does. The office phone field is `office_phone`; 1.0's
+  `officephone` sets it but cannot clear it. `username` is cut to 40 characters, which the
+  local part of a guest's user principal name often exceeds. **`/entraiduser/cleanup` does
+  not exist**, so Initial-Import-EntraUsers
+  ([#75](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/75))
+  imports without cleanup until the ServiceNow team adds it
+  ([#192](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/192),
+  [#193](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/193)).
 - **Import-EntraUsers, the hourly import, calls no `/cleanup`.** It imports only the users
   created in the last day, as 1.0 did, and a cleanup after it would remove every other
   user. 1.0 called one all the same. Cleanup belongs to the full import

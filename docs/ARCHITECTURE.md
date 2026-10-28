@@ -97,6 +97,8 @@ only table they query, and what they send back is job state and the results of t
 | `AdSecretName` | Active Directory | Key Vault secret with that account's password. Defaults to `ad-service-account-password`. | Active Directory Setup › AD secret name *(replaces Active Directory Credentials)* |
 | `StaleAfterMinutes` | Watchdog | Minutes a claim may go unrenewed before the job is requeued. Defaults to 30. | No field. Set where the application schedules the watchdog. |
 | `MaxRequeue` | Watchdog | Most stranded jobs one run will requeue; above it the run refuses and fails. Defaults to 50. | No field. Set where the application schedules the watchdog. |
+| `ImportBatchSize` | `Initial-Import-ADUsers`, `Initial-Import-EntraUsers`, `Import-EntraUsers`, `Import-EntraMFA` | Users per `/insertMultiple` request, and for Entra ID per Graph page. Defaults to 200; at most 999, or 1000 for AD. Each request must finish within `Invoke-RmaRestMethod`'s 60-second timeout. | No field. The default needs no parameter. |
+| `CreatedWithinHours` | `Import-EntraUsers` | How far back a user's creation counts as new. Defaults to 24, which overlaps the hourly cadence so a missed run is caught up. | No field. The default needs no parameter. |
 
 The last column is the ServiceNow application's domain record form, as *tab › field*.
 Fields marked *new* or *replaces* are changes the application needs for this release. The

@@ -11,7 +11,7 @@ laid out by status and priority on the
 works in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). When something here is done, delete
 the line instead of ticking it.
 
-*Last reviewed: 2026-10-09.*
+*Last reviewed: 2026-10-28.*
 
 ## Where to start
 
@@ -32,38 +32,86 @@ Every place that needed help is a gap; record it.
 
 ## State of the work
 
-*To be written in the last week before the handover. Until then this is a snapshot.*
+*Written 2026-10-28, two days before the handover.*
 
 - **Done:** the shared module (`RMA.Runbooks` 2.6.0) with the queue loop, claim, heartbeat,
   retry of a job that is not ready yet, watchdog, health check and logging; CI and the
-  release pipeline; and 23 command runbooks on it, among them the references
-  `Create-EntraUser` for Entra ID and `Unlock-ADUser` for Active Directory.
+  release pipeline; and 27 command runbooks on it, plus `Invoke-RmaQueueWatchdog` and
+  `Test-RmaHealth`. The references are `Create-EntraUser` for Entra ID and `Unlock-ADUser`
+  for Active Directory. The last four merged on 2026-10-21 and are the first that write to
+  ServiceNow in bulk: `Initial-Import-ADUsers`
+  ([#184](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/pull/184)),
+  `Initial-Import-EntraUsers`
+  ([#194](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/pull/194)),
+  `Import-EntraUsers`
+  ([#196](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/pull/196))
+  and `Import-EntraMFA`
+  ([#197](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/pull/197)).
+  Each ran as a real Automation job on the test worker against the test instance; the
+  pull requests say what was compared. None was run at the 500,000-user scale the rewrite
+  is for.
 - **Released:** 2.6.0 is the latest release (2026-10-15), installed on the test Hybrid
-  Worker, the only worker today. It adds `Update-EntraUserHideMailbox`, the first Exchange
-  runbook, and reads Exchange Online's organization from Graph (D20,
-  [#102](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/102));
-  that runbook has not run end to end, because the test app has no Exchange role
-  ([#180](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/180)).
-  2.5.0, the release before it, added the `command` log field
-  ([#124](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/124)),
-  the `Retry-After` cap
-  ([#117](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/117))
-  and the retry of objects Graph has not replicated yet (D18, D19,
-  [#146](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/146),
-  [#173](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/173)).
+  Worker, the only worker today. The four import runbooks came after it but changed no
+  module code, so they run on 2.6.0 and need no release. 2.6.0 adds
+  `Update-EntraUserHideMailbox`, the first Exchange runbook, which has not run end to end
+  because the test app registration has no Exchange role
+  ([#180](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/180);
+  still missing when the environment was read on 2026-10-28,
+  [#199](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/199)).
   2.2.1 to 2.4.0 were drafted and deleted unpublished, because 2.5.0 holds them; 2.1.0 was
-  never published either. Every module change bumps the version, so each merge to `main`
-  that touches the module needs its release published and installed on every worker
-  before the ServiceNow application takes the runbooks from `main`.
+  never published either. `CHANGELOG.md` still files everything since 2.0.1 under
+  *Unreleased*
+  ([#202](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/202));
+  the release notes on GitHub are the record of what each release holds. Every module
+  change bumps the version, so each merge to `main` that touches the module needs its
+  release published and installed on every worker before the ServiceNow application takes
+  the runbooks from `main`.
 - **In progress:** migrating the 1.0 runbooks
   ([#36](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/36)).
-  40 are left, and all of them wait on the ServiceNow team (#106, #108, #109), among them
-  the live Import-Entra* commands and the four Initial-Import runbooks, whose rebuild is
-  decided in
-  [DECISIONS.md D12](docs/DECISIONS.md#d12-how-the-four-initial-import-runbooks-are-to-be-rebuilt).
-- **Never run end to end:** a job created by the ServiceNow application, claimed and
-  completed by a runbook on a worker. The queue columns `worker_id` and `claimed_at` exist
-  on the test instance since 2026-09-30.
+  36 are left. 27 wait on the ServiceNow team's
+  [#106](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/106)
+  alone, four on #106 and
+  [#109](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/109),
+  and three on #109 alone. Two wait on nothing and can be started now:
+  `Add-MailboxPermission`
+  ([#41](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/41))
+  and `Create-ADDistributionGroup`
+  ([#43](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/43)).
+  Each issue's *Blocked by* relation is the current answer. The two Initial-Import runbooks
+  left, for groups, are rebuilt as
+  [DECISIONS.md D12](docs/DECISIONS.md#d12-how-the-four-initial-import-runbooks-are-to-be-rebuilt)
+  decides.
+- **Never run end to end:** a queue row created by the ServiceNow application itself,
+  claimed and completed by a runbook on a worker. Every test so far queued its rows with
+  the `migrate-runbook` skill's scripts. The queue columns `worker_id` and `claimed_at`
+  exist on the test instance since 2026-09-30.
+
+### Answered by the ServiceNow team, not yet acted on here
+
+The ServiceNow team answered four issues on 2026-10-22, after the last change was merged
+here. Start with these:
+
+- **The claim can be made atomic.**
+  [#27](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/27)
+  now has a compare-and-set endpoint, `POST …/queue/{jobid}/{claim|heartbeat|requeue}`.
+  Calling it from `Request-RmaJobClaim`, `Update-RmaJobHeartbeat` and the watchdog's
+  requeue is
+  [#201](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/201).
+  Until that is merged and released, F1 still holds: two executions can run the same job.
+- **`Create-EntraUser` can write back to the right table.** Both `/insertMultiple`
+  endpoints exist, but the runbook still writes the new user to `/domain/{DomainId}/user`
+  ([#40](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/40)).
+- **The health endpoint is fixed** on ServiceNow's side
+  ([#23](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/23)).
+  `Test-RmaHealth` has not been run against it since; close the issue once it has.
+- **The watchdog is started per job, not on a cadence**
+  ([#110](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/110)):
+  about 61 minutes after a claim, and only while that job is still Work in Progress, with
+  `StaleAfterMinutes` 60. D10 still says the cadence is not agreed, and D11 assumes the
+  runbook's default of 30; both need updating from the issue.
+
+The board showed #23, #40 and #110 as Done while the issues were open. #40 was set back to
+Ready on 2026-10-28, since its work is ours.
 
 ## Waiting on the ServiceNow team
 
@@ -74,13 +122,11 @@ is an issue owned by the ServiceNow team, with the `servicenow` label, as a sub-
 
 | Issue | What | Why it matters |
 |---|---|---|
-| [#106](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/106) | The `/insertMultiple` contract and the resource names | Every runbook that writes to ServiceNow, including the Initial-Import runbooks ([D12](docs/DECISIONS.md#d12-how-the-four-initial-import-runbooks-are-to-be-rebuilt)) |
-| [#108](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/108) | Domain record fields and job parameters | ServiceNow cannot supply the runbook parameters ([D9](docs/DECISIONS.md#d9-changes-to-the-servicenow-domain-record)); no Exchange runbook can connect |
-| [#27](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/27) | A server-side compare-and-set for the job claim (Scripted REST) | Without it two executions can run the same job ([F1](docs/DECISIONS.md#f1-the-job-claim-is-not-atomic-on-the-instance-it-was-tested-on)) |
-| [#23](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/23) | Fix the health endpoint's resource script | Every `Test-RmaHealth` job fails |
-| [#107](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/107) | Run `/cleanup` on their side, skipped after a failed import | Until then the runbook has to do it |
-| [#109](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/109) | Which overlapping 1.0 commands are still sent | Decides which runbooks need migrating |
-| [#110](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/110) | How often the watchdog is started | A stranded job waits `StaleAfterMinutes` plus that interval |
+| [#106](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/106) | The `/insertMultiple` contract and the resource names, including fields ServiceNow truncates and a `username` it never updates | 31 of the runbooks left under #36 |
+| [#109](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/109) | Which overlapping 1.0 commands are still sent | Decides whether 7 of the runbooks left need migrating |
+| [#192](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/192) | `/entraiduser/cleanup`, limited to the domain in its path | Until it exists, a user deleted from Entra ID stays in ServiceNow ([#193](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/193)) |
+| [#185](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/185) | `/aduser/cleanup` does not remove a user deleted from AD | The same, for Active Directory |
+| [#130](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/130) | Passwords stay readable in the command queue after a password job | A password job leaves the password on the row |
 | [#111](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/111) | How the application takes runbooks from `main`, and how an operator stops it | Rolling out a module version, and rollback |
 | [#112](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/112) | A written installation guide for the ServiceNow application | [INSTALLATION.md](docs/INSTALLATION.md) covers only Azure |
 
@@ -90,10 +136,21 @@ Tracked as GitHub issues, most urgent first. The
 [project board](https://github.com/orgs/Mjolner-ServiceNow/projects/1) shows the same issues
 by status (Backlog, Ready, In progress, Done) and priority (P1 blocks production use). Add every new issue to it, and move a card when its state changes:
 
-- [#27](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/27) The job claim is not atomic; the call into the ServiceNow endpoint is ours.
-- [#36](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/36) Migrate the remaining 1.0 runbooks.
-- [#31](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/31) `Test-RmaHealth` does not verify Exchange.
-- [#170](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/170) Provisioning has not been tried on a network that allows only the documented hosts.
+- [#201](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/201) P1. Claim, heartbeat and requeue do not yet call ServiceNow's compare-and-set endpoint, so the claim is not atomic.
+- [#40](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/40) P1. `Create-EntraUser` writes the new user back to the Active Directory user endpoint.
+- [#36](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/36) P1. Migrate the remaining 1.0 runbooks.
+- [#141](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/141) P2. `Revoke-SignInTokens` cannot disable a user synced from on-premises AD.
+- [#180](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/180) P2. Run `Update-EntraUserHideMailbox` end to end; needs the Exchange role first.
+- [#193](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/193) P2. `Initial-Import-EntraUsers` calls no cleanup until `/entraiduser/cleanup` exists.
+- [#31](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/31) P3. `Test-RmaHealth` does not verify Exchange.
+- [#170](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/170) P3. Provisioning has not been tried on a network that allows only the documented hosts.
+- [#195](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/195) P3. `Import-EntraUsers` does not import changes to existing users.
+- [#198](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/198) P3. `Import-EntraMFA` reads phone methods one user at a time, too slow at 500,000 users.
+- [#199](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/199) P3. Where the test environment differs from [AZURE-RESOURCES.md](docs/AZURE-RESOURCES.md), not yet triaged.
+- [#202](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/202) P3. `CHANGELOG.md` has no section for any release after 2.0.1.
+
+Every one of these, and every migration under #36, is assigned to the maintainer who
+leaves on 2026-10-30. Reassign them to the next maintainer when one is named.
 
 ## Kept outside this repository
 

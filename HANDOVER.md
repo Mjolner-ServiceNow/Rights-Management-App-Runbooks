@@ -149,8 +149,11 @@ by status (Backlog, Ready, In progress, Done) and priority (P1 blocks production
 - [#199](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/199) P3. Where the test environment differs from [AZURE-RESOURCES.md](docs/AZURE-RESOURCES.md), not yet triaged.
 - [#202](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/202) P3. `CHANGELOG.md` has no section for any release after 2.0.1.
 
-Every one of these, and every migration under #36, is assigned to the maintainer who
-leaves on 2026-10-30. Reassign them to the next maintainer when one is named.
+None of these, and none of the migrations under #36, has an owner. The maintainer who
+leaves on 2026-10-30 was removed from them on 2026-10-28, so they stay unassigned until
+the next maintainer is named, against the one-owner rule in
+[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md). Whoever takes over assigns themselves to the
+issues they start. The ServiceNow team's issues keep their owner.
 
 ## Kept outside this repository
 

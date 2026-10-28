@@ -1,8 +1,9 @@
 # Handover
 
 What a new maintainer needs to take RMA 2.0 over: what is finished, what is not, what is
-waiting on someone else and what is decided but not yet built. The maintainer changes on
-2026-10-30, possibly before the rewrite is complete.
+waiting on someone else and what is decided but not yet built. On 2026-10-30 the
+ServiceNow team, who already maintain the ServiceNow application, take over this
+repository as well. The rewrite is not complete.
 
 This file is the index. Detail lives where it is maintained: open work in
 [GitHub issues](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues),
@@ -115,7 +116,9 @@ Ready on 2026-10-28, since its work is ours.
 
 ## Waiting on the ServiceNow team
 
-The ServiceNow application is maintained outside this repository. Each thing it has to do
+The ServiceNow application is maintained outside this repository. From 2026-10-30 the same
+team maintains both, so this split is about where the work lands, not who does it. Each
+thing the application has to do
 is an issue owned by the ServiceNow team, with the `servicenow` label, as a sub-issue of
 [#35](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/35). Issues here that wait on one have a *Blocked by* relation to it. The board's
 **ServiceNow** view shows them all.
@@ -150,10 +153,10 @@ by status (Backlog, Ready, In progress, Done) and priority (P1 blocks production
 - [#202](https://github.com/Mjolner-ServiceNow/Rights-Management-App-Runbooks/issues/202) P3. `CHANGELOG.md` has no section for any release after 2.0.1.
 
 None of these, and none of the migrations under #36, has an owner. The maintainer who
-leaves on 2026-10-30 was removed from them on 2026-10-28, so they stay unassigned until
-the next maintainer is named, against the one-owner rule in
-[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md). Whoever takes over assigns themselves to the
-issues they start. The ServiceNow team's issues keep their owner.
+leaves on 2026-10-30 was removed from them on 2026-10-28. The ServiceNow team takes them
+over, and whoever on the team starts one assigns themselves, as the one-owner rule in
+[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) asks. Until then they are unassigned. The
+ServiceNow team's own issues keep their owner.
 
 ## Kept outside this repository
 
